@@ -53,6 +53,8 @@ class _AppHomeState extends State<AppHome> {
   final TextEditingController _trackingController = TextEditingController();
   final TextEditingController _historySearchController =
       TextEditingController();
+  final TextEditingController _outboundHistorySearchController =
+      TextEditingController();
   final TextEditingController _ocrTextController = TextEditingController();
   final List<InboundDraftItem> _draftItems = [];
   final List<_OutboundCartEntry> _outboundCart = [];
@@ -79,6 +81,7 @@ class _AppHomeState extends State<AppHome> {
   void dispose() {
     _trackingController.dispose();
     _historySearchController.dispose();
+    _outboundHistorySearchController.dispose();
     _ocrTextController.dispose();
     unawaited(_database.close());
     super.dispose();
@@ -87,40 +90,6 @@ class _AppHomeState extends State<AppHome> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text('云推推库存管理'),
-        actions: [
-          PopupMenuButton<_BackupAction>(
-            enabled: _isReady && !_isBackupBusy,
-            icon: const Icon(Icons.more_vert),
-            onSelected: _onBackupActionSelected,
-            itemBuilder: (context) {
-              return const [
-                PopupMenuItem(
-                  value: _BackupAction.exportData,
-                  child: Row(
-                    children: [
-                      Icon(Icons.upload_file_outlined),
-                      SizedBox(width: 8),
-                      Text('导出备份'),
-                    ],
-                  ),
-                ),
-                PopupMenuItem(
-                  value: _BackupAction.importData,
-                  child: Row(
-                    children: [
-                      Icon(Icons.download_for_offline_outlined),
-                      SizedBox(width: 8),
-                      Text('导入备份'),
-                    ],
-                  ),
-                ),
-              ];
-            },
-          ),
-        ],
-      ),
       body: !_isReady
           ? const Center(child: CircularProgressIndicator())
           : IndexedStack(
@@ -130,8 +99,12 @@ class _AppHomeState extends State<AppHome> {
                 _historyInboundTab(),
                 _stockTotalsTab(),
                 _historyOutboundTab(),
+                _profileTab(),
               ],
             ),
+      floatingActionButton: _isReady && _selectedTabIndex == 2
+          ? _outboundCartFloatingEntry()
+          : null,
       bottomNavigationBar: NavigationBar(
         selectedIndex: _selectedTabIndex,
         onDestinationSelected: (index) {
@@ -155,6 +128,10 @@ class _AppHomeState extends State<AppHome> {
           NavigationDestination(
             icon: Icon(Icons.local_shipping_outlined),
             label: '历史出库',
+          ),
+          NavigationDestination(
+            icon: Icon(Icons.person_outline),
+            label: '我的',
           ),
         ],
       ),
@@ -182,16 +159,6 @@ class _AppHomeState extends State<AppHome> {
       _scanInboundHeader(),
       _trackingRow(),
       const SizedBox(height: 12),
-      TextField(
-        controller: _ocrTextController,
-        minLines: 3,
-        maxLines: 6,
-        decoration: const InputDecoration(
-          labelText: '商品清单识别文本',
-          border: OutlineInputBorder(),
-        ),
-      ),
-      const SizedBox(height: 8),
       Row(
         children: [
           Expanded(
@@ -216,11 +183,7 @@ class _AppHomeState extends State<AppHome> {
         _inboundImageTile(_currentInboundImagePath!),
       ],
       const SizedBox(height: 8),
-      FilledButton.icon(
-        onPressed: _parseOcrText,
-        icon: const Icon(Icons.document_scanner_outlined),
-        label: const Text('从文本重新生成'),
-      ),
+      _inboundDraftToolbar(),
       for (var index = 0; index < _draftItems.length; index += 1)
         _draftTile(index, _draftItems[index]),
       SwitchListTile(
@@ -279,18 +242,67 @@ class _AppHomeState extends State<AppHome> {
   Widget _stockTotalsTab() {
     return _page([
       _sectionTitle('商品总量'),
-      _outboundCartPanel(),
-      const Divider(height: 32),
       if (_stockTotals.isEmpty) const ListTile(title: Text('暂无库存')),
       ..._stockTotals.map(_stockTile),
     ]);
   }
 
   Widget _historyOutboundTab() {
+    final orders = _filteredOutboundHistory();
     return _page([
       _sectionTitle('历史出库'),
-      if (_outboundHistory.isEmpty) const ListTile(title: Text('暂无出货记录')),
-      ..._outboundHistory.map(_outboundTile),
+      TextField(
+        controller: _outboundHistorySearchController,
+        onChanged: (_) => setState(() {}),
+        decoration: InputDecoration(
+          labelText: '搜索出库单号或商品',
+          prefixIcon: const Icon(Icons.search),
+          border: const OutlineInputBorder(),
+          suffixIcon: _outboundHistorySearchController.text.isEmpty
+              ? null
+              : IconButton(
+                  tooltip: '清空搜索',
+                  onPressed: () {
+                    setState(() {
+                      _outboundHistorySearchController.clear();
+                    });
+                  },
+                  icon: const Icon(Icons.close),
+                ),
+        ),
+      ),
+      const SizedBox(height: 8),
+      if (_outboundHistory.isEmpty)
+        const ListTile(title: Text('暂无出货记录'))
+      else if (orders.isEmpty)
+        const ListTile(title: Text('没有匹配的出库记录')),
+      ...orders.map(_outboundTile),
+    ]);
+  }
+
+  Widget _profileTab() {
+    return _page([
+      _sectionTitle('我的'),
+      ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const Icon(Icons.upload_file_outlined),
+        title: const Text('导出备份'),
+        subtitle: const Text('导出本机库存、入库、出库和图片关联'),
+        enabled: !_isBackupBusy,
+        onTap: _isBackupBusy
+            ? null
+            : () => _onBackupActionSelected(_BackupAction.exportData),
+      ),
+      ListTile(
+        contentPadding: EdgeInsets.zero,
+        leading: const Icon(Icons.download_for_offline_outlined),
+        title: const Text('导入备份'),
+        subtitle: const Text('选择备份文件并覆盖恢复本机数据'),
+        enabled: !_isBackupBusy,
+        onTap: _isBackupBusy
+            ? null
+            : () => _onBackupActionSelected(_BackupAction.importData),
+      ),
     ]);
   }
 
@@ -370,80 +382,160 @@ class _AppHomeState extends State<AppHome> {
     );
   }
 
-  Widget _draftTile(int index, InboundDraftItem item) {
+  Widget _inboundDraftToolbar() {
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Column(
+      padding: const EdgeInsets.only(bottom: 4),
+      child: Row(
         children: [
-          Row(
-            children: [
-              Expanded(
-                child: TextFormField(
-                  key: ValueKey('draft-code-$index-${item.sourceText}'),
-                  initialValue: item.productCode ?? '',
-                  onChanged: (value) {
-                    if (index >= _draftItems.length) {
-                      return;
-                    }
-                    final current = _draftItems[index];
-                    _replaceDraftItem(
-                      index,
-                      current.copyWith(productCode: value),
-                    );
-                  },
-                  decoration: const InputDecoration(
-                    labelText: '商品编号',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              SizedBox(
-                width: 96,
-                child: TextFormField(
-                  key: ValueKey('draft-qty-$index-${item.sourceText}'),
-                  initialValue: item.quantity.toString(),
-                  keyboardType: TextInputType.number,
-                  onChanged: (value) {
-                    if (index >= _draftItems.length) {
-                      return;
-                    }
-                    final current = _draftItems[index];
-                    _replaceDraftItem(
-                      index,
-                      current.copyWith(
-                        quantity: int.tryParse(value.trim()) ?? 0,
-                      ),
-                    );
-                  },
-                  decoration: const InputDecoration(
-                    labelText: '数量',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ),
-              IconButton(
-                tooltip: '删除商品草稿',
-                onPressed: () => _removeDraftItem(index),
-                icon: const Icon(Icons.delete_outline),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          TextFormField(
-            key: ValueKey('draft-name-$index-${item.sourceText}'),
-            initialValue: item.productName,
-            onChanged: (value) {
-              if (index >= _draftItems.length) {
-                return;
-              }
-              final current = _draftItems[index];
-              _replaceDraftItem(index, current.copyWith(productName: value));
-            },
-            decoration: const InputDecoration(
-              labelText: '商品名称',
-              border: OutlineInputBorder(),
+          Expanded(
+            child: Text(
+              '商品草稿 ${_draftItems.length}',
+              style: Theme.of(context).textTheme.titleMedium,
             ),
+          ),
+          TextButton.icon(
+            onPressed: _addManualDraftItem,
+            icon: const Icon(Icons.add),
+            label: const Text('添加商品'),
+          ),
+          IconButton.filledTonal(
+            tooltip: '识别文本',
+            onPressed: _showOcrTextDialog,
+            icon: const Icon(Icons.subject_outlined),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _draftTile(int index, InboundDraftItem item) {
+    final sourceKey = item.sourceText ?? 'manual';
+    return Card(
+      margin: const EdgeInsets.symmetric(vertical: 6),
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+      child: Padding(
+        padding: const EdgeInsets.all(10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              width: 44,
+              height: 44,
+              decoration: BoxDecoration(
+                color: Theme.of(context).colorScheme.secondaryContainer,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(
+                Icons.inventory_2_outlined,
+                color: Theme.of(context).colorScheme.onSecondaryContainer,
+              ),
+            ),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Column(
+                children: [
+                  TextFormField(
+                    key: ValueKey('draft-name-$index-$sourceKey'),
+                    initialValue: item.productName,
+                    onChanged: (value) {
+                      if (index >= _draftItems.length) {
+                        return;
+                      }
+                      final current = _draftItems[index];
+                      _replaceDraftItem(
+                        index,
+                        current.copyWith(productName: value),
+                      );
+                    },
+                    decoration: const InputDecoration(
+                      isDense: true,
+                      labelText: '商品名称',
+                      border: OutlineInputBorder(),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Expanded(
+                        child: TextFormField(
+                          key: ValueKey('draft-code-$index-$sourceKey'),
+                          initialValue: item.productCode ?? '',
+                          onChanged: (value) {
+                            if (index >= _draftItems.length) {
+                              return;
+                            }
+                            final current = _draftItems[index];
+                            _replaceDraftItem(
+                              index,
+                              current.copyWith(productCode: value),
+                            );
+                          },
+                          decoration: const InputDecoration(
+                            isDense: true,
+                            labelText: '商品编号',
+                            border: OutlineInputBorder(),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      _draftQuantityStepper(index, item.quantity),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            IconButton(
+              tooltip: '删除商品草稿',
+              onPressed: () => _removeDraftItem(index),
+              icon: const Icon(Icons.delete_outline),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _draftQuantityStepper(int index, int quantity) {
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          IconButton(
+            tooltip: '减少数量',
+            visualDensity: VisualDensity.compact,
+            onPressed: quantity <= 1
+                ? null
+                : () => _setDraftQuantity(index, quantity - 1),
+            icon: const Icon(Icons.remove),
+          ),
+          SizedBox(
+            width: 36,
+            child: TextFormField(
+              key: ValueKey('draft-qty-$index-$quantity'),
+              initialValue: quantity.toString(),
+              textAlign: TextAlign.center,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                isDense: true,
+                border: InputBorder.none,
+                contentPadding: EdgeInsets.zero,
+              ),
+              onChanged: (value) {
+                final nextQuantity = int.tryParse(value.trim()) ?? 0;
+                _setDraftQuantity(index, nextQuantity);
+              },
+            ),
+          ),
+          IconButton(
+            tooltip: '增加数量',
+            visualDensity: VisualDensity.compact,
+            onPressed: () => _setDraftQuantity(index, quantity + 1),
+            icon: const Icon(Icons.add),
           ),
         ],
       ),
@@ -475,63 +567,112 @@ class _AppHomeState extends State<AppHome> {
   Widget _receiptTile(InboundReceipt receipt) {
     final primaryStyle = Theme.of(context).textTheme.bodyLarge;
     final secondaryStyle = Theme.of(context).textTheme.bodyMedium;
-    final imagePreview = _receiptImagePreview(receipt.imagePath);
-    return InkWell(
-      onLongPress: () => _confirmDeleteInboundReceipt(receipt),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text('快递单号：${receipt.trackingNumber}',
-                          style: primaryStyle),
-                      Text('订单号：${receipt.id}', style: primaryStyle),
-                      Text(
-                        '入库时间：${_formatReceiptTime(receipt.createdAt)}',
-                        style: secondaryStyle,
-                      ),
-                      Text(
-                        '${receipt.items.length} 个商品 · ${receipt.isSettled ? '已结算' : '未结算'}',
-                        style: secondaryStyle,
-                      ),
-                    ],
-                  ),
-                ),
-                Switch(
-                  value: receipt.isSettled,
-                  onChanged: (selected) =>
-                      _setReceiptSettled(receipt.id, selected),
-                ),
-              ],
-            ),
-            if (receipt.items.isNotEmpty) ...[
-              const SizedBox(height: 6),
-              ...receipt.items.map(_inboundReceiptItemLine),
-            ],
-            if (imagePreview != null) ...[
-              const SizedBox(height: 8),
-              imagePreview,
-            ],
-          ],
-        ),
+    return ListTile(
+      contentPadding: EdgeInsets.zero,
+      onTap: () => _showInboundReceiptDialog(receipt),
+      title: Text('快递单号：${receipt.trackingNumber}', style: primaryStyle),
+      subtitle: Text(
+        '${_formatReceiptTime(receipt.createdAt)} · ${receipt.items.length} 个商品 · ${receipt.isSettled ? '已结算' : '未结算'}',
+        style: secondaryStyle,
       ),
+      trailing: const Icon(Icons.chevron_right),
     );
   }
 
-  Widget _inboundReceiptItemLine(InboundDraftItem item) {
-    final code = item.productCode == null || item.productCode!.trim().isEmpty
-        ? ''
-        : '${item.productCode} · ';
-    return Padding(
-      padding: const EdgeInsets.only(top: 2),
-      child: Text('$code${item.productName} x${item.quantity}'),
+  Widget _inboundReceiptItemList(List<InboundDraftItem> items) {
+    if (items.isEmpty) {
+      return const ListTile(
+        dense: true,
+        contentPadding: EdgeInsets.zero,
+        title: Text('暂无商品清单'),
+      );
+    }
+    return ExpansionTile(
+      tilePadding: EdgeInsets.zero,
+      childrenPadding: EdgeInsets.zero,
+      title: Text('商品清单 ${items.length}'),
+      children: [
+        for (final item in items)
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: Text(item.productName),
+            subtitle: Text(item.productCode ?? '无商品编号'),
+            trailing: Text('x${item.quantity}'),
+          ),
+      ],
+    );
+  }
+
+  Future<void> _showInboundReceiptDialog(InboundReceipt receipt) async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          titlePadding: const EdgeInsets.fromLTRB(24, 18, 8, 0),
+          contentPadding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
+          title: Row(
+            children: [
+              const Expanded(child: Text('入库单详情')),
+              IconButton(
+                tooltip: '关闭',
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                icon: const Icon(Icons.close),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 460,
+            child: SingleChildScrollView(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text('快递单号：${receipt.trackingNumber}'),
+                  Text('订单号：${receipt.id}'),
+                  Text('入库时间：${_formatReceiptTime(receipt.createdAt)}'),
+                  SwitchListTile(
+                    contentPadding: EdgeInsets.zero,
+                    title: const Text('本单已结算'),
+                    value: receipt.isSettled,
+                    onChanged: (selected) async {
+                      await _setReceiptSettled(receipt.id, selected);
+                      if (dialogContext.mounted) {
+                        Navigator.of(dialogContext).pop();
+                      }
+                    },
+                  ),
+                  _inboundReceiptItemList(receipt.items),
+                  if (receipt.imagePath != null &&
+                      receipt.imagePath!.isNotEmpty) ...[
+                    const SizedBox(height: 8),
+                    Text(
+                      '入库单图片',
+                      style: Theme.of(context).textTheme.titleSmall,
+                    ),
+                    const SizedBox(height: 6),
+                    InkWell(
+                      onTap: () => _showReceiptImage(receipt.imagePath!),
+                      child: _imageThumbnail(File(receipt.imagePath!)),
+                    ),
+                  ],
+                ],
+              ),
+            ),
+          ),
+          actions: [
+            TextButton.icon(
+              onPressed: () async {
+                final confirmed = await _confirmDeleteInboundReceipt(receipt);
+                if (confirmed == true && dialogContext.mounted) {
+                  Navigator.of(dialogContext).pop();
+                }
+              },
+              icon: const Icon(Icons.delete_outline),
+              label: const Text('删除入库单'),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -551,19 +692,6 @@ class _AppHomeState extends State<AppHome> {
       subtitle: Text(exists ? p.basename(imagePath) : '图片文件不存在'),
       trailing: exists ? const Icon(Icons.visibility_outlined) : null,
       onTap: exists ? () => _showReceiptImage(imagePath) : null,
-    );
-  }
-
-  Widget? _receiptImagePreview(String? imagePath) {
-    if (imagePath == null || imagePath.isEmpty) {
-      return null;
-    }
-    final file = File(imagePath);
-    final exists = file.existsSync();
-    return InkWell(
-      borderRadius: BorderRadius.circular(6),
-      onTap: exists ? () => _showReceiptImage(imagePath) : null,
-      child: _imageThumbnail(file),
     );
   }
 
@@ -626,40 +754,42 @@ class _AppHomeState extends State<AppHome> {
   Widget _outboundTile(OutboundOrder order) {
     final quantity =
         order.items.fold<int>(0, (sum, item) => sum + item.quantity);
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 8),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(order.id, style: Theme.of(context).textTheme.bodyLarge),
-          Text(
-            '出库时间：${_formatReceiptTime(order.createdAt)}',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          Text(
-            '${order.items.length} 个商品 · 共 $quantity 件',
-            style: Theme.of(context).textTheme.bodyMedium,
-          ),
-          const SizedBox(height: 6),
-          ...order.items.map(_outboundOrderItemLine),
-          if (order.imagePaths.isNotEmpty) ...[
-            const SizedBox(height: 8),
-            _imagePathWrap(order.imagePaths),
-          ],
-        ],
+    return ExpansionTile(
+      tilePadding: EdgeInsets.zero,
+      childrenPadding: const EdgeInsets.only(bottom: 8),
+      title: Text(order.id),
+      subtitle: Text(
+        '${_formatReceiptTime(order.createdAt)} · ${order.items.length} 个商品 · 共 $quantity 件',
       ),
+      children: [
+        for (final item in order.items)
+          ListTile(
+            dense: true,
+            contentPadding: EdgeInsets.zero,
+            title: Text(item.productName),
+            subtitle: Text(item.productCode),
+            trailing: Text('x${item.quantity}'),
+          ),
+        if (order.imagePaths.isNotEmpty)
+          Align(
+            alignment: Alignment.centerLeft,
+            child: _imagePathWrap(order.imagePaths),
+          ),
+      ],
     );
   }
 
-  Widget _outboundOrderItemLine(OutboundItem item) {
-    return Padding(
-      padding: const EdgeInsets.only(top: 2),
-      child:
-          Text('${item.productCode} · ${item.productName} x${item.quantity}'),
+  Widget _outboundCartFloatingEntry() {
+    final totalQuantity =
+        _outboundCart.fold<int>(0, (sum, item) => sum + item.quantity);
+    return FloatingActionButton.extended(
+      onPressed: _showOutboundCartDialog,
+      icon: const Icon(Icons.shopping_cart_outlined),
+      label: Text(totalQuantity == 0 ? '出库车' : '出库车 $totalQuantity'),
     );
   }
 
-  Widget _outboundCartPanel() {
+  Widget _outboundCartPanel({VoidCallback? onChanged}) {
     final totalQuantity =
         _outboundCart.fold<int>(0, (sum, item) => sum + item.quantity);
     return Column(
@@ -675,7 +805,10 @@ class _AppHomeState extends State<AppHome> {
             ),
             if (_outboundCart.isNotEmpty || _outboundImagePaths.isNotEmpty)
               TextButton.icon(
-                onPressed: () => _clearOutboundCart(),
+                onPressed: () async {
+                  await _clearOutboundCart();
+                  onChanged?.call();
+                },
                 icon: const Icon(Icons.delete_sweep_outlined),
                 label: const Text('清空'),
               ),
@@ -688,7 +821,8 @@ class _AppHomeState extends State<AppHome> {
             title: Text('从下方库存商品加入出库车'),
           )
         else ...[
-          ..._outboundCart.map(_outboundCartTile),
+          for (final entry in _outboundCart)
+            _outboundCartTile(entry, onChanged: onChanged),
           Padding(
             padding: const EdgeInsets.only(top: 4),
             child: Text('合计出库 $totalQuantity 件'),
@@ -696,14 +830,21 @@ class _AppHomeState extends State<AppHome> {
         ],
         if (_outboundImagePaths.isNotEmpty) ...[
           const SizedBox(height: 8),
-          _imagePathWrap(_outboundImagePaths, editable: true),
+          _imagePathWrap(
+            _outboundImagePaths,
+            editable: true,
+            onChanged: onChanged,
+          ),
         ],
         const SizedBox(height: 8),
         Row(
           children: [
             Expanded(
               child: OutlinedButton.icon(
-                onPressed: _captureOutboundImage,
+                onPressed: () async {
+                  await _captureOutboundImage();
+                  onChanged?.call();
+                },
                 icon: const Icon(Icons.photo_camera_outlined),
                 label: const Text('拍出库照片'),
               ),
@@ -711,8 +852,14 @@ class _AppHomeState extends State<AppHome> {
             const SizedBox(width: 8),
             Expanded(
               child: FilledButton.icon(
-                onPressed:
-                    _outboundCart.isEmpty ? null : _confirmOutboundFromCart,
+                onPressed: _outboundCart.isEmpty
+                    ? null
+                    : () async {
+                        final confirmed = await _confirmOutboundOrderDialog();
+                        if (confirmed == true) {
+                          await _confirmOutboundFromCart();
+                        }
+                      },
                 icon: const Icon(Icons.receipt_long_outlined),
                 label: const Text('生成出库单'),
               ),
@@ -723,7 +870,10 @@ class _AppHomeState extends State<AppHome> {
     );
   }
 
-  Widget _outboundCartTile(_OutboundCartEntry entry) {
+  Widget _outboundCartTile(
+    _OutboundCartEntry entry, {
+    VoidCallback? onChanged,
+  }) {
     final available = _stockQuantityFor(entry.productCode);
     return Padding(
       padding: const EdgeInsets.only(top: 8),
@@ -745,7 +895,10 @@ class _AppHomeState extends State<AppHome> {
               ),
               IconButton(
                 tooltip: '移出出库车',
-                onPressed: () => _removeOutboundCartItem(entry.productCode),
+                onPressed: () {
+                  _removeOutboundCartItem(entry.productCode);
+                  onChanged?.call();
+                },
                 icon: const Icon(Icons.close),
               ),
             ],
@@ -756,10 +909,13 @@ class _AppHomeState extends State<AppHome> {
                 tooltip: '减少数量',
                 onPressed: entry.quantity <= 1
                     ? null
-                    : () => _setOutboundCartQuantity(
+                    : () {
+                        _setOutboundCartQuantity(
                           entry.productCode,
                           entry.quantity - 1,
-                        ),
+                        );
+                        onChanged?.call();
+                      },
                 icon: const Icon(Icons.remove),
               ),
               SizedBox(
@@ -770,10 +926,13 @@ class _AppHomeState extends State<AppHome> {
                 tooltip: '增加数量',
                 onPressed: entry.quantity >= available
                     ? null
-                    : () => _setOutboundCartQuantity(
+                    : () {
+                        _setOutboundCartQuantity(
                           entry.productCode,
                           entry.quantity + 1,
-                        ),
+                        );
+                        onChanged?.call();
+                      },
                 icon: const Icon(Icons.add),
               ),
             ],
@@ -783,7 +942,11 @@ class _AppHomeState extends State<AppHome> {
     );
   }
 
-  Widget _imagePathWrap(List<String> imagePaths, {bool editable = false}) {
+  Widget _imagePathWrap(
+    List<String> imagePaths, {
+    bool editable = false,
+    VoidCallback? onChanged,
+  }) {
     return Wrap(
       spacing: 8,
       runSpacing: 8,
@@ -806,7 +969,10 @@ class _AppHomeState extends State<AppHome> {
                     alignment: Alignment.topRight,
                     child: IconButton.filledTonal(
                       tooltip: '移除照片',
-                      onPressed: () => _removeOutboundImage(imagePath),
+                      onPressed: () async {
+                        await _removeOutboundImage(imagePath);
+                        onChanged?.call();
+                      },
                       icon: const Icon(Icons.close, size: 16),
                     ),
                   ),
@@ -814,6 +980,71 @@ class _AppHomeState extends State<AppHome> {
             ),
           ),
       ],
+    );
+  }
+
+  Future<void> _showOutboundCartDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            void refreshDialog() {
+              if (mounted) {
+                setState(() {});
+              }
+              setDialogState(() {});
+            }
+
+            return AlertDialog(
+              titlePadding: const EdgeInsets.fromLTRB(24, 18, 8, 0),
+              contentPadding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
+              title: Row(
+                children: [
+                  const Expanded(child: Text('出库购物车')),
+                  IconButton(
+                    tooltip: '关闭',
+                    onPressed: () => Navigator.of(dialogContext).pop(),
+                    icon: const Icon(Icons.close),
+                  ),
+                ],
+              ),
+              content: SizedBox(
+                width: 420,
+                child: SingleChildScrollView(
+                  child: _outboundCartPanel(onChanged: refreshDialog),
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  Future<bool?> _confirmOutboundOrderDialog() {
+    final totalQuantity =
+        _outboundCart.fold<int>(0, (sum, item) => sum + item.quantity);
+    return showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          title: const Text('确认生成出库单'),
+          content: Text(
+            '本次将出库 ${_outboundCart.length} 个商品，共 $totalQuantity 件。确认后会扣减库存。',
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(context).pop(false),
+              child: const Text('取消'),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(context).pop(true),
+              child: const Text('确认出库'),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -990,6 +1221,20 @@ class _AppHomeState extends State<AppHome> {
     }).toList(growable: false);
   }
 
+  List<OutboundOrder> _filteredOutboundHistory() {
+    final keyword = _outboundHistorySearchController.text.trim().toLowerCase();
+    if (keyword.isEmpty) {
+      return _outboundHistory;
+    }
+    return _outboundHistory.where((order) {
+      return order.id.toLowerCase().contains(keyword) ||
+          order.items.any((item) {
+            return item.productCode.toLowerCase().contains(keyword) ||
+                item.productName.toLowerCase().contains(keyword);
+          });
+    }).toList(growable: false);
+  }
+
   Future<void> _captureAndRecognizeList() async {
     try {
       final image = await _imagePicker.pickImage(
@@ -1138,11 +1383,78 @@ class _AppHomeState extends State<AppHome> {
     });
   }
 
+  Future<void> _showOcrTextDialog() async {
+    await showDialog<void>(
+      context: context,
+      builder: (dialogContext) {
+        return AlertDialog(
+          titlePadding: const EdgeInsets.fromLTRB(24, 18, 8, 0),
+          contentPadding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
+          title: Row(
+            children: [
+              const Expanded(child: Text('识别文本')),
+              IconButton(
+                tooltip: '关闭',
+                onPressed: () => Navigator.of(dialogContext).pop(),
+                icon: const Icon(Icons.close),
+              ),
+            ],
+          ),
+          content: SizedBox(
+            width: 460,
+            child: TextField(
+              controller: _ocrTextController,
+              minLines: 8,
+              maxLines: 14,
+              decoration: const InputDecoration(
+                labelText: '商品清单识别文本',
+                border: OutlineInputBorder(),
+              ),
+            ),
+          ),
+          actions: [
+            FilledButton.icon(
+              onPressed: () {
+                _parseOcrText();
+                Navigator.of(dialogContext).pop();
+              },
+              icon: const Icon(Icons.document_scanner_outlined),
+              label: const Text('从文本重新生成'),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  void _addManualDraftItem() {
+    setState(() {
+      _draftItems.add(
+        InboundDraftItem(
+          productName: '',
+          quantity: 1,
+          sourceText: 'manual-${DateTime.now().microsecondsSinceEpoch}',
+        ),
+      );
+      _message = '已添加 1 条空白商品草稿';
+    });
+  }
+
   void _replaceDraftItem(int index, InboundDraftItem item) {
     if (index < 0 || index >= _draftItems.length) {
       return;
     }
     _draftItems[index] = item;
+  }
+
+  void _setDraftQuantity(int index, int quantity) {
+    if (index < 0 || index >= _draftItems.length) {
+      return;
+    }
+    final nextQuantity = quantity < 1 ? 1 : quantity;
+    setState(() {
+      _draftItems[index] = _draftItems[index].copyWith(quantity: nextQuantity);
+    });
   }
 
   void _removeDraftItem(int index) {
@@ -1206,7 +1518,7 @@ class _AppHomeState extends State<AppHome> {
     }
   }
 
-  Future<void> _confirmDeleteInboundReceipt(InboundReceipt receipt) async {
+  Future<bool> _confirmDeleteInboundReceipt(InboundReceipt receipt) async {
     final confirmed = await showDialog<bool>(
       context: context,
       builder: (context) {
@@ -1227,9 +1539,10 @@ class _AppHomeState extends State<AppHome> {
       },
     );
     if (confirmed != true) {
-      return;
+      return false;
     }
     await _deleteInboundReceipt(receipt);
+    return true;
   }
 
   Future<void> _deleteInboundReceipt(InboundReceipt receipt) async {
@@ -1414,6 +1727,9 @@ class _AppHomeState extends State<AppHome> {
         _outboundImagePaths.clear();
         _message = '出库单已生成：${order.id}';
       });
+      if (Navigator.of(context).canPop()) {
+        Navigator.of(context).pop();
+      }
     } on InventoryException catch (error) {
       setState(() {
         _message = error.message;
