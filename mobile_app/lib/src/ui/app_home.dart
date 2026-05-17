@@ -90,18 +90,20 @@ class _AppHomeState extends State<AppHome> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: !_isReady
-          ? const Center(child: CircularProgressIndicator())
-          : IndexedStack(
-              index: _selectedTabIndex,
-              children: [
-                _scanInboundTab(),
-                _historyInboundTab(),
-                _stockTotalsTab(),
-                _historyOutboundTab(),
-                _profileTab(),
-              ],
-            ),
+      body: SafeArea(
+        child: !_isReady
+            ? const Center(child: CircularProgressIndicator())
+            : IndexedStack(
+                index: _selectedTabIndex,
+                children: [
+                  _scanInboundTab(),
+                  _historyInboundTab(),
+                  _stockTotalsTab(),
+                  _historyOutboundTab(),
+                  _profileTab(),
+                ],
+              ),
+      ),
       floatingActionButton: _isReady && _selectedTabIndex == 2
           ? _outboundCartFloatingEntry()
           : null,
