@@ -1,0 +1,11 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "inventory_mobile_app",
+      "cwd": "${workspaceFolder}/mobile_app",
+      "request": "launch",
+      "type": "dart"
+    }
+  ]
+}
