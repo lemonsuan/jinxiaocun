@@ -1,5 +1,5 @@
 class LocalDatabaseSchema {
-  static const int version = 2;
+  static const int version = 4;
 
   static const List<String> createStatements = [
     '''
@@ -16,6 +16,8 @@ class LocalDatabaseSchema {
     CREATE TABLE inbound_receipts (
       id TEXT PRIMARY KEY,
       tracking_number TEXT NOT NULL UNIQUE,
+      seller_order_number TEXT,
+      rebate_order_number TEXT,
       image_path TEXT,
       ocr_status TEXT NOT NULL,
       is_settled INTEGER NOT NULL DEFAULT 0,
@@ -37,6 +39,7 @@ class LocalDatabaseSchema {
     '''
     CREATE TABLE outbound_orders (
       id TEXT PRIMARY KEY,
+      logistics_number TEXT,
       note TEXT,
       created_at TEXT NOT NULL
     )
@@ -87,6 +90,13 @@ class LocalDatabaseSchema {
       created_at TEXT NOT NULL
     )
     ''',
+    '''
+    CREATE TABLE app_settings (
+      key TEXT PRIMARY KEY,
+      value TEXT NOT NULL,
+      updated_at TEXT NOT NULL
+    )
+    ''',
   ];
 
   static const Map<int, List<String>> migrationStatements = {
@@ -99,6 +109,26 @@ class LocalDatabaseSchema {
         created_at TEXT NOT NULL,
         FOREIGN KEY(order_id) REFERENCES outbound_orders(id)
       )
+      ''',
+    ],
+    3: [
+      '''
+      CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      )
+      ''',
+    ],
+    4: [
+      '''
+      ALTER TABLE inbound_receipts ADD COLUMN seller_order_number TEXT
+      ''',
+      '''
+      ALTER TABLE inbound_receipts ADD COLUMN rebate_order_number TEXT
+      ''',
+      '''
+      ALTER TABLE outbound_orders ADD COLUMN logistics_number TEXT
       ''',
     ],
   };

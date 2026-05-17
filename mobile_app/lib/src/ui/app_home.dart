@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import '../application/inventory_service.dart';
 import '../data/local_inventory_database.dart';
 import '../domain/models.dart';
+import '../domain/ocr_settings.dart';
 import '../ocr/pp_structure_post_processor.dart';
 import '../platform/paddle_ocr_channel.dart';
 import 'scanner_page.dart';
@@ -51,20 +52,26 @@ class _AppHomeState extends State<AppHome> {
   final PaddleOcrChannel _paddleOcr = PaddleOcrChannel();
   final ImagePicker _imagePicker = ImagePicker();
   final TextEditingController _trackingController = TextEditingController();
+  final TextEditingController _sellerOrderController = TextEditingController();
+  final TextEditingController _rebateOrderController = TextEditingController();
   final TextEditingController _historySearchController =
       TextEditingController();
   final TextEditingController _stockSearchController = TextEditingController();
   final TextEditingController _outboundHistorySearchController =
       TextEditingController();
+  final TextEditingController _outboundLogisticsController =
+      TextEditingController();
   final TextEditingController _ocrTextController = TextEditingController();
   final List<InboundDraftItem> _draftItems = [];
   final List<_OutboundCartEntry> _outboundCart = [];
   final List<String> _outboundImagePaths = [];
+  final Map<String, int> _stockAddQuantities = {};
   List<WarehouseStock> _stockTotals = const [];
   List<InboundReceipt> _inboundHistory = const [];
   List<OutboundOrder> _outboundHistory = const [];
   String? _currentInboundImagePath;
   String? _message;
+  double _ocrRowMergeTolerance = OcrSettings.defaultRowMergeTolerance;
   bool _isSettled = false;
   bool _isReady = false;
   bool _isBackupBusy = false;
@@ -82,9 +89,12 @@ class _AppHomeState extends State<AppHome> {
   @override
   void dispose() {
     _trackingController.dispose();
+    _sellerOrderController.dispose();
+    _rebateOrderController.dispose();
     _historySearchController.dispose();
     _stockSearchController.dispose();
     _outboundHistorySearchController.dispose();
+    _outboundLogisticsController.dispose();
     _ocrTextController.dispose();
     unawaited(_database.close());
     super.dispose();
@@ -164,6 +174,10 @@ class _AppHomeState extends State<AppHome> {
     return _page([
       _scanInboundHeader(),
       _trackingRow(),
+      const SizedBox(height: 8),
+      _sellerOrderRow(),
+      const SizedBox(height: 8),
+      _rebateOrderRow(),
       const SizedBox(height: 12),
       Row(
         children: [
@@ -218,7 +232,7 @@ class _AppHomeState extends State<AppHome> {
         controller: _historySearchController,
         onChanged: (_) => setState(() {}),
         decoration: InputDecoration(
-          labelText: '搜索订单号或快递号',
+          labelText: '搜索入库单、快递、商家或返利单号',
           prefixIcon: const Icon(Icons.search),
           border: const OutlineInputBorder(),
           suffixIcon: _historySearchController.text.isEmpty
@@ -286,7 +300,7 @@ class _AppHomeState extends State<AppHome> {
         controller: _outboundHistorySearchController,
         onChanged: (_) => setState(() {}),
         decoration: InputDecoration(
-          labelText: '搜索出库单号或商品',
+          labelText: '搜索出库单号、物流单号或商品',
           prefixIcon: const Icon(Icons.search),
           border: const OutlineInputBorder(),
           suffixIcon: _outboundHistorySearchController.text.isEmpty
@@ -314,6 +328,8 @@ class _AppHomeState extends State<AppHome> {
   Widget _profileTab() {
     return _page([
       _sectionTitle('我的'),
+      _ocrRowMergeToleranceControl(),
+      const SizedBox(height: 8),
       ListTile(
         contentPadding: EdgeInsets.zero,
         leading: const Icon(Icons.upload_file_outlined),
@@ -335,6 +351,35 @@ class _AppHomeState extends State<AppHome> {
             : () => _onBackupActionSelected(_BackupAction.importData),
       ),
     ]);
+  }
+
+  Widget _ocrRowMergeToleranceControl() {
+    final valueText = _ocrRowMergeTolerance.toStringAsFixed(2);
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        ListTile(
+          contentPadding: EdgeInsets.zero,
+          leading: const Icon(Icons.tune_outlined),
+          title: Text('OCR 行距参数 $valueText'),
+          subtitle: const Text('严格 - 宽松'),
+        ),
+        Slider(
+          min: OcrSettings.minRowMergeTolerance,
+          max: OcrSettings.maxRowMergeTolerance,
+          divisions: 8,
+          label: valueText,
+          value: _ocrRowMergeTolerance,
+          onChanged: (value) {
+            setState(() {
+              _ocrRowMergeTolerance =
+                  OcrSettings.normalizeRowMergeTolerance(value);
+            });
+          },
+          onChangeEnd: _saveOcrRowMergeTolerance,
+        ),
+      ],
+    );
   }
 
   Widget _sectionTitle(String value) {
@@ -384,6 +429,26 @@ class _AppHomeState extends State<AppHome> {
           icon: const Icon(Icons.qr_code_scanner),
         ),
       ],
+    );
+  }
+
+  Widget _sellerOrderRow() {
+    return TextField(
+      controller: _sellerOrderController,
+      decoration: const InputDecoration(
+        labelText: '商家单号',
+        border: OutlineInputBorder(),
+      ),
+    );
+  }
+
+  Widget _rebateOrderRow() {
+    return TextField(
+      controller: _rebateOrderController,
+      decoration: const InputDecoration(
+        labelText: '返利单号',
+        border: OutlineInputBorder(),
+      ),
     );
   }
 
@@ -631,15 +696,39 @@ class _AppHomeState extends State<AppHome> {
                 ),
               ),
               const SizedBox(width: 8),
-              Text(
-                '1',
-                style: Theme.of(context).textTheme.bodyMedium,
+              SizedBox(
+                width: 58,
+                child: TextFormField(
+                  key: ValueKey('stock-add-${stock.productCode}'),
+                  initialValue: _stockAddQuantityFor(stock).toString(),
+                  textAlign: TextAlign.center,
+                  keyboardType: TextInputType.number,
+                  decoration: const InputDecoration(
+                    isDense: true,
+                    border: OutlineInputBorder(),
+                    contentPadding: EdgeInsets.symmetric(
+                      horizontal: 6,
+                      vertical: 8,
+                    ),
+                  ),
+                  onChanged: (value) {
+                    final quantity = int.tryParse(value.trim());
+                    if (quantity == null) {
+                      return;
+                    }
+                    _stockAddQuantities[stock.productCode] = quantity;
+                  },
+                ),
               ),
+              const SizedBox(width: 4),
               IconButton(
-                tooltip: '加入出库车，默认数量 1',
+                tooltip: '加入出库车',
                 onPressed: stock.quantity <= 0
                     ? null
-                    : () => _addStockToOutboundCart(stock),
+                    : () => _addStockToOutboundCart(
+                          stock,
+                          _stockAddQuantityFor(stock),
+                        ),
                 icon: const Icon(Icons.add_shopping_cart_outlined),
               ),
             ],
@@ -652,12 +741,23 @@ class _AppHomeState extends State<AppHome> {
   Widget _receiptTile(InboundReceipt receipt) {
     final primaryStyle = Theme.of(context).textTheme.bodyLarge;
     final secondaryStyle = Theme.of(context).textTheme.bodyMedium;
+    final orderParts = <String>[
+      if (receipt.sellerOrderNumber?.isNotEmpty ?? false)
+        '商家单号：${receipt.sellerOrderNumber}',
+      if (receipt.rebateOrderNumber?.isNotEmpty ?? false)
+        '返利单号：${receipt.rebateOrderNumber}',
+    ];
     return ListTile(
       contentPadding: EdgeInsets.zero,
       onTap: () => _showInboundReceiptDialog(receipt),
       title: Text('快递单号：${receipt.trackingNumber}', style: primaryStyle),
       subtitle: Text(
-        '${_formatReceiptTime(receipt.createdAt)} · ${receipt.items.length} 个商品 · ${receipt.isSettled ? '已结算' : '未结算'}',
+        [
+          _formatReceiptTime(receipt.createdAt),
+          '${receipt.items.length} 个商品',
+          receipt.isSettled ? '已结算' : '未结算',
+          ...orderParts,
+        ].join(' · '),
         style: secondaryStyle,
       ),
       trailing: const Icon(Icons.chevron_right),
@@ -751,7 +851,11 @@ class _AppHomeState extends State<AppHome> {
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         Text('快递单号：${receipt.trackingNumber}'),
-                        Text('订单号：${receipt.id}'),
+                        if (receipt.sellerOrderNumber?.isNotEmpty ?? false)
+                          Text('商家单号：${receipt.sellerOrderNumber}'),
+                        if (receipt.rebateOrderNumber?.isNotEmpty ?? false)
+                          Text('返利单号：${receipt.rebateOrderNumber}'),
+                        Text('入库单号：${receipt.id}'),
                         Text('入库时间：${_formatReceiptTime(receipt.createdAt)}'),
                         SwitchListTile(
                           contentPadding: EdgeInsets.zero,
@@ -959,7 +1063,13 @@ class _AppHomeState extends State<AppHome> {
       childrenPadding: const EdgeInsets.only(bottom: 8),
       title: Text(order.id),
       subtitle: Text(
-        '${_formatReceiptTime(order.createdAt)} · ${order.items.length} 个商品 · 共 $quantity 件',
+        [
+          _formatReceiptTime(order.createdAt),
+          '${order.items.length} 个商品',
+          '共 $quantity 件',
+          if (order.logisticsNumber?.isNotEmpty ?? false)
+            '物流单号：${order.logisticsNumber}',
+        ].join(' · '),
       ),
       children: [
         for (final item in order.items)
@@ -1026,6 +1136,17 @@ class _AppHomeState extends State<AppHome> {
           Padding(
             padding: const EdgeInsets.only(top: 4),
             child: Text('合计出库 $totalQuantity 件'),
+          ),
+        ],
+        if (_outboundCart.isNotEmpty) ...[
+          const SizedBox(height: 8),
+          TextField(
+            controller: _outboundLogisticsController,
+            onChanged: (_) => onChanged?.call(),
+            decoration: const InputDecoration(
+              labelText: '物流单号（选填）',
+              border: OutlineInputBorder(),
+            ),
           ),
         ],
         if (_outboundImagePaths.isNotEmpty) ...[
@@ -1225,13 +1346,18 @@ class _AppHomeState extends State<AppHome> {
   Future<bool?> _confirmOutboundOrderDialog() {
     final totalQuantity =
         _outboundCart.fold<int>(0, (sum, item) => sum + item.quantity);
+    final logisticsNumber = _outboundLogisticsController.text.trim();
     return showDialog<bool>(
       context: context,
       builder: (context) {
         return AlertDialog(
           title: const Text('确认生成出库单'),
           content: Text(
-            '本次将出库 ${_outboundCart.length} 个商品，共 $totalQuantity 件。确认后会扣减库存。',
+            [
+              '本次将出库 ${_outboundCart.length} 个商品，共 $totalQuantity 件。',
+              if (logisticsNumber.isNotEmpty) '物流单号：$logisticsNumber。',
+              '确认后会扣减库存。',
+            ].join('\n'),
           ),
           actions: [
             TextButton(
@@ -1411,7 +1537,10 @@ class _AppHomeState extends State<AppHome> {
     return _inboundHistory.where((receipt) {
       final matchesKeyword = keyword.isEmpty ||
           receipt.id.toLowerCase().contains(keyword) ||
-          receipt.trackingNumber.toLowerCase().contains(keyword);
+          receipt.trackingNumber.toLowerCase().contains(keyword) ||
+          (receipt.sellerOrderNumber?.toLowerCase().contains(keyword) ??
+              false) ||
+          (receipt.rebateOrderNumber?.toLowerCase().contains(keyword) ?? false);
       final matchesSettlement = switch (_historySettlementFilter) {
         _HistorySettlementFilter.all => true,
         _HistorySettlementFilter.settled => receipt.isSettled,
@@ -1439,6 +1568,7 @@ class _AppHomeState extends State<AppHome> {
     }
     return _outboundHistory.where((order) {
       return order.id.toLowerCase().contains(keyword) ||
+          (order.logisticsNumber?.toLowerCase().contains(keyword) ?? false) ||
           order.items.any((item) {
             return item.productCode.toLowerCase().contains(keyword) ||
                 item.productName.toLowerCase().contains(keyword);
@@ -1500,9 +1630,15 @@ class _AppHomeState extends State<AppHome> {
         _currentInboundImagePath = storedImagePath;
         _message = '已保存商品清单图片，正在识别';
       });
-      final recognition = await _paddleOcr.recognizeTable(storedImagePath);
+      final recognition = await _paddleOcr.recognizeTable(
+        storedImagePath,
+        rowMergeTolerance: _ocrRowMergeTolerance,
+      );
       final rows = recognition.rows;
       final editableText = recognition.editableText;
+      final orderNumber = _postProcessor.extractSellerOrderNumber(editableText);
+      final filledSellerOrder =
+          _sellerOrderController.text.trim().isEmpty && orderNumber != null;
 
       var items = _postProcessor.processRows(rows);
       if (items.isEmpty && editableText.isNotEmpty) {
@@ -1512,14 +1648,18 @@ class _AppHomeState extends State<AppHome> {
         return;
       }
       setState(() {
+        if (filledSellerOrder) {
+          _sellerOrderController.text = orderNumber;
+        }
         _ocrTextController.text = editableText;
         _draftItems
           ..clear()
           ..addAll(items);
+        final orderMessage = filledSellerOrder ? '，已填入商家单号' : '';
         if (items.isNotEmpty) {
-          _message = '已识别 ${items.length} 条商品草稿，图片已保存';
+          _message = '已识别 ${items.length} 条商品草稿，图片已保存$orderMessage';
         } else if (editableText.isNotEmpty) {
-          _message = '已识别文字但未生成商品草稿，可编辑文本后点从文本重新生成';
+          _message = '已识别文字但未生成商品草稿，可编辑文本后点从文本重新生成$orderMessage';
         } else {
           _message = '未识别到文字，图片已保存，有顺丰单号也可先确认入库';
         }
@@ -1551,11 +1691,13 @@ class _AppHomeState extends State<AppHome> {
   Future<void> _openDatabase() async {
     try {
       await _database.open();
+      final ocrRowMergeTolerance = await _database.loadOcrRowMergeTolerance();
       await _refreshData();
       if (!mounted) {
         return;
       }
       setState(() {
+        _ocrRowMergeTolerance = ocrRowMergeTolerance;
         _isReady = true;
       });
     } on Object catch (error) {
@@ -1564,6 +1706,29 @@ class _AppHomeState extends State<AppHome> {
       }
       setState(() {
         _message = '数据库初始化失败：$error';
+      });
+    }
+  }
+
+  Future<void> _saveOcrRowMergeTolerance(double value) async {
+    final normalized = OcrSettings.normalizeRowMergeTolerance(value);
+    setState(() {
+      _ocrRowMergeTolerance = normalized;
+    });
+    try {
+      await _database.saveOcrRowMergeTolerance(normalized);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _message = 'OCR 行距参数已保存：${normalized.toStringAsFixed(2)}';
+      });
+    } on Object catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _message = 'OCR 行距参数保存失败：$error';
       });
     }
   }
@@ -1583,14 +1748,22 @@ class _AppHomeState extends State<AppHome> {
   }
 
   void _parseOcrText() {
-    final items = _postProcessor.processPlainText(_ocrTextController.text);
+    final text = _ocrTextController.text;
+    final items = _postProcessor.processPlainText(text);
+    final orderNumber = _postProcessor.extractSellerOrderNumber(text);
+    final filledSellerOrder =
+        _sellerOrderController.text.trim().isEmpty && orderNumber != null;
     setState(() {
+      if (filledSellerOrder) {
+        _sellerOrderController.text = orderNumber;
+      }
       _draftItems
         ..clear()
         ..addAll(items);
+      final orderMessage = filledSellerOrder ? '，已填入商家单号' : '';
       _message = items.isEmpty
-          ? '未生成商品草稿，有顺丰单号也可先确认入库'
-          : '已重新生成 ${items.length} 条商品草稿';
+          ? '未生成商品草稿，有顺丰单号也可先确认入库$orderMessage'
+          : '已重新生成 ${items.length} 条商品草稿$orderMessage';
     });
   }
 
@@ -1681,6 +1854,8 @@ class _AppHomeState extends State<AppHome> {
   Future<void> _clearCurrentInboundDraft() async {
     final imagePath = _currentInboundImagePath;
     _trackingController.clear();
+    _sellerOrderController.clear();
+    _rebateOrderController.clear();
     _ocrTextController.clear();
     _draftItems.clear();
     setState(() {
@@ -1695,6 +1870,8 @@ class _AppHomeState extends State<AppHome> {
     try {
       final receipt = await _database.confirmInbound(
         trackingNumber: _trackingController.text,
+        sellerOrderNumber: _sellerOrderController.text,
+        rebateOrderNumber: _rebateOrderController.text,
         items: _draftItems,
         imagePath: _currentInboundImagePath,
         isSettled: _isSettled,
@@ -1705,6 +1882,8 @@ class _AppHomeState extends State<AppHome> {
       }
       setState(() {
         _trackingController.clear();
+        _sellerOrderController.clear();
+        _rebateOrderController.clear();
         _ocrTextController.clear();
         _draftItems.clear();
         _currentInboundImagePath = null;
@@ -1792,7 +1971,16 @@ class _AppHomeState extends State<AppHome> {
     }
   }
 
-  void _addStockToOutboundCart(WarehouseStock stock) {
+  int _stockAddQuantityFor(WarehouseStock stock) {
+    final quantity = _stockAddQuantities[stock.productCode] ?? 1;
+    if (stock.quantity <= 0) {
+      return 1;
+    }
+    return quantity.clamp(1, stock.quantity).toInt();
+  }
+
+  void _addStockToOutboundCart(WarehouseStock stock, int quantity) {
+    final nextQuantity = quantity.clamp(1, stock.quantity).toInt();
     final index = _outboundCart
         .indexWhere((item) => item.productCode == stock.productCode);
     setState(() {
@@ -1801,18 +1989,20 @@ class _AppHomeState extends State<AppHome> {
           _OutboundCartEntry(
             productCode: stock.productCode,
             productName: stock.productName,
-            quantity: 1,
+            quantity: nextQuantity,
           ),
         );
         _message = '已加入出库车：${stock.productName}';
         return;
       }
       final current = _outboundCart[index];
-      if (current.quantity >= stock.quantity) {
+      final mergedQuantity = current.quantity + nextQuantity;
+      if (mergedQuantity > stock.quantity) {
+        _outboundCart[index] = current.copyWith(quantity: stock.quantity);
         _message = '出库数量不能超过当前库存';
         return;
       }
-      _outboundCart[index] = current.copyWith(quantity: current.quantity + 1);
+      _outboundCart[index] = current.copyWith(quantity: mergedQuantity);
       _message = '已增加出库数量：${stock.productName}';
     });
   }
@@ -1907,6 +2097,7 @@ class _AppHomeState extends State<AppHome> {
     setState(() {
       _outboundCart.clear();
       _outboundImagePaths.clear();
+      _outboundLogisticsController.clear();
       _message = '已清空出库车';
     });
     if (!deleteImages) {
@@ -1928,6 +2119,7 @@ class _AppHomeState extends State<AppHome> {
           );
         }).toList(growable: false),
         imagePaths: _outboundImagePaths,
+        logisticsNumber: _outboundLogisticsController.text,
       );
       await _refreshData();
       if (!mounted) {
@@ -1936,6 +2128,7 @@ class _AppHomeState extends State<AppHome> {
       setState(() {
         _outboundCart.clear();
         _outboundImagePaths.clear();
+        _outboundLogisticsController.clear();
         _message = '出库单已生成：${order.id}';
       });
       if (Navigator.of(context).canPop()) {

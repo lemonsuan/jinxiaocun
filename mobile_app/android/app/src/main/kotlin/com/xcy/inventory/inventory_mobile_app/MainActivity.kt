@@ -36,14 +36,21 @@ class MainActivity : FlutterActivity() {
                         result.error("INVALID_IMAGE_PATH", "imagePath is required", null)
                         return@setMethodCallHandler
                     }
-                    recognizeTableInOcrProcess(imagePath, result)
+                    val rowMergeTolerance = call.argument<Double>("rowMergeTolerance")
+                        ?.toFloat()
+                        ?: OcrService.DEFAULT_ROW_MERGE_TOLERANCE
+                    recognizeTableInOcrProcess(imagePath, rowMergeTolerance, result)
                 }
                 else -> result.notImplemented()
             }
         }
     }
 
-    private fun recognizeTableInOcrProcess(imagePath: String, result: MethodChannel.Result) {
+    private fun recognizeTableInOcrProcess(
+        imagePath: String,
+        rowMergeTolerance: Float,
+        result: MethodChannel.Result
+    ) {
         val handler = Handler(Looper.getMainLooper())
         val delivered = AtomicBoolean(false)
         val timeout = Runnable {
@@ -88,6 +95,7 @@ class MainActivity : FlutterActivity() {
             startService(
                 Intent(this, OcrService::class.java)
                     .putExtra(OcrService.EXTRA_IMAGE_PATH, imagePath)
+                    .putExtra(OcrService.EXTRA_ROW_MERGE_TOLERANCE, rowMergeTolerance)
                     .putExtra(OcrService.EXTRA_RESULT_RECEIVER, receiver)
             )
         } catch (e: Throwable) {

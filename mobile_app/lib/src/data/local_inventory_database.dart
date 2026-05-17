@@ -8,6 +8,7 @@ import 'package:sqflite/sqflite.dart';
 
 import '../application/inventory_service.dart';
 import '../domain/models.dart';
+import '../domain/ocr_settings.dart';
 import '../domain/tracking_number_rules.dart';
 import 'local_database_schema.dart';
 
@@ -24,8 +25,10 @@ class LocalInventoryDatabase {
     'stock_ledger',
     'warehouse_stock',
     'ocr_results',
+    'app_settings',
   ];
   static const List<String> _clearTables = [
+    'app_settings',
     'ocr_results',
     'inbound_items',
     'outbound_items',
@@ -36,6 +39,7 @@ class LocalInventoryDatabase {
     'outbound_orders',
     'products',
   ];
+  static const String _ocrRowMergeToleranceKey = 'ocr_row_merge_tolerance';
 
   Database? _database;
 
@@ -70,6 +74,35 @@ class LocalInventoryDatabase {
   Future<void> close() async {
     await _database?.close();
     _database = null;
+  }
+
+  Future<double> loadOcrRowMergeTolerance() async {
+    final rows = await _db.query(
+      'app_settings',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: [_ocrRowMergeToleranceKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return OcrSettings.defaultRowMergeTolerance;
+    }
+    return OcrSettings.normalizeRowMergeTolerance(
+      double.tryParse(rows.single['value']! as String),
+    );
+  }
+
+  Future<void> saveOcrRowMergeTolerance(double value) async {
+    final normalized = OcrSettings.normalizeRowMergeTolerance(value);
+    await _db.insert(
+      'app_settings',
+      {
+        'key': _ocrRowMergeToleranceKey,
+        'value': normalized.toStringAsFixed(2),
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 
   Future<Uint8List> exportBackupBytes() async {
@@ -196,6 +229,8 @@ class LocalInventoryDatabase {
         InboundReceipt(
           id: receiptId,
           trackingNumber: row['tracking_number']! as String,
+          sellerOrderNumber: row['seller_order_number'] as String?,
+          rebateOrderNumber: row['rebate_order_number'] as String?,
           createdAt: DateTime.parse(row['created_at']! as String),
           items: itemRows.map(_inboundItemFromRow).toList(growable: false),
           isSettled: (row['is_settled']! as int) == 1,
@@ -235,6 +270,7 @@ class LocalInventoryDatabase {
           imagePaths: attachmentRows
               .map((row) => row['image_path']! as String)
               .toList(growable: false),
+          logisticsNumber: row['logistics_number'] as String?,
           note: row['note'] as String?,
         ),
       );
@@ -245,10 +281,14 @@ class LocalInventoryDatabase {
   Future<InboundReceipt> confirmInbound({
     required String trackingNumber,
     required List<InboundDraftItem> items,
+    String? sellerOrderNumber,
+    String? rebateOrderNumber,
     String? imagePath,
     bool isSettled = false,
   }) async {
     final normalizedTracking = trackingNumber.trim();
+    final normalizedSellerOrder = _optionalText(sellerOrderNumber);
+    final normalizedRebateOrder = _optionalText(rebateOrderNumber);
     if (normalizedTracking.isEmpty) {
       throw InventoryException('Tracking number is required.');
     }
@@ -267,6 +307,8 @@ class LocalInventoryDatabase {
         await txn.insert('inbound_receipts', {
           'id': receiptId,
           'tracking_number': normalizedTracking,
+          'seller_order_number': normalizedSellerOrder,
+          'rebate_order_number': normalizedRebateOrder,
           'image_path': imagePath,
           'ocr_status': OcrStatus.confirmed.name,
           'is_settled': isSettled ? 1 : 0,
@@ -307,6 +349,8 @@ class LocalInventoryDatabase {
     return InboundReceipt(
       id: receiptId,
       trackingNumber: normalizedTracking,
+      sellerOrderNumber: normalizedSellerOrder,
+      rebateOrderNumber: normalizedRebateOrder,
       createdAt: now,
       items: List.unmodifiable(items),
       isSettled: isSettled,
@@ -473,6 +517,7 @@ class LocalInventoryDatabase {
   Future<OutboundOrder> confirmOutbound({
     required List<OutboundItem> items,
     List<String> imagePaths = const [],
+    String? logisticsNumber,
     String? note,
   }) async {
     if (items.isEmpty) {
@@ -488,6 +533,7 @@ class LocalInventoryDatabase {
         .map((imagePath) => imagePath.trim())
         .where((imagePath) => imagePath.isNotEmpty)
         .toList(growable: false);
+    final normalizedLogisticsNumber = _optionalText(logisticsNumber);
     await _db.transaction((txn) async {
       for (final item in items) {
         final available = await _stockFor(txn, item.productCode);
@@ -499,6 +545,7 @@ class LocalInventoryDatabase {
       }
       await txn.insert('outbound_orders', {
         'id': orderId,
+        'logistics_number': normalizedLogisticsNumber,
         'note': note,
         'created_at': now.toIso8601String(),
       });
@@ -538,6 +585,7 @@ class LocalInventoryDatabase {
       createdAt: now,
       items: List.unmodifiable(items),
       imagePaths: List.unmodifiable(normalizedImagePaths),
+      logisticsNumber: normalizedLogisticsNumber,
       note: note,
     );
   }
@@ -761,6 +809,14 @@ class LocalInventoryDatabase {
       return normalizedCode.toUpperCase();
     }
     return 'NAME:${name.trim().toLowerCase()}';
+  }
+
+  String? _optionalText(String? value) {
+    final normalized = value?.trim();
+    if (normalized == null || normalized.isEmpty) {
+      return null;
+    }
+    return normalized;
   }
 
   String _nextId(String prefix) {

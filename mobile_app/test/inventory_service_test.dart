@@ -84,11 +84,14 @@ void main() {
         '/local/outbound_images/front.jpg',
         '/local/outbound_images/side.jpg',
       ],
+      logisticsNumber: 'SF987654321',
     );
 
     expect(order.items, hasLength(2));
     expect(order.imagePaths, hasLength(2));
+    expect(order.logisticsNumber, 'SF987654321');
     expect(inventory.outboundHistory.single.imagePaths, order.imagePaths);
+    expect(inventory.outboundHistory.single.logisticsNumber, 'SF987654321');
     expect(
       inventory.stockTotals.map((stock) => stock.quantity),
       containsAll([3, 2]),
@@ -119,6 +122,8 @@ void main() {
     final inventory = InventoryService();
     final receipt = inventory.confirmInbound(
       trackingNumber: 'SF12501',
+      sellerOrderNumber: 'TSHL2020051400036246',
+      rebateOrderNumber: 'FL20260518001',
       imagePath: '/local/inbound_images/list.jpg',
       items: [
         const InboundDraftItem(
@@ -133,6 +138,11 @@ void main() {
 
     expect(inventory.inboundHistory.single.imagePath, receipt.imagePath);
     expect(inventory.inboundHistory.single.imagePath, isNotEmpty);
+    expect(
+      inventory.inboundHistory.single.sellerOrderNumber,
+      'TSHL2020051400036246',
+    );
+    expect(inventory.inboundHistory.single.rebateOrderNumber, 'FL20260518001');
   });
 
   test('deleting inbound receipt removes receipt and rolls back stock', () {

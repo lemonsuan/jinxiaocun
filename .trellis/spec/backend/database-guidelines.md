@@ -26,7 +26,7 @@ Use this contract when changing inbound, outbound, stock query, or local persist
 
 ### 2. Signatures
 
-Core tables: `inbound_receipts`, `inbound_items`, `outbound_orders`, `outbound_items`, `outbound_attachments`, `stock_ledger`, `warehouse_stock`, and `ocr_results`.
+Core tables: `inbound_receipts`, `inbound_items`, `outbound_orders`, `outbound_items`, `outbound_attachments`, `stock_ledger`, `warehouse_stock`, `ocr_results`, and `app_settings`.
 
 Confirmed inbound quantity edits use `LocalInventoryDatabase.updateInboundReceiptItems(String receiptId, List<InboundDraftItem> items)` and the in-memory test mirror `InventoryService.updateInboundReceiptItems(String receiptId, List<InboundDraftItem> items)`.
 
@@ -34,9 +34,13 @@ Confirmed inbound quantity edits use `LocalInventoryDatabase.updateInboundReceip
 
 `stock_ledger` is the authoritative inventory record. `warehouse_stock` is a query cache derived from ledger writes. Price fields are optional and must not block inbound or outbound confirmation.
 
+`app_settings` stores local single-device preferences such as OCR row grouping tolerance. Settings are operational configuration, not inventory movement, and must not write ledger rows.
+
 Editing a confirmed inbound receipt may only change existing item quantities. Compare the stored `inbound_items` rows to the submitted item list in stable row order, write one inbound `stock_ledger` adjustment row per non-zero quantity delta, and update `warehouse_stock` by the same delta in the same transaction. Do not change receipt metadata, attachment paths, settlement state, or item identity through the quantity-edit flow.
 
 Outbound photos are order evidence only. Store them as local sandbox image paths in `outbound_attachments` and expose them through `OutboundOrder.imagePaths`; they must not run OCR, create outbound items, or decide stock deltas. Outbound stock movement comes only from the user-confirmed `OutboundItem` list in the same SQLite transaction that writes `outbound_orders`, `outbound_items`, ledger rows, and stock cache updates.
+
+Inbound `seller_order_number` and `rebate_order_number`, plus outbound `logistics_number`, are optional receipt/order metadata. They may be used for display and search, but must not affect stock ledger writes, settlement state, duplicate tracking-number checks, or outbound stock availability.
 
 ### 4. Validation & Error Matrix
 
@@ -45,6 +49,8 @@ Outbound photos are order evidence only. Store them as local sandbox image paths
 * Confirmed inbound quantity edit with a missing receipt or stale item count -> reject and ask the caller to refresh.
 * Confirmed inbound quantity reduction greater than currently available stock for that product -> reject because stock has already shipped.
 * OCR failure or empty OCR rows -> keep receipt editable; do not write stock.
+* Missing OCR setting -> use the application default.
+* Missing seller order, rebate order, or outbound logistics number -> store null and continue.
 * Missing outbound attachment file -> show a broken image state if displayed; do not reverse stock or mutate the order.
 
 ### 5. Good/Base/Bad Cases
@@ -53,7 +59,9 @@ Outbound photos are order evidence only. Store them as local sandbox image paths
 * Good: confirmed inbound quantity edit writes only delta ledger rows and keeps `warehouse_stock` in sync.
 * Good: outbound cart items generate an outbound order with optional `outbound_attachments` rows; photos are visible in history but never parsed into items.
 * Base: settlement marker changes only `inbound_receipts`, not stock.
+* Base: editing or omitting optional receipt/order metadata does not write ledger rows.
 * Base: outbound order has no photos; stock still deducts from confirmed items.
+* Base: changing a local OCR setting updates only `app_settings`.
 * Bad: directly editing `warehouse_stock` without a matching `stock_ledger` row.
 * Bad: reducing an old inbound receipt below quantities already shipped, creating negative effective stock.
 * Bad: running OCR on outbound photos or using photo content to create/deduct outbound items.

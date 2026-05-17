@@ -16,7 +16,10 @@ void main() {
   test('keeps native raw text for editable OCR review', () async {
     messenger.setMockMethodCallHandler(methodChannel, (call) async {
       expect(call.method, 'recognizeTable');
-      expect(call.arguments, <String, Object?>{'imagePath': '/tmp/list.jpg'});
+      expect(call.arguments, <String, Object?>{
+        'imagePath': '/tmp/list.jpg',
+        'rowMergeTolerance': 0.3,
+      });
       return <String, Object?>{
         'rows': <List<String>>[
           <String>['A100', '测试商品', '2'],
@@ -45,5 +48,23 @@ void main() {
 
     expect(result.rawText, isEmpty);
     expect(result.editableText, 'A100\t测试商品\t2');
+  });
+
+  test('passes custom OCR row merge tolerance to native', () async {
+    messenger.setMockMethodCallHandler(methodChannel, (call) async {
+      expect(call.arguments, <String, Object?>{
+        'imagePath': '/tmp/list.jpg',
+        'rowMergeTolerance': 0.2,
+      });
+      return <String, Object?>{
+        'rows': <List<String>>[],
+        'rawText': '',
+      };
+    });
+
+    await PaddleOcrChannel().recognizeTable(
+      '/tmp/list.jpg',
+      rowMergeTolerance: 0.12,
+    );
   });
 }

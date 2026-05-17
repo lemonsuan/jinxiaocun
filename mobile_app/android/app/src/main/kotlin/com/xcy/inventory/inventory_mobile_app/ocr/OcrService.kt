@@ -14,6 +14,10 @@ class OcrService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         val imagePath = intent?.getStringExtra(EXTRA_IMAGE_PATH).orEmpty()
+        val rowMergeTolerance = intent?.getFloatExtra(
+            EXTRA_ROW_MERGE_TOLERANCE,
+            DEFAULT_ROW_MERGE_TOLERANCE,
+        ) ?: DEFAULT_ROW_MERGE_TOLERANCE
         @Suppress("DEPRECATION")
         val receiver = intent?.getParcelableExtra<ResultReceiver>(EXTRA_RESULT_RECEIVER)
         executor.execute {
@@ -23,7 +27,7 @@ class OcrService : Service() {
                 } else {
                     val activeEngine = engine
                         ?: PaddleOcrEngine(applicationContext).also { engine = it }
-                    activeEngine.recognize(imagePath)
+                    activeEngine.recognize(imagePath, rowMergeTolerance)
                 }
             } catch (e: Throwable) {
                 e.printStackTrace()
@@ -52,8 +56,10 @@ class OcrService : Service() {
 
     companion object {
         const val EXTRA_IMAGE_PATH = "imagePath"
+        const val EXTRA_ROW_MERGE_TOLERANCE = "rowMergeTolerance"
         const val EXTRA_RESULT_RECEIVER = "resultReceiver"
         const val EXTRA_ROWS = "rows"
         const val EXTRA_RAW_TEXT = "rawText"
+        const val DEFAULT_ROW_MERGE_TOLERANCE = 0.30f
     }
 }

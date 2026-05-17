@@ -31,10 +31,14 @@ class InventoryService {
   InboundReceipt confirmInbound({
     required String trackingNumber,
     required List<InboundDraftItem> items,
+    String? sellerOrderNumber,
+    String? rebateOrderNumber,
     String? imagePath,
     bool isSettled = false,
   }) {
     final normalizedTracking = trackingNumber.trim();
+    final normalizedSellerOrder = _optionalText(sellerOrderNumber);
+    final normalizedRebateOrder = _optionalText(rebateOrderNumber);
     if (normalizedTracking.isEmpty) {
       throw InventoryException('Tracking number is required.');
     }
@@ -53,6 +57,8 @@ class InventoryService {
     final receipt = InboundReceipt(
       id: _nextId('in'),
       trackingNumber: normalizedTracking,
+      sellerOrderNumber: normalizedSellerOrder,
+      rebateOrderNumber: normalizedRebateOrder,
       createdAt: now,
       items: List.unmodifiable(items),
       isSettled: isSettled,
@@ -88,6 +94,8 @@ class InventoryService {
     final updated = InboundReceipt(
       id: current.id,
       trackingNumber: current.trackingNumber,
+      sellerOrderNumber: current.sellerOrderNumber,
+      rebateOrderNumber: current.rebateOrderNumber,
       createdAt: current.createdAt,
       items: current.items,
       isSettled: isSettled,
@@ -160,6 +168,8 @@ class InventoryService {
     final updated = InboundReceipt(
       id: current.id,
       trackingNumber: current.trackingNumber,
+      sellerOrderNumber: current.sellerOrderNumber,
+      rebateOrderNumber: current.rebateOrderNumber,
       createdAt: current.createdAt,
       items: List.unmodifiable(items),
       isSettled: current.isSettled,
@@ -199,6 +209,7 @@ class InventoryService {
   OutboundOrder confirmOutbound({
     required List<OutboundItem> items,
     List<String> imagePaths = const [],
+    String? logisticsNumber,
     String? note,
   }) {
     if (items.isEmpty) {
@@ -222,6 +233,7 @@ class InventoryService {
       imagePaths: List.unmodifiable(
         imagePaths.map((path) => path.trim()).where((path) => path.isNotEmpty),
       ),
+      logisticsNumber: _optionalText(logisticsNumber),
       note: note,
     );
 
@@ -251,6 +263,8 @@ class InventoryService {
       final matchesKeyword = query == null ||
           query.isEmpty ||
           receipt.trackingNumber.toLowerCase().contains(query) ||
+          (receipt.sellerOrderNumber?.toLowerCase().contains(query) ?? false) ||
+          (receipt.rebateOrderNumber?.toLowerCase().contains(query) ?? false) ||
           receipt.items.any(
             (item) => item.productName.toLowerCase().contains(query),
           );
@@ -295,6 +309,14 @@ class InventoryService {
       return normalizedCode.toUpperCase();
     }
     return 'NAME:${name.trim().toLowerCase()}';
+  }
+
+  String? _optionalText(String? value) {
+    final normalized = value?.trim();
+    if (normalized == null || normalized.isEmpty) {
+      return null;
+    }
+    return normalized;
   }
 
   String _nextId(String prefix) {

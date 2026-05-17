@@ -46,11 +46,15 @@ class InboundReceipt {
     required this.items,
     required this.isSettled,
     required this.ocrStatus,
+    this.sellerOrderNumber,
+    this.rebateOrderNumber,
     this.imagePath,
   });
 
   final String id;
   final String trackingNumber;
+  final String? sellerOrderNumber;
+  final String? rebateOrderNumber;
   final DateTime createdAt;
   final List<InboundDraftItem> items;
   final bool isSettled;
@@ -76,6 +80,7 @@ class OutboundOrder {
     required this.createdAt,
     required this.items,
     this.imagePaths = const [],
+    this.logisticsNumber,
     this.note,
   });
 
@@ -83,6 +88,7 @@ class OutboundOrder {
   final DateTime createdAt;
   final List<OutboundItem> items;
   final List<String> imagePaths;
+  final String? logisticsNumber;
   final String? note;
 }
 

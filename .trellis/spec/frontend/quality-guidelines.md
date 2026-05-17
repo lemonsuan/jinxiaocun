@@ -79,7 +79,7 @@ Use this contract when changing Flutter-to-native OCR, bundled OCR assets, PP-OC
 
 Flutter method channel: `inventory_app/paddle_ocr`.
 
-Request: `recognizeTable` with `{"imagePath": "<absolute local image path>"}`.
+Request: `recognizeTable` with `{"imagePath": "<absolute local image path>", "rowMergeTolerance": <double 0.20..0.60>}`. `rowMergeTolerance` controls native row grouping strictness; lower values make Android less likely to merge vertically adjacent product rows. Default is `0.30`.
 
 Response: `{"rows": List<List<String>>, "rawText": String}` where each inner list is an editable draft row/cell sequence, not confirmed inventory. `rawText` is the native recognizer's full text output when available and may be empty; Flutter should show it in the editable OCR review box before or alongside any parsed product draft.
 
@@ -87,7 +87,11 @@ Response: `{"rows": List<List<String>>, "rawText": String}` where each inner lis
 
 Android owns bundled PP-OCRv5 LiteRT/TFLite OCR through `android/app/src/main/cpp`, `android/app/src/main/assets/models`, and the arm64 LiteRT runtime under `litert_cc_sdk`. iOS currently owns the local CocoaPods pod `ios/LocalPods/InventoryPaddleOcr`, including Paddle Lite, OpenCV, and `InventoryPaddleOcrResources.bundle`.
 
-Native code may perform text recognition and row/cell grouping, returning editable draft rows and the raw recognizer text through the method channel. Dart remains responsible for custom product-row cleanup in `mobile_app/lib/src/ocr/pp_structure_post_processor.dart`, and SQLite remains responsible for confirmed stock writes.
+Native code may perform text recognition and row/cell grouping, returning editable draft rows and the raw recognizer text through the method channel. Dart remains responsible for custom product-row cleanup in `mobile_app/lib/src/ocr/pp_structure_post_processor.dart`, and SQLite remains responsible for confirmed stock writes. Android row grouping must consume the caller-provided `rowMergeTolerance` instead of hard-coding a single line-spacing threshold.
+
+Product-list cleanup must treat each line that starts with a product code as a new editable draft item. If the line has no standalone quantity cell, default the draft quantity to `1` instead of merging the line into the previous product. OCR-recognized `订单号` text may prefill the inbound `商家单号` field only when the user has not already typed a value there.
+
+OCR-recognized `订单号` is displayed as optional `商家单号`, not as the required inbound `快递单号`. Inbound `返利单号` and outbound `物流单号` are optional metadata fields; UI may show and search them, but confirmation must remain valid when they are empty.
 
 Android must not load or package app-local Paddle Lite or OpenCV for OCR. Xiaomi Android 16 devices showed a non-catchable native crash in `CreatePaddlePredictor`; Android OCR should use the PP-OCRv5 LiteRT/TFLite path and keep the editable manual path when recognition returns no rows.
 
@@ -101,6 +105,7 @@ When adding source files to the iOS local pod, rerun `pod install` from `mobile_
 
 * Missing or unreadable `imagePath` -> return empty rows or a recoverable platform error; do not write stock.
 * Missing OCR model/resource files -> return empty rows or a recoverable platform error; do not write stock.
+* Missing or out-of-range `rowMergeTolerance` -> clamp to the supported range and continue OCR.
 * OCR succeeds but rows are empty -> return `rawText` if available, keep the receipt editable for manual entry, and do not block inbound when a valid SF tracking number exists.
 * PP-OCRv5 returns text boxes without table structure -> native code must group tokens into rows/cells; do not fail the whole receipt if text exists.
 * Native OCR returns `rawText` but product cleanup finds no rows -> Flutter must put `rawText` into the editable text field and let the user correct it manually.

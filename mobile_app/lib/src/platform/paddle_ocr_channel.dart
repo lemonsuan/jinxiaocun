@@ -1,5 +1,7 @@
 import 'package:flutter/services.dart';
 
+import '../domain/ocr_settings.dart';
+
 class OcrTableResult {
   const OcrTableResult({
     required this.rows,
@@ -22,10 +24,18 @@ class PaddleOcrChannel {
   static const MethodChannel _channel =
       MethodChannel('inventory_app/paddle_ocr');
 
-  Future<OcrTableResult> recognizeTable(String imagePath) async {
+  Future<OcrTableResult> recognizeTable(
+    String imagePath, {
+    double rowMergeTolerance = OcrSettings.defaultRowMergeTolerance,
+  }) async {
     final result = await _channel.invokeMapMethod<String, Object?>(
       'recognizeTable',
-      <String, Object?>{'imagePath': imagePath},
+      <String, Object?>{
+        'imagePath': imagePath,
+        'rowMergeTolerance': OcrSettings.normalizeRowMergeTolerance(
+          rowMergeTolerance,
+        ),
+      },
     );
     return OcrTableResult(
       rows: _parseRows(result?['rows']),

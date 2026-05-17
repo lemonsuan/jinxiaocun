@@ -28,6 +28,9 @@ class PaddleOcrEngine(private val context: Context) : Closeable {
         private const val REC_MODEL_FILE = "ocr_rec_fp16.tflite"
         private const val KEYS_FILE = "keys_v5.txt"
         private const val CACHE_DIR = "ppocrv5_cache"
+        private const val DEFAULT_ROW_MERGE_TOLERANCE = 0.30f
+        private const val MIN_ROW_MERGE_TOLERANCE = 0.20f
+        private const val MAX_ROW_MERGE_TOLERANCE = 0.60f
 
         @Volatile
         private var cacheInitialized = false
@@ -80,7 +83,10 @@ class PaddleOcrEngine(private val context: Context) : Closeable {
         }
     }
 
-    fun recognize(imagePath: String): MlKitOcrResult {
+    fun recognize(
+        imagePath: String,
+        rowMergeTolerance: Float = DEFAULT_ROW_MERGE_TOLERANCE,
+    ): MlKitOcrResult {
         if (!initialize()) {
             return MlKitOcrResult(emptyList(), "ERROR: PP-OCRv5 LiteRT engine init failed")
         }
@@ -91,7 +97,7 @@ class PaddleOcrEngine(private val context: Context) : Closeable {
         return try {
             val results = nativeProcess(nativeHandle, bitmap).orEmpty()
                 .filter { result -> result.text.isNotBlank() }
-            val rows = groupResultsIntoRows(results)
+            val rows = groupResultsIntoRows(results, normalizeRowMergeTolerance(rowMergeTolerance))
             val rawText = rows.joinToString("\n") { row -> row.joinToString(" ") }
             MlKitOcrResult(rows, rawText)
         } catch (e: Throwable) {
@@ -185,7 +191,17 @@ class PaddleOcrEngine(private val context: Context) : Closeable {
         }
     }
 
-    private fun groupResultsIntoRows(results: List<NativeOcrResult>): List<List<String>> {
+    private fun normalizeRowMergeTolerance(value: Float): Float {
+        if (value.isNaN() || value.isInfinite()) {
+            return DEFAULT_ROW_MERGE_TOLERANCE
+        }
+        return value.coerceIn(MIN_ROW_MERGE_TOLERANCE, MAX_ROW_MERGE_TOLERANCE)
+    }
+
+    private fun groupResultsIntoRows(
+        results: List<NativeOcrResult>,
+        rowMergeTolerance: Float,
+    ): List<List<String>> {
         val sorted = results.sortedWith(
             compareBy<NativeOcrResult> { it.centerY }.thenBy { it.centerX },
         )
@@ -208,7 +224,7 @@ class PaddleOcrEngine(private val context: Context) : Closeable {
             } else {
                 max(rowHeight, result.height)
             }
-            val threshold = max(6f, min(14f, referenceHeight * 0.45f))
+            val threshold = max(3f, min(12f, referenceHeight * rowMergeTolerance))
             val rowTop = current.map { it.centerY - it.height / 2f }.average().toFloat()
             val rowBottom = current.map { it.centerY + it.height / 2f }.average().toFloat()
             val resultTop = result.centerY - result.height / 2f
@@ -216,8 +232,9 @@ class PaddleOcrEngine(private val context: Context) : Closeable {
             val verticalOverlap =
                 min(rowBottom, resultBottom) - max(rowTop, resultTop)
             val minHeight = min(rowHeight, result.height)
+            val minOverlapRatio = (0.65f - rowMergeTolerance).coerceIn(0.2f, 0.45f)
             val isSameRow = abs(result.centerY - rowCenter) <= threshold &&
-                verticalOverlap >= minHeight * 0.2f
+                verticalOverlap >= minHeight * minOverlapRatio
             if (!isSameRow) {
                 grouped.add(mutableListOf(result))
             } else {
