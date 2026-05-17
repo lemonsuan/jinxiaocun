@@ -10,6 +10,9 @@
 **/.gradle/
 **/local.properties
 
+# Large iOS OCR binary dependency; keep out of GitHub history.
+mobile_app/ios/LocalPods/InventoryPaddleOcr/OpenCV/opencv2.framework/Versions/A/opencv2
+
 # Trellis runtime state.
 .trellis/.runtime/
 .trellis/.developer
