@@ -53,6 +53,7 @@ class _AppHomeState extends State<AppHome> {
   final TextEditingController _trackingController = TextEditingController();
   final TextEditingController _historySearchController =
       TextEditingController();
+  final TextEditingController _stockSearchController = TextEditingController();
   final TextEditingController _outboundHistorySearchController =
       TextEditingController();
   final TextEditingController _ocrTextController = TextEditingController();
@@ -68,6 +69,7 @@ class _AppHomeState extends State<AppHome> {
   bool _isReady = false;
   bool _isBackupBusy = false;
   int _selectedTabIndex = 0;
+  int? _revealedDraftDeleteIndex;
   _HistorySettlementFilter _historySettlementFilter =
       _HistorySettlementFilter.all;
 
@@ -81,6 +83,7 @@ class _AppHomeState extends State<AppHome> {
   void dispose() {
     _trackingController.dispose();
     _historySearchController.dispose();
+    _stockSearchController.dispose();
     _outboundHistorySearchController.dispose();
     _ocrTextController.dispose();
     unawaited(_database.close());
@@ -91,6 +94,7 @@ class _AppHomeState extends State<AppHome> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: SafeArea(
+        minimum: const EdgeInsets.only(top: 12),
         child: !_isReady
             ? const Center(child: CircularProgressIndicator())
             : IndexedStack(
@@ -242,10 +246,35 @@ class _AppHomeState extends State<AppHome> {
   }
 
   Widget _stockTotalsTab() {
+    final stocks = _filteredStockTotals();
     return _page([
       _sectionTitle('商品总量'),
-      if (_stockTotals.isEmpty) const ListTile(title: Text('暂无库存')),
-      ..._stockTotals.map(_stockTile),
+      TextField(
+        controller: _stockSearchController,
+        onChanged: (_) => setState(() {}),
+        decoration: InputDecoration(
+          labelText: '搜索商品名称或编码',
+          prefixIcon: const Icon(Icons.search),
+          border: const OutlineInputBorder(),
+          suffixIcon: _stockSearchController.text.isEmpty
+              ? null
+              : IconButton(
+                  tooltip: '清空搜索',
+                  onPressed: () {
+                    setState(() {
+                      _stockSearchController.clear();
+                    });
+                  },
+                  icon: const Icon(Icons.close),
+                ),
+        ),
+      ),
+      const SizedBox(height: 8),
+      if (_stockTotals.isEmpty)
+        const ListTile(title: Text('暂无库存'))
+      else if (stocks.isEmpty)
+        const ListTile(title: Text('没有匹配的商品')),
+      ...stocks.map(_stockTile),
     ]);
   }
 
@@ -412,85 +441,153 @@ class _AppHomeState extends State<AppHome> {
 
   Widget _draftTile(int index, InboundDraftItem item) {
     final sourceKey = item.sourceText ?? 'manual';
-    return Card(
-      margin: const EdgeInsets.symmetric(vertical: 6),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-      child: Padding(
-        padding: const EdgeInsets.all(10),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.start,
+    final isDeleteRevealed = _revealedDraftDeleteIndex == index;
+    final colorScheme = Theme.of(context).colorScheme;
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 3),
+      child: ClipRRect(
+        borderRadius: BorderRadius.circular(6),
+        child: Stack(
           children: [
-            Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.secondaryContainer,
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Icon(
-                Icons.inventory_2_outlined,
-                color: Theme.of(context).colorScheme.onSecondaryContainer,
-              ),
-            ),
-            const SizedBox(width: 10),
-            Expanded(
-              child: Column(
-                children: [
-                  TextFormField(
-                    key: ValueKey('draft-name-$index-$sourceKey'),
-                    initialValue: item.productName,
-                    onChanged: (value) {
-                      if (index >= _draftItems.length) {
-                        return;
-                      }
-                      final current = _draftItems[index];
-                      _replaceDraftItem(
-                        index,
-                        current.copyWith(productName: value),
-                      );
-                    },
-                    decoration: const InputDecoration(
-                      isDense: true,
-                      labelText: '商品名称',
-                      border: OutlineInputBorder(),
+            Positioned.fill(
+              child: Align(
+                alignment: Alignment.centerRight,
+                child: SizedBox(
+                  width: 76,
+                  child: ColoredBox(
+                    color: colorScheme.error,
+                    child: IconButton(
+                      tooltip: '删除商品草稿',
+                      onPressed: () => _removeDraftItem(index),
+                      icon: Icon(
+                        Icons.delete_outline,
+                        color: colorScheme.onError,
+                      ),
                     ),
                   ),
-                  const SizedBox(height: 8),
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.center,
-                    children: [
-                      Expanded(
-                        child: TextFormField(
-                          key: ValueKey('draft-code-$index-$sourceKey'),
-                          initialValue: item.productCode ?? '',
-                          onChanged: (value) {
-                            if (index >= _draftItems.length) {
-                              return;
-                            }
-                            final current = _draftItems[index];
-                            _replaceDraftItem(
-                              index,
-                              current.copyWith(productCode: value),
-                            );
-                          },
-                          decoration: const InputDecoration(
-                            isDense: true,
-                            labelText: '商品编号',
-                            border: OutlineInputBorder(),
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      _draftQuantityStepper(index, item.quantity),
-                    ],
-                  ),
-                ],
+                ),
               ),
             ),
-            IconButton(
-              tooltip: '删除商品草稿',
-              onPressed: () => _removeDraftItem(index),
-              icon: const Icon(Icons.delete_outline),
+            Transform.translate(
+              offset: Offset(isDeleteRevealed ? -76 : 0, 0),
+              child: GestureDetector(
+                behavior: HitTestBehavior.opaque,
+                onTap: () {
+                  if (isDeleteRevealed) {
+                    setState(() {
+                      _revealedDraftDeleteIndex = null;
+                    });
+                  }
+                },
+                onHorizontalDragEnd: (details) {
+                  final velocity = details.primaryVelocity ?? 0;
+                  if (velocity < -80) {
+                    setState(() {
+                      _revealedDraftDeleteIndex = index;
+                    });
+                  } else if (velocity > 80) {
+                    setState(() {
+                      _revealedDraftDeleteIndex = null;
+                    });
+                  }
+                },
+                child: ColoredBox(
+                  color: colorScheme.surface,
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(color: colorScheme.outlineVariant),
+                      ),
+                    ),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 4,
+                        vertical: 6,
+                      ),
+                      child: Column(
+                        children: [
+                          TextFormField(
+                            key: ValueKey('draft-name-$index-$sourceKey'),
+                            initialValue: item.productName,
+                            style: Theme.of(context).textTheme.bodyLarge,
+                            maxLines: 1,
+                            textInputAction: TextInputAction.next,
+                            onChanged: (value) {
+                              if (index >= _draftItems.length) {
+                                return;
+                              }
+                              final current = _draftItems[index];
+                              _replaceDraftItem(
+                                index,
+                                current.copyWith(productName: value),
+                              );
+                            },
+                            decoration: const InputDecoration(
+                              isDense: true,
+                              border: InputBorder.none,
+                              prefixText: '名称：',
+                              contentPadding: EdgeInsets.zero,
+                            ),
+                          ),
+                          const SizedBox(height: 2),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: TextFormField(
+                                  key: ValueKey('draft-code-$index-$sourceKey'),
+                                  initialValue: item.productCode ?? '',
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                  maxLines: 1,
+                                  textInputAction: TextInputAction.next,
+                                  onChanged: (value) {
+                                    if (index >= _draftItems.length) {
+                                      return;
+                                    }
+                                    final current = _draftItems[index];
+                                    _replaceDraftItem(
+                                      index,
+                                      current.copyWith(productCode: value),
+                                    );
+                                  },
+                                  decoration: const InputDecoration(
+                                    isDense: true,
+                                    border: InputBorder.none,
+                                    prefixText: '商品编号：',
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
+                                ),
+                              ),
+                              SizedBox(
+                                width: 72,
+                                child: TextFormField(
+                                  key: ValueKey(
+                                    'draft-qty-$index-${item.quantity}',
+                                  ),
+                                  initialValue: item.quantity.toString(),
+                                  style: Theme.of(context).textTheme.bodySmall,
+                                  textAlign: TextAlign.end,
+                                  keyboardType: TextInputType.number,
+                                  onChanged: (value) {
+                                    final nextQuantity =
+                                        int.tryParse(value.trim()) ?? 0;
+                                    _setDraftQuantity(index, nextQuantity);
+                                  },
+                                  decoration: const InputDecoration(
+                                    isDense: true,
+                                    border: InputBorder.none,
+                                    prefixText: '数量：',
+                                    contentPadding: EdgeInsets.zero,
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ),
             ),
           ],
         ),
@@ -498,71 +595,57 @@ class _AppHomeState extends State<AppHome> {
     );
   }
 
-  Widget _draftQuantityStepper(int index, int quantity) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        border: Border.all(color: Theme.of(context).colorScheme.outlineVariant),
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          IconButton(
-            tooltip: '减少数量',
-            visualDensity: VisualDensity.compact,
-            onPressed: quantity <= 1
-                ? null
-                : () => _setDraftQuantity(index, quantity - 1),
-            icon: const Icon(Icons.remove),
-          ),
-          SizedBox(
-            width: 36,
-            child: TextFormField(
-              key: ValueKey('draft-qty-$index-$quantity'),
-              initialValue: quantity.toString(),
-              textAlign: TextAlign.center,
-              keyboardType: TextInputType.number,
-              decoration: const InputDecoration(
-                isDense: true,
-                border: InputBorder.none,
-                contentPadding: EdgeInsets.zero,
-              ),
-              onChanged: (value) {
-                final nextQuantity = int.tryParse(value.trim()) ?? 0;
-                _setDraftQuantity(index, nextQuantity);
-              },
-            ),
-          ),
-          IconButton(
-            tooltip: '增加数量',
-            visualDensity: VisualDensity.compact,
-            onPressed: () => _setDraftQuantity(index, quantity + 1),
-            icon: const Icon(Icons.add),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _stockTile(WarehouseStock stock) {
-    return ListTile(
-      dense: true,
-      contentPadding: EdgeInsets.zero,
-      title: Text(stock.productName),
-      subtitle: Text(stock.productCode),
-      trailing: Row(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          Text('${stock.quantity}'),
-          IconButton(
-            tooltip: '加入出库车',
-            onPressed: stock.quantity <= 0
-                ? null
-                : () => _addStockToOutboundCart(stock),
-            icon: const Icon(Icons.add_shopping_cart_outlined),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final nameMaxWidth = constraints.maxWidth * 0.7;
+        return Padding(
+          padding: const EdgeInsets.symmetric(vertical: 6),
+          child: Row(
+            crossAxisAlignment: CrossAxisAlignment.center,
+            children: [
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: nameMaxWidth),
+                      child: Text(
+                        stock.productName,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        style: Theme.of(context).textTheme.bodyLarge,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '商品编码：${stock.productCode}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      '商品数量：${stock.quantity}',
+                      style: Theme.of(context).textTheme.bodySmall,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(width: 8),
+              Text(
+                '1',
+                style: Theme.of(context).textTheme.bodyMedium,
+              ),
+              IconButton(
+                tooltip: '加入出库车，默认数量 1',
+                onPressed: stock.quantity <= 0
+                    ? null
+                    : () => _addStockToOutboundCart(stock),
+                icon: const Icon(Icons.add_shopping_cart_outlined),
+              ),
+            ],
           ),
-        ],
-      ),
+        );
+      },
     );
   }
 
@@ -581,7 +664,11 @@ class _AppHomeState extends State<AppHome> {
     );
   }
 
-  Widget _inboundReceiptItemList(List<InboundDraftItem> items) {
+  Widget _inboundReceiptItemList(
+    List<InboundDraftItem> items,
+    List<TextEditingController> quantityControllers, {
+    required VoidCallback onChanged,
+  }) {
     if (items.isEmpty) {
       return const ListTile(
         dense: true,
@@ -594,88 +681,199 @@ class _AppHomeState extends State<AppHome> {
       childrenPadding: EdgeInsets.zero,
       title: Text('商品清单 ${items.length}'),
       children: [
-        for (final item in items)
+        for (var index = 0; index < items.length; index += 1)
           ListTile(
             dense: true,
             contentPadding: EdgeInsets.zero,
-            title: Text(item.productName),
-            subtitle: Text(item.productCode ?? '无商品编号'),
-            trailing: Text('x${item.quantity}'),
+            title: Text(items[index].productName),
+            subtitle: Text(items[index].productCode ?? '无商品编号'),
+            trailing: SizedBox(
+              width: 82,
+              child: TextFormField(
+                controller: quantityControllers[index],
+                textAlign: TextAlign.end,
+                keyboardType: TextInputType.number,
+                decoration: const InputDecoration(
+                  isDense: true,
+                  labelText: '数量',
+                  border: OutlineInputBorder(),
+                ),
+                onChanged: (_) => onChanged(),
+              ),
+            ),
           ),
       ],
     );
   }
 
   Future<void> _showInboundReceiptDialog(InboundReceipt receipt) async {
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          titlePadding: const EdgeInsets.fromLTRB(24, 18, 8, 0),
-          contentPadding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
-          title: Row(
-            children: [
-              const Expanded(child: Text('入库单详情')),
-              IconButton(
-                tooltip: '关闭',
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                icon: const Icon(Icons.close),
-              ),
-            ],
-          ),
-          content: SizedBox(
-            width: 460,
-            child: SingleChildScrollView(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text('快递单号：${receipt.trackingNumber}'),
-                  Text('订单号：${receipt.id}'),
-                  Text('入库时间：${_formatReceiptTime(receipt.createdAt)}'),
-                  SwitchListTile(
-                    contentPadding: EdgeInsets.zero,
-                    title: const Text('本单已结算'),
-                    value: receipt.isSettled,
-                    onChanged: (selected) async {
-                      await _setReceiptSettled(receipt.id, selected);
-                      if (dialogContext.mounted) {
+    final quantityControllers = [
+      for (final item in receipt.items)
+        TextEditingController(text: item.quantity.toString()),
+    ];
+    var hasQuantityChanges = false;
+    try {
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) {
+          return StatefulBuilder(
+            builder: (dialogContext, setDialogState) {
+              void markChanged() {
+                final changed = _receiptQuantitiesChanged(
+                  receipt,
+                  quantityControllers,
+                );
+                if (changed == hasQuantityChanges) {
+                  return;
+                }
+                setDialogState(() {
+                  hasQuantityChanges = changed;
+                });
+              }
+
+              return AlertDialog(
+                titlePadding: const EdgeInsets.fromLTRB(24, 18, 8, 0),
+                contentPadding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
+                title: Row(
+                  children: [
+                    const Expanded(child: Text('入库单详情')),
+                    IconButton(
+                      tooltip: '关闭',
+                      onPressed: () => Navigator.of(dialogContext).pop(),
+                      icon: const Icon(Icons.close),
+                    ),
+                  ],
+                ),
+                content: SizedBox(
+                  width: 460,
+                  child: SingleChildScrollView(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text('快递单号：${receipt.trackingNumber}'),
+                        Text('订单号：${receipt.id}'),
+                        Text('入库时间：${_formatReceiptTime(receipt.createdAt)}'),
+                        SwitchListTile(
+                          contentPadding: EdgeInsets.zero,
+                          title: const Text('本单已结算'),
+                          value: receipt.isSettled,
+                          onChanged: (selected) async {
+                            await _setReceiptSettled(receipt.id, selected);
+                            if (dialogContext.mounted) {
+                              Navigator.of(dialogContext).pop();
+                            }
+                          },
+                        ),
+                        _inboundReceiptItemList(
+                          receipt.items,
+                          quantityControllers,
+                          onChanged: markChanged,
+                        ),
+                        if (receipt.imagePath != null &&
+                            receipt.imagePath!.isNotEmpty) ...[
+                          const SizedBox(height: 8),
+                          Text(
+                            '入库单图片',
+                            style: Theme.of(context).textTheme.titleSmall,
+                          ),
+                          const SizedBox(height: 6),
+                          InkWell(
+                            onTap: () => _showReceiptImage(receipt.imagePath!),
+                            child: _imageThumbnail(File(receipt.imagePath!)),
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ),
+                actions: [
+                  TextButton.icon(
+                    onPressed: () async {
+                      final confirmed =
+                          await _confirmDeleteInboundReceipt(receipt);
+                      if (confirmed == true && dialogContext.mounted) {
                         Navigator.of(dialogContext).pop();
                       }
                     },
+                    icon: const Icon(Icons.delete_outline),
+                    label: const Text('删除入库单'),
                   ),
-                  _inboundReceiptItemList(receipt.items),
-                  if (receipt.imagePath != null &&
-                      receipt.imagePath!.isNotEmpty) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      '入库单图片',
-                      style: Theme.of(context).textTheme.titleSmall,
-                    ),
-                    const SizedBox(height: 6),
-                    InkWell(
-                      onTap: () => _showReceiptImage(receipt.imagePath!),
-                      child: _imageThumbnail(File(receipt.imagePath!)),
-                    ),
-                  ],
+                  FilledButton.icon(
+                    onPressed: hasQuantityChanges
+                        ? () async {
+                            final saved = await _saveInboundReceiptQuantities(
+                              receipt,
+                              quantityControllers,
+                            );
+                            if (saved && dialogContext.mounted) {
+                              Navigator.of(dialogContext).pop();
+                            }
+                          }
+                        : null,
+                    icon: const Icon(Icons.save_outlined),
+                    label: const Text('保存'),
+                  ),
                 ],
-              ),
-            ),
-          ),
-          actions: [
-            TextButton.icon(
-              onPressed: () async {
-                final confirmed = await _confirmDeleteInboundReceipt(receipt);
-                if (confirmed == true && dialogContext.mounted) {
-                  Navigator.of(dialogContext).pop();
-                }
-              },
-              icon: const Icon(Icons.delete_outline),
-              label: const Text('删除入库单'),
-            ),
-          ],
-        );
-      },
-    );
+              );
+            },
+          );
+        },
+      );
+    } finally {
+      for (final controller in quantityControllers) {
+        controller.dispose();
+      }
+    }
+  }
+
+  bool _receiptQuantitiesChanged(
+    InboundReceipt receipt,
+    List<TextEditingController> quantityControllers,
+  ) {
+    for (var index = 0; index < receipt.items.length; index += 1) {
+      final quantity = int.tryParse(quantityControllers[index].text.trim());
+      if (quantity != receipt.items[index].quantity) {
+        return true;
+      }
+    }
+    return false;
+  }
+
+  Future<bool> _saveInboundReceiptQuantities(
+    InboundReceipt receipt,
+    List<TextEditingController> quantityControllers,
+  ) async {
+    final updatedItems = <InboundDraftItem>[];
+    for (var index = 0; index < receipt.items.length; index += 1) {
+      final quantityText = quantityControllers[index].text.trim();
+      final quantity = int.tryParse(quantityText);
+      if (quantity == null || quantity <= 0) {
+        setState(() {
+          _message = '商品数量必须大于 0';
+        });
+        return false;
+      }
+      updatedItems.add(receipt.items[index].copyWith(quantity: quantity));
+    }
+    try {
+      await _database.updateInboundReceiptItems(receipt.id, updatedItems);
+      await _refreshData();
+      if (!mounted) {
+        return true;
+      }
+      setState(() {
+        _message = '已保存入库单数量：${receipt.id}';
+      });
+      return true;
+    } on InventoryException catch (error) {
+      if (!mounted) {
+        return false;
+      }
+      setState(() {
+        _message = error.message;
+      });
+      return false;
+    }
   }
 
   String _formatReceiptTime(DateTime value) {
@@ -1220,6 +1418,17 @@ class _AppHomeState extends State<AppHome> {
         _HistorySettlementFilter.unsettled => !receipt.isSettled,
       };
       return matchesKeyword && matchesSettlement;
+    }).toList(growable: false);
+  }
+
+  List<WarehouseStock> _filteredStockTotals() {
+    final keyword = _stockSearchController.text.trim().toLowerCase();
+    if (keyword.isEmpty) {
+      return _stockTotals;
+    }
+    return _stockTotals.where((stock) {
+      return stock.productCode.toLowerCase().contains(keyword) ||
+          stock.productName.toLowerCase().contains(keyword);
     }).toList(growable: false);
   }
 

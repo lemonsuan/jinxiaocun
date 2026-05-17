@@ -28,9 +28,13 @@ Use this contract when changing inbound, outbound, stock query, or local persist
 
 Core tables: `inbound_receipts`, `inbound_items`, `outbound_orders`, `outbound_items`, `outbound_attachments`, `stock_ledger`, `warehouse_stock`, and `ocr_results`.
 
+Confirmed inbound quantity edits use `LocalInventoryDatabase.updateInboundReceiptItems(String receiptId, List<InboundDraftItem> items)` and the in-memory test mirror `InventoryService.updateInboundReceiptItems(String receiptId, List<InboundDraftItem> items)`.
+
 ### 3. Contracts
 
 `stock_ledger` is the authoritative inventory record. `warehouse_stock` is a query cache derived from ledger writes. Price fields are optional and must not block inbound or outbound confirmation.
+
+Editing a confirmed inbound receipt may only change existing item quantities. Compare the stored `inbound_items` rows to the submitted item list in stable row order, write one inbound `stock_ledger` adjustment row per non-zero quantity delta, and update `warehouse_stock` by the same delta in the same transaction. Do not change receipt metadata, attachment paths, settlement state, or item identity through the quantity-edit flow.
 
 Outbound photos are order evidence only. Store them as local sandbox image paths in `outbound_attachments` and expose them through `OutboundOrder.imagePaths`; they must not run OCR, create outbound items, or decide stock deltas. Outbound stock movement comes only from the user-confirmed `OutboundItem` list in the same SQLite transaction that writes `outbound_orders`, `outbound_items`, ledger rows, and stock cache updates.
 
@@ -38,27 +42,35 @@ Outbound photos are order evidence only. Store them as local sandbox image paths
 
 * Duplicate inbound tracking number -> reject confirmation.
 * Outbound quantity greater than current stock -> reject confirmation.
+* Confirmed inbound quantity edit with a missing receipt or stale item count -> reject and ask the caller to refresh.
+* Confirmed inbound quantity reduction greater than currently available stock for that product -> reject because stock has already shipped.
 * OCR failure or empty OCR rows -> keep receipt editable; do not write stock.
 * Missing outbound attachment file -> show a broken image state if displayed; do not reverse stock or mutate the order.
 
 ### 5. Good/Base/Bad Cases
 
 * Good: inbound/outbound confirmation writes ledger and updates stock in one SQLite transaction.
+* Good: confirmed inbound quantity edit writes only delta ledger rows and keeps `warehouse_stock` in sync.
 * Good: outbound cart items generate an outbound order with optional `outbound_attachments` rows; photos are visible in history but never parsed into items.
 * Base: settlement marker changes only `inbound_receipts`, not stock.
 * Base: outbound order has no photos; stock still deducts from confirmed items.
 * Bad: directly editing `warehouse_stock` without a matching `stock_ledger` row.
+* Bad: reducing an old inbound receipt below quantities already shipped, creating negative effective stock.
 * Bad: running OCR on outbound photos or using photo content to create/deduct outbound items.
 
 ### 6. Tests Required
 
-Tests must assert stock increases on inbound, stock cannot go negative on outbound, duplicate tracking numbers are rejected, settlement changes do not alter stock, and outbound orders preserve multi-photo attachment paths without changing item quantities.
+Tests must assert stock increases on inbound, stock cannot go negative on outbound, duplicate tracking numbers are rejected, settlement changes do not alter stock, confirmed inbound quantity edits add positive/negative ledger deltas, confirmed inbound reductions are blocked after shipped stock would go negative, and outbound orders preserve multi-photo attachment paths without changing item quantities.
 
 ### 7. Wrong vs Correct
 
 Wrong: compute stock from the latest UI list or OCR result.
 
 Correct: compute stock from confirmed ledger writes, using `warehouse_stock` only as a persisted summary.
+
+Wrong: save an edited inbound receipt quantity by updating only `inbound_items.quantity` or only `warehouse_stock.quantity`.
+
+Correct: update `inbound_items.quantity`, insert an inbound `stock_ledger` delta row, and update `warehouse_stock` in one transaction.
 
 Wrong: generate outbound items from outbound proof photos.
 

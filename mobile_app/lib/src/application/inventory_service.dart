@@ -98,6 +98,78 @@ class InventoryService {
     return updated;
   }
 
+  InboundReceipt updateInboundReceiptItems(
+    String receiptId,
+    List<InboundDraftItem> items,
+  ) {
+    final index = _inboundReceipts.indexWhere((r) => r.id == receiptId);
+    if (index < 0) {
+      throw InventoryException('Inbound receipt not found.');
+    }
+    for (final item in items) {
+      _validateInboundItem(item);
+    }
+
+    final current = _inboundReceipts[index];
+    if (current.items.length != items.length) {
+      throw InventoryException('Inbound receipt items changed. Refresh first.');
+    }
+
+    final negativeDeltasByCode = <String, int>{};
+    for (var itemIndex = 0; itemIndex < current.items.length; itemIndex += 1) {
+      final oldItem = current.items[itemIndex];
+      final newItem = items[itemIndex];
+      final delta = newItem.quantity - oldItem.quantity;
+      if (delta < 0) {
+        final code = _productCodeFor(oldItem.productCode, oldItem.productName);
+        negativeDeltasByCode[code] = (negativeDeltasByCode[code] ?? 0) - delta;
+      }
+    }
+    for (final entry in negativeDeltasByCode.entries) {
+      final available = _stockByCode[entry.key]?.quantity ?? 0;
+      if (available < entry.value) {
+        throw InventoryException(
+          'Cannot reduce inbound quantity because stock has already been shipped.',
+        );
+      }
+    }
+
+    final now = DateTime.now();
+    for (var itemIndex = 0; itemIndex < current.items.length; itemIndex += 1) {
+      final oldItem = current.items[itemIndex];
+      final newItem = items[itemIndex];
+      final delta = newItem.quantity - oldItem.quantity;
+      if (delta == 0) {
+        continue;
+      }
+      final code = _productCodeFor(oldItem.productCode, oldItem.productName);
+      _increaseStock(code, oldItem.productName, delta);
+      _ledger.add(
+        StockLedgerEntry(
+          id: _nextId('lg'),
+          productCode: code,
+          productName: oldItem.productName.trim(),
+          delta: delta,
+          reason: LedgerReason.inbound,
+          sourceId: receiptId,
+          createdAt: now,
+        ),
+      );
+    }
+
+    final updated = InboundReceipt(
+      id: current.id,
+      trackingNumber: current.trackingNumber,
+      createdAt: current.createdAt,
+      items: List.unmodifiable(items),
+      isSettled: current.isSettled,
+      ocrStatus: current.ocrStatus,
+      imagePath: current.imagePath,
+    );
+    _inboundReceipts[index] = updated;
+    return updated;
+  }
+
   void deleteInboundReceipt(String receiptId) {
     final index = _inboundReceipts.indexWhere((r) => r.id == receiptId);
     if (index < 0) {

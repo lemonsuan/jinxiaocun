@@ -327,6 +327,89 @@ class LocalInventoryDatabase {
     }
   }
 
+  Future<void> updateInboundReceiptItems(
+    String receiptId,
+    List<InboundDraftItem> items,
+  ) async {
+    for (final item in items) {
+      _validateInboundItem(item);
+    }
+
+    final now = DateTime.now();
+    await _db.transaction((txn) async {
+      final receiptRows = await txn.query(
+        'inbound_receipts',
+        columns: ['id'],
+        where: 'id = ?',
+        whereArgs: [receiptId],
+        limit: 1,
+      );
+      if (receiptRows.isEmpty) {
+        throw InventoryException('Inbound receipt not found.');
+      }
+
+      final itemRows = await txn.query(
+        'inbound_items',
+        where: 'receipt_id = ?',
+        whereArgs: [receiptId],
+        orderBy: 'id ASC',
+      );
+      if (itemRows.length != items.length) {
+        throw InventoryException(
+            'Inbound receipt items changed. Refresh first.');
+      }
+
+      final negativeDeltasByCode = <String, int>{};
+      for (var index = 0; index < itemRows.length; index += 1) {
+        final row = itemRows[index];
+        final oldQuantity = row['quantity']! as int;
+        final newQuantity = items[index].quantity;
+        final delta = newQuantity - oldQuantity;
+        if (delta < 0) {
+          final code = row['product_code']! as String;
+          negativeDeltasByCode[code] =
+              (negativeDeltasByCode[code] ?? 0) - delta;
+        }
+      }
+      for (final entry in negativeDeltasByCode.entries) {
+        final available = await _stockFor(txn, entry.key);
+        if (available < entry.value) {
+          throw InventoryException(
+            'Cannot reduce inbound quantity because stock has already been shipped.',
+          );
+        }
+      }
+
+      for (var index = 0; index < itemRows.length; index += 1) {
+        final row = itemRows[index];
+        final oldQuantity = row['quantity']! as int;
+        final newQuantity = items[index].quantity;
+        final delta = newQuantity - oldQuantity;
+        if (delta == 0) {
+          continue;
+        }
+        final code = row['product_code']! as String;
+        final name = row['product_name']! as String;
+        await txn.update(
+          'inbound_items',
+          {'quantity': newQuantity},
+          where: 'id = ?',
+          whereArgs: [row['id']! as String],
+        );
+        await _increaseStock(txn, code, name, delta);
+        await _insertLedger(
+          txn,
+          productCode: code,
+          productName: name,
+          delta: delta,
+          reason: LedgerReason.inbound,
+          sourceId: receiptId,
+          createdAt: now,
+        );
+      }
+    });
+  }
+
   Future<void> deleteInboundReceipt(String receiptId) async {
     await _db.transaction((txn) async {
       final receiptRows = await txn.query(

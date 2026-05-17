@@ -185,6 +185,87 @@ void main() {
     expect(inventory.stockTotals.single.quantity, 4);
   });
 
+  test('editing inbound receipt quantity increases stock through ledger', () {
+    final inventory = InventoryService();
+    final receipt = inventory.confirmInbound(
+      trackingNumber: 'SF12504',
+      items: const [
+        InboundDraftItem(
+          productCode: 'E4167300',
+          productName: '卡诗山茶花经典香氛护发油 30ml',
+          quantity: 5,
+        ),
+      ],
+    );
+
+    inventory.updateInboundReceiptItems(
+      receipt.id,
+      [receipt.items.single.copyWith(quantity: 8)],
+    );
+
+    expect(inventory.inboundHistory.single.items.single.quantity, 8);
+    expect(inventory.stockTotals.single.quantity, 8);
+    expect(inventory.ledger.map((entry) => entry.delta), [5, 3]);
+  });
+
+  test('editing inbound receipt quantity decreases stock through ledger', () {
+    final inventory = InventoryService();
+    final receipt = inventory.confirmInbound(
+      trackingNumber: 'SF12505',
+      items: const [
+        InboundDraftItem(
+          productCode: 'E4167300',
+          productName: '卡诗山茶花经典香氛护发油 30ml',
+          quantity: 5,
+        ),
+      ],
+    );
+
+    inventory.updateInboundReceiptItems(
+      receipt.id,
+      [receipt.items.single.copyWith(quantity: 3)],
+    );
+
+    expect(inventory.inboundHistory.single.items.single.quantity, 3);
+    expect(inventory.stockTotals.single.quantity, 3);
+    expect(inventory.ledger.map((entry) => entry.delta), [5, -2]);
+  });
+
+  test(
+      'editing inbound receipt is blocked when shipped stock would go negative',
+      () {
+    final inventory = InventoryService();
+    final receipt = inventory.confirmInbound(
+      trackingNumber: 'SF12506',
+      items: const [
+        InboundDraftItem(
+          productCode: 'E4167300',
+          productName: '卡诗山茶花经典香氛护发油 30ml',
+          quantity: 5,
+        ),
+      ],
+    );
+    inventory.confirmOutbound(
+      items: const [
+        OutboundItem(
+          productCode: 'E4167300',
+          productName: '卡诗山茶花经典香氛护发油 30ml',
+          quantity: 3,
+        ),
+      ],
+    );
+
+    expect(
+      () => inventory.updateInboundReceiptItems(
+        receipt.id,
+        [receipt.items.single.copyWith(quantity: 1)],
+      ),
+      throwsA(isA<InventoryException>()),
+    );
+    expect(inventory.inboundHistory.single.items.single.quantity, 5);
+    expect(inventory.stockTotals.single.quantity, 2);
+  });
+
   test('SF tracking can be received before product rows are recognized', () {
     final inventory = InventoryService();
 
