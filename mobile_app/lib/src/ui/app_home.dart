@@ -1175,318 +1175,322 @@ class _AppHomeState extends State<AppHome> {
                 borderRadius: BorderRadius.circular(24),
               ),
               insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-              child: SizedBox(
-                height: MediaQuery.of(context).size.height * 0.7,
-                width: double.infinity,
-                child: Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.stretch,
-                    children: [
-                      // 头部
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // 头部
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            '图片旋转与二次识别',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1E293B),
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: isLoading ? null : () => Navigator.pop(dialogContext),
+                          icon: const Icon(Icons.close, color: Colors.grey),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // 主体
+                    if (currentStep == 1) ...[
+                      // 第一步：展示预览及旋转 (固定高度，不撑满屏幕)
+                      SizedBox(
+                        height: 280,
+                        child: Stack(
+                          alignment: Alignment.center,
+                          children: [
+                            Container(
+                              width: double.infinity,
+                              decoration: BoxDecoration(
+                                color: Colors.grey.shade100,
+                                borderRadius: BorderRadius.circular(16),
+                              ),
+                              clipBehavior: Clip.antiAlias,
+                              child: InteractiveViewer(
+                                maxScale: 4.0,
+                                child: Center(
+                                  child: RotatedBox(
+                                    quarterTurns: quarterTurns,
+                                    child: Image.file(
+                                      File(path),
+                                      fit: BoxFit.contain,
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ),
+                            if (isLoading)
+                              Container(
+                                decoration: BoxDecoration(
+                                  color: Colors.black.withOpacity(0.3),
+                                  borderRadius: BorderRadius.circular(16),
+                                ),
+                                child: const Center(
+                                  child: CircularProgressIndicator(
+                                    color: Color(0xff2d6a4f),
+                                  ),
+                                ),
+                              ),
+                          ],
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // 底部按钮 Row
                       Row(
                         children: [
-                          const Expanded(
-                            child: Text(
-                              '图片旋转与二次识别',
-                              style: TextStyle(
-                                fontSize: 18,
-                                fontWeight: FontWeight.bold,
-                                color: Color(0xFF1E293B),
+                          Expanded(
+                            child: OutlinedButton.icon(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: const Color(0xff2d6a4f),
+                                side: const BorderSide(
+                                    color: Color(0xff2d6a4f), width: 1.2),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(24),
+                                ),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                              ),
+                              onPressed: isLoading
+                                  ? null
+                                  : () {
+                                      setDialogState(() {
+                                        quarterTurns = (quarterTurns + 1) % 4;
+                                      });
+                                    },
+                              icon: const Icon(Icons.rotate_right, size: 18),
+                              label: const Text(
+                                '旋转90°',
+                                style: TextStyle(fontWeight: FontWeight.bold),
                               ),
                             ),
                           ),
-                          IconButton(
-                            onPressed: isLoading ? null : () => Navigator.pop(dialogContext),
-                            icon: const Icon(Icons.close, color: Colors.grey),
-                            padding: EdgeInsets.zero,
-                            constraints: const BoxConstraints(),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: FilledButton.icon(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xff2d6a4f),
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(24),
+                                ),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                              ),
+                              onPressed: isLoading
+                                  ? null
+                                  : () async {
+                                      setDialogState(() {
+                                        isLoading = true;
+                                      });
+                                      try {
+                                        // 1. 如果有旋转，则先物理旋转并写回文件，且重置 quarterTurns
+                                        if (quarterTurns % 4 != 0) {
+                                          await _rotateImageFile(path, quarterTurns);
+                                          setDialogState(() {
+                                            quarterTurns = 0;
+                                          });
+                                        }
+
+                                        // 2. 调用 OCR 和 Gemma 提取
+                                        final ocrResult = await _paddleOcr
+                                            .recognizeTable(path,
+                                                rowMergeTolerance:
+                                                    _ocrRowMergeTolerance);
+                                        final ocrText = ocrResult.editableText;
+                                        final extracted = await _gemmaExtractor
+                                            .extract(ocrText);
+
+                                        newDraftItems = extracted.items
+                                            .map((item) => InboundDraftItem(
+                                                  productName: item.productName,
+                                                  quantity: item.quantity,
+                                                  productCode: item.productCode,
+                                                  purchasePrice: item.purchasePrice,
+                                                  salePrice: item.salePrice,
+                                                  sourceText: '重新识别提取',
+                                                ))
+                                            .toList();
+
+                                        setDialogState(() {
+                                          currentStep = 2;
+                                          isLoading = false;
+                                        });
+                                      } catch (e) {
+                                        setDialogState(() {
+                                          isLoading = false;
+                                        });
+                                        if (dialogContext.mounted) {
+                                          ScaffoldMessenger.of(dialogContext)
+                                              .showSnackBar(SnackBar(
+                                                  content: Text('识别失败: $e')));
+                                        }
+                                      }
+                                    },
+                              icon: const Icon(Icons.document_scanner_outlined,
+                                  size: 18),
+                              label: const Text(
+                                '开始识别',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
                           ),
                         ],
                       ),
-                      const SizedBox(height: 16),
-
-                      // 主体
-                      if (currentStep == 1) ...[
-                        // 第一步：展示预览及旋转
-                        Expanded(
-                          child: Stack(
-                            alignment: Alignment.center,
-                            children: [
-                              Container(
-                                width: double.infinity,
-                                decoration: BoxDecoration(
-                                  color: Colors.grey.shade100,
-                                  borderRadius: BorderRadius.circular(16),
-                                ),
-                                clipBehavior: Clip.antiAlias,
-                                child: InteractiveViewer(
-                                  maxScale: 4.0,
+                    ] else ...[
+                      // 第二步：识别完成商品预览
+                      const Text(
+                        '二次识别已完成！商品清单预览：',
+                        style: TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF475569),
+                        ),
+                      ),
+                      const SizedBox(height: 12),
+                      ConstrainedBox(
+                        constraints: const BoxConstraints(maxHeight: 260),
+                        child: Container(
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFF4F6F4),
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          clipBehavior: Clip.antiAlias,
+                          child: newDraftItems.isEmpty
+                              ? const SizedBox(
+                                  height: 100,
                                   child: Center(
-                                    child: RotatedBox(
-                                      quarterTurns: quarterTurns,
-                                      child: Image.file(
-                                        File(path),
-                                        fit: BoxFit.contain,
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                              ),
-                              if (isLoading)
-                                Container(
-                                  decoration: BoxDecoration(
-                                    color: Colors.black.withOpacity(0.3),
-                                    borderRadius: BorderRadius.circular(16),
-                                  ),
-                                  child: const Center(
-                                    child: CircularProgressIndicator(
-                                      color: Color(0xff2d6a4f),
-                                    ),
-                                  ),
-                                ),
-                            ],
-                          ),
-                        ),
-                        const SizedBox(height: 16),
-                        // 底部按钮 Row
-                        Row(
-                          children: [
-                            Expanded(
-                              child: OutlinedButton.icon(
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: const Color(0xff2d6a4f),
-                                  side: const BorderSide(
-                                      color: Color(0xff2d6a4f), width: 1.2),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(24),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
-                                ),
-                                onPressed: isLoading
-                                    ? null
-                                    : () {
-                                        setDialogState(() {
-                                          quarterTurns = (quarterTurns + 1) % 4;
-                                        });
-                                      },
-                                icon: const Icon(Icons.rotate_right, size: 18),
-                                label: const Text(
-                                  '旋转90°',
-                                  style: TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: FilledButton.icon(
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: const Color(0xff2d6a4f),
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(24),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
-                                ),
-                                onPressed: isLoading
-                                    ? null
-                                    : () async {
-                                        setDialogState(() {
-                                          isLoading = true;
-                                        });
-                                        try {
-                                          // 1. 如果有旋转，则先物理旋转并写回文件，且重置 quarterTurns
-                                          if (quarterTurns % 4 != 0) {
-                                            await _rotateImageFile(path, quarterTurns);
-                                            setDialogState(() {
-                                              quarterTurns = 0;
-                                            });
-                                          }
-
-                                          // 2. 调用 OCR 和 Gemma 提取
-                                          final ocrResult = await _paddleOcr
-                                              .recognizeTable(path,
-                                                  rowMergeTolerance:
-                                                      _ocrRowMergeTolerance);
-                                          final ocrText = ocrResult.editableText;
-                                          final extracted = await _gemmaExtractor
-                                              .extract(ocrText);
-
-                                          newDraftItems = extracted.items
-                                              .map((item) => InboundDraftItem(
-                                                    productName: item.productName,
-                                                    quantity: item.quantity,
-                                                    productCode: item.productCode,
-                                                    purchasePrice: item.purchasePrice,
-                                                    salePrice: item.salePrice,
-                                                    sourceText: '重新识别提取',
-                                                  ))
-                                              .toList();
-
-                                          setDialogState(() {
-                                            currentStep = 2;
-                                            isLoading = false;
-                                          });
-                                        } catch (e) {
-                                          setDialogState(() {
-                                            isLoading = false;
-                                          });
-                                          if (dialogContext.mounted) {
-                                            ScaffoldMessenger.of(dialogContext)
-                                                .showSnackBar(SnackBar(
-                                                    content: Text('识别失败: $e')));
-                                          }
-                                        }
-                                      },
-                                icon: const Icon(Icons.document_scanner_outlined,
-                                    size: 18),
-                                label: const Text(
-                                  '开始识别',
-                                  style: TextStyle(fontWeight: FontWeight.bold),
-                                ),
-                              ),
-                            ),
-                          ],
-                        ),
-                      ] else ...[
-                        // 第二步：识别完成商品预览
-                        const Text(
-                          '二次识别已完成！商品清单预览：',
-                          style: TextStyle(
-                            fontSize: 14,
-                            fontWeight: FontWeight.bold,
-                            color: Color(0xFF475569),
-                          ),
-                        ),
-                        const SizedBox(height: 12),
-                        Expanded(
-                          child: Container(
-                            decoration: BoxDecoration(
-                              color: const Color(0xFFF4F6F4),
-                              borderRadius: BorderRadius.circular(16),
-                            ),
-                            clipBehavior: Clip.antiAlias,
-                            child: newDraftItems.isEmpty
-                                ? const Center(
                                     child: Text(
                                       '未提取到商品信息',
                                       style: TextStyle(color: Colors.grey),
                                     ),
-                                  )
-                                : ListView.separated(
-                                    padding: const EdgeInsets.symmetric(vertical: 8),
-                                    itemCount: newDraftItems.length,
-                                    separatorBuilder: (context, index) =>
-                                        Divider(height: 1, color: Colors.grey.shade200),
-                                    itemBuilder: (context, index) {
-                                      final item = newDraftItems[index];
-                                      return Padding(
-                                        padding: const EdgeInsets.symmetric(
-                                            vertical: 12, horizontal: 16),
-                                        child: Row(
-                                          mainAxisAlignment:
-                                              MainAxisAlignment.spaceBetween,
-                                          children: [
-                                            Expanded(
-                                              child: Text(
-                                                item.productName,
-                                                style: const TextStyle(
-                                                  fontSize: 14,
-                                                  fontWeight: FontWeight.bold,
-                                                  color: Color(0xFF1E293B),
-                                                ),
-                                                maxLines: 2,
-                                                overflow: TextOverflow.ellipsis,
-                                              ),
-                                            ),
-                                            const SizedBox(width: 12),
-                                            Text(
-                                              'x${item.quantity}',
+                                  ),
+                                )
+                              : ListView.separated(
+                                  shrinkWrap: true,
+                                  physics: const ClampingScrollPhysics(),
+                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  itemCount: newDraftItems.length,
+                                  separatorBuilder: (context, index) =>
+                                      Divider(height: 1, color: Colors.grey.shade200),
+                                  itemBuilder: (context, index) {
+                                    final item = newDraftItems[index];
+                                    return Padding(
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 12, horizontal: 16),
+                                      child: Row(
+                                        mainAxisAlignment:
+                                            MainAxisAlignment.spaceBetween,
+                                        children: [
+                                          Expanded(
+                                            child: Text(
+                                              item.productName,
                                               style: const TextStyle(
-                                                fontSize: 15,
+                                                fontSize: 14,
                                                 fontWeight: FontWeight.bold,
-                                                color: Color(0xff2d6a4f),
+                                                color: Color(0xFF1E293B),
                                               ),
+                                              maxLines: 2,
+                                              overflow: TextOverflow.ellipsis,
                                             ),
-                                          ],
-                                        ),
-                                      );
-                                    },
-                                  ),
+                                          ),
+                                          const SizedBox(width: 12),
+                                          Text(
+                                            'x${item.quantity}',
+                                            style: const TextStyle(
+                                              fontSize: 15,
+                                              fontWeight: FontWeight.bold,
+                                              color: Color(0xff2d6a4f),
+                                            ),
+                                          ),
+                                        ],
+                                      ),
+                                    );
+                                  },
+                                ),
+                        ),
+                      ),
+                      const SizedBox(height: 16),
+                      // 底部按钮 Row
+                      Row(
+                        children: [
+                          Expanded(
+                            child: OutlinedButton(
+                              style: OutlinedButton.styleFrom(
+                                foregroundColor: const Color(0xff2d6a4f),
+                                side: const BorderSide(
+                                    color: Color(0xff2d6a4f), width: 1.2),
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(24),
+                                ),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
+                              ),
+                              onPressed: () {
+                                setDialogState(() {
+                                  currentStep = 1;
+                                });
+                              },
+                              child: const Text(
+                                '重新旋转',
+                                style: TextStyle(fontWeight: FontWeight.bold),
+                              ),
+                            ),
                           ),
-                        ),
-                        const SizedBox(height: 16),
-                        // 底部按钮 Row
-                        Row(
-                          children: [
-                            Expanded(
-                              child: OutlinedButton(
-                                style: OutlinedButton.styleFrom(
-                                  foregroundColor: const Color(0xff2d6a4f),
-                                  side: const BorderSide(
-                                      color: Color(0xff2d6a4f), width: 1.2),
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(24),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: FilledButton(
+                              style: FilledButton.styleFrom(
+                                backgroundColor: const Color(0xff2d6a4f),
+                                foregroundColor: Colors.white,
+                                shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(24),
                                 ),
-                                onPressed: () {
-                                  setDialogState(() {
-                                    currentStep = 1;
-                                  });
-                                },
-                                child: const Text(
-                                  '重新旋转',
-                                  style: TextStyle(fontWeight: FontWeight.bold),
-                                ),
+                                padding: const EdgeInsets.symmetric(vertical: 12),
                               ),
-                            ),
-                            const SizedBox(width: 12),
-                            Expanded(
-                              child: FilledButton(
-                                style: FilledButton.styleFrom(
-                                  backgroundColor: const Color(0xff2d6a4f),
-                                  foregroundColor: Colors.white,
-                                  shape: RoundedRectangleBorder(
-                                    borderRadius: BorderRadius.circular(24),
-                                  ),
-                                  padding: const EdgeInsets.symmetric(vertical: 12),
-                                ),
-                                onPressed: newDraftItems.isEmpty
-                                    ? null
-                                    : () async {
-                                        try {
-                                          await _database.updateInboundReceiptItems(
-                                              receipt.id, newDraftItems);
-                                          if (dialogContext.mounted) {
-                                            Navigator.pop(dialogContext);
-                                            ScaffoldMessenger.of(context)
-                                                .showSnackBar(const SnackBar(
-                                                    content: Text('重新识别并更新成功！')));
-                                          }
-                                          _refreshData();
-                                          setState(() {
-                                            _expandedReceiptId = null;
-                                          });
-                                        } catch (e) {
-                                          if (dialogContext.mounted) {
-                                            ScaffoldMessenger.of(dialogContext)
-                                                .showSnackBar(SnackBar(
-                                                    content: Text('覆写保存失败: $e')));
-                                          }
+                              onPressed: newDraftItems.isEmpty
+                                  ? null
+                                  : () async {
+                                      try {
+                                        await _database.updateInboundReceiptItems(
+                                            receipt.id, newDraftItems);
+                                        if (dialogContext.mounted) {
+                                          Navigator.pop(dialogContext);
+                                          ScaffoldMessenger.of(context)
+                                              .showSnackBar(const SnackBar(
+                                                  content: Text('重新识别并更新成功！')));
                                         }
-                                      },
-                                child: const Text(
-                                  '确认覆写清单',
-                                  style: TextStyle(fontWeight: FontWeight.bold),
-                                ),
+                                        _refreshData();
+                                        setState(() {
+                                          _expandedReceiptId = null;
+                                        });
+                                      } catch (e) {
+                                        if (dialogContext.mounted) {
+                                          ScaffoldMessenger.of(dialogContext)
+                                              .showSnackBar(SnackBar(
+                                                  content: Text('覆写保存失败: $e')));
+                                        }
+                                      }
+                                    },
+                              child: const Text(
+                                '确认覆写清单',
+                                style: TextStyle(fontWeight: FontWeight.bold),
                               ),
                             ),
-                          ],
-                        ),
-                      ],
+                          ),
+                        ],
+                      ),
                     ],
-                  ),
+                  ],
                 ),
               ),
             );
