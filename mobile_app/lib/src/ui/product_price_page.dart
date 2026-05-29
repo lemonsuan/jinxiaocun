@@ -424,11 +424,11 @@ class _ProductPricePageState extends State<ProductPricePage> {
                   ),
                 ),
               ),
-            ),
-          );
-        },
-      );
-    };
+            );
+          },
+        );
+      },
+    );
   }
 
   Widget _priceInputField({

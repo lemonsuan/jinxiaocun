@@ -91,7 +91,7 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
 
   Future<void> _importExternalBackup() async {
     try {
-      final result = await FilePicker.platform.pickFiles(
+      final result = await FilePicker.pickFiles(
         type: FileType.custom,
         allowedExtensions: ['json'],
       );
@@ -278,7 +278,7 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
             tooltip: '浏览系统文件',
             onPressed: () async {
               try {
-                await FilePicker.platform.pickFiles(
+                await FilePicker.pickFiles(
                   dialogTitle: '系统文件浏览器',
                   type: FileType.any,
                 );
