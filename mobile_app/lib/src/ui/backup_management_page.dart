@@ -145,7 +145,7 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
     }
   }
 
-  // 3秒倒计时防误触弹窗锁
+  // 恢复确认弹窗
   void _showRestoreConfirmationDialog(Uint8List bytes, String fileName) {
     final colorScheme = Theme.of(context).colorScheme;
 
@@ -153,116 +153,86 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
       context: context,
       barrierDismissible: false, // 强制安全操作
       builder: (context) {
-        return StatefulBuilder(
-          builder: (context, setStateDialog) {
-            int secondsLeft = 3;
-            Timer? timer;
-
-            void startCountdown() {
-              timer = Timer.periodic(const Duration(seconds: 1), (t) {
-                if (secondsLeft > 0) {
-                  setStateDialog(() {
-                    secondsLeft--;
-                  });
-                } else {
-                  timer?.cancel();
-                }
-              });
-            }
-
-            // 在 initState 模拟
-            startCountdown();
-
-            return PopScope(
-              canPop: false, // 禁用返回键退出
-              child: BackdropFilter(
-                filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
-                child: AlertDialog(
-                  backgroundColor: colorScheme.surface.withOpacity(0.9),
-                  title: Row(
-                    children: [
-                      Icon(Icons.warning_amber_rounded,
-                          color: colorScheme.error),
-                      const SizedBox(width: 8),
-                      const Text('安全警示',
-                          style: TextStyle(fontWeight: FontWeight.bold)),
-                    ],
-                  ),
-                  content: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        '您正在尝试恢复系统数据库！',
-                        style: TextStyle(
-                            fontWeight: FontWeight.bold,
-                            color: Colors.redAccent),
-                      ),
-                      const SizedBox(height: 12),
-                      Text('此操作将用备份数据覆盖当前手机中的所有库存、商品和单据数据。覆盖后，当前数据将不可恢复！',
-                          style: TextStyle(
-                              color: colorScheme.outline,
-                              fontSize: 13,
-                              height: 1.4)),
-                      const SizedBox(height: 12),
-                      Text('目标备份文件: $fileName',
-                          style: const TextStyle(
-                              fontWeight: FontWeight.w600, fontSize: 12)),
-                    ],
-                  ),
-                  actions: [
-                    TextButton(
-                      onPressed: () {
-                        timer?.cancel();
-                        Navigator.pop(context);
-                      },
-                      child: const Text('取消'),
-                    ),
-                    FilledButton(
-                      style: FilledButton.styleFrom(
-                        backgroundColor: secondsLeft > 0
-                            ? Colors.grey.shade400
-                            : colorScheme.error,
-                        foregroundColor: Colors.white,
-                      ),
-                      onPressed: secondsLeft > 0
-                          ? null
-                          : () async {
-                              timer?.cancel();
-                              Navigator.pop(context); // 关弹窗
-
-                              setState(() => _isLoading = true);
-                              try {
-                                await widget.database.importBackupBytes(bytes);
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(
-                                        content: Text('数据库覆盖恢复成功！数据已更新')),
-                                  );
-                                  widget.onDatabaseRestored?.call();
-                                }
-                              } catch (e) {
-                                if (mounted) {
-                                  ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('还原失败: $e')),
-                                  );
-                                }
-                              } finally {
-                                setState(() => _isLoading = false);
-                              }
-                            },
-                      child: Text(
-                        secondsLeft > 0
-                            ? '请仔细阅读确认 (${secondsLeft}s)'
-                            : '确认覆盖还原',
-                        style: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                    ),
-                  ],
-                ),
+        return PopScope(
+          canPop: false, // 禁用返回键退出
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: AlertDialog(
+              backgroundColor: colorScheme.surface.withOpacity(0.9),
+              title: Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded,
+                      color: colorScheme.error),
+                  const SizedBox(width: 8),
+                  const Text('安全警示',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                ],
               ),
-            );
-          },
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '您正在尝试恢复系统数据库！',
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.redAccent),
+                  ),
+                  const SizedBox(height: 12),
+                  Text('此操作将用备份数据覆盖当前手机中的所有库存、商品和单据数据。覆盖后，当前数据将不可恢复！',
+                      style: TextStyle(
+                          color: colorScheme.outline,
+                          fontSize: 13,
+                          height: 1.4)),
+                  const SizedBox(height: 12),
+                  Text('目标备份文件: $fileName',
+                      style: const TextStyle(
+                          fontWeight: FontWeight.w600, fontSize: 12)),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(context);
+                  },
+                  child: const Text('取消'),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: colorScheme.error,
+                    foregroundColor: Colors.white,
+                  ),
+                  onPressed: () async {
+                    Navigator.pop(context); // 关弹窗
+
+                    setState(() => _isLoading = true);
+                    try {
+                      await widget.database.importBackupBytes(bytes);
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          const SnackBar(
+                              content: Text('数据库覆盖恢复成功！数据已更新')),
+                        );
+                        widget.onDatabaseRestored?.call();
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        ScaffoldMessenger.of(context).showSnackBar(
+                          SnackBar(content: Text('还原失败: $e')),
+                        );
+                      }
+                    } finally {
+                      setState(() => _isLoading = false);
+                    }
+                  },
+                  child: const Text(
+                    '确认覆盖还原',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+          ),
         );
       },
     );
