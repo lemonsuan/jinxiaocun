@@ -46,10 +46,16 @@ class _AiConfigPageState extends State<AiConfigPage> {
     final model = await widget.database.loadGeminiModel();
 
     setState(() {
-      _selectedFormat = format;
+      _selectedFormat = format == 'gemini' ? 'anthropic' : format;
       _urlController.text = url;
       _keyController.text = key;
-      _modelController.text = model.isNotEmpty ? model : 'deepseek-v4-flash';
+      if (model.isNotEmpty) {
+        _modelController.text = model;
+      } else {
+        _modelController.text = _selectedFormat == 'anthropic'
+            ? 'claude-3-5-sonnet-20241022'
+            : 'deepseek-v4-flash';
+      }
     });
   }
 
@@ -111,21 +117,29 @@ class _AiConfigPageState extends State<AiConfigPage> {
           throw Exception('HTTP ${response.statusCode}: ${response.body}');
         }
       } else {
-        // gemini 格式
+        // anthropic 格式
+        if (url.isEmpty) {
+          throw Exception('请输入接口地址 (API URL)');
+        }
+        var requestUrl = url;
+        if (requestUrl.endsWith('/')) {
+          requestUrl = requestUrl.substring(0, requestUrl.length - 1);
+        }
         final response = await http.get(
-          Uri.parse('https://generativelanguage.googleapis.com/v1beta/models?key=$key'),
+          Uri.parse('$requestUrl/v1/models'),
+          headers: {
+            'x-api-key': key,
+            'anthropic-version': '2023-06-01',
+          },
         ).timeout(const Duration(seconds: 10));
 
         if (response.statusCode == 200) {
           final data = jsonDecode(utf8.decode(response.bodyBytes));
-          if (data is Map && data['models'] is List) {
-            final list = data['models'] as List;
+          if (data is Map && data['data'] is List) {
+            final list = data['data'] as List;
             final models = list
-                .map((m) {
-                  final name = m['name']?.toString() ?? '';
-                  return name.replaceFirst('models/', '');
-                })
-                .where((name) => name.isNotEmpty)
+                .map((m) => m['id']?.toString() ?? '')
+                .where((m) => m.isNotEmpty)
                 .toList();
             setState(() {
               _models = models;
@@ -135,11 +149,11 @@ class _AiConfigPageState extends State<AiConfigPage> {
             });
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('成功加载了 ${models.length} 个 Gemini 模型！')),
+                SnackBar(content: Text('成功加载了 ${models.length} 个 Anthropic 模型！')),
               );
             }
           } else {
-            throw Exception('返回数据格式不符合 Gemini 规范');
+            throw Exception('返回数据格式不符合 Anthropic 规范');
           }
         } else {
           throw Exception('HTTP ${response.statusCode}: ${response.body}');
@@ -227,8 +241,8 @@ class _AiConfigPageState extends State<AiConfigPage> {
                           icon: Icon(Icons.api_outlined),
                         ),
                         ButtonSegment<String>(
-                          value: 'gemini',
-                          label: Text('Gemini 原生协议'),
+                          value: 'anthropic',
+                          label: Text('Anthropic 原生协议'),
                           icon: Icon(Icons.auto_awesome_outlined),
                         ),
                       ],
@@ -237,10 +251,10 @@ class _AiConfigPageState extends State<AiConfigPage> {
                         setState(() {
                           _selectedFormat = val.first;
                           _models.clear(); // 清空旧模型列表
-                          if (_selectedFormat == 'gemini') {
+                          if (_selectedFormat == 'anthropic') {
                             _urlController.text =
-                                'https://generativelanguage.googleapis.com';
-                            _modelController.text = 'gemini-1.5-flash';
+                                'https://api.anthropic.com';
+                            _modelController.text = 'claude-3-5-sonnet-20241022';
                           } else {
                             _urlController.text = 'https://api.deepseek.com';
                             _modelController.text = 'deepseek-v4-flash';
@@ -264,7 +278,7 @@ class _AiConfigPageState extends State<AiConfigPage> {
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          if (_selectedFormat == 'openai') ...[
+                          if (_selectedFormat == 'openai' || _selectedFormat == 'anthropic') ...[
                             TextFormField(
                               controller: _urlController,
                               decoration: const InputDecoration(

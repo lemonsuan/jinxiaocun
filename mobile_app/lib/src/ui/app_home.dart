@@ -1505,78 +1505,116 @@ class _AppHomeState extends State<AppHome> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. 未展开时展现头部 Row
-              if (!isExpanded)
-                Row(
-                  crossAxisAlignment: CrossAxisAlignment.center,
-                  children: [
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
+              // 1. 头部 Row (始终展现，左侧70%标题，右侧30%结算按钮)
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    flex: 7,
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        if (isExpanded) ...[
                           Text(
-                            '快递：${receipt.trackingNumber}',
-                            style: const TextStyle(
-                                fontSize: 16, fontWeight: FontWeight.bold),
+                            '单号：${receipt.id}',
+                            style: TextStyle(
+                              fontSize: 11,
+                              color: Colors.grey.shade600,
+                              fontWeight: FontWeight.w500,
+                            ),
                           ),
-                          const SizedBox(height: 6),
-                          Text(
-                            '$timeStr  ·  $totalQuantity 件货',
-                            style: const TextStyle(
-                                fontSize: 12,
-                                color: Colors.grey,
-                                fontWeight: FontWeight.w500),
-                          ),
+                          const SizedBox(height: 4),
                         ],
+                        Text(
+                          '快递：${receipt.trackingNumber.isEmpty ? "无" : receipt.trackingNumber}',
+                          style: const TextStyle(
+                            fontSize: 15,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        const SizedBox(height: 4),
+                        Text(
+                          '$timeStr  ·  $totalQuantity 件货',
+                          style: const TextStyle(
+                            fontSize: 11,
+                            color: Colors.grey,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // 右侧 30%：结算状态按钮，支持点击切换
+                  Expanded(
+                    flex: 3,
+                    child: GestureDetector(
+                      onTap: () async {
+                        try {
+                          await _database.setReceiptSettled(
+                              receipt.id, !receipt.isSettled);
+                          await _refreshData();
+                        } catch (e) {
+                          if (mounted) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(content: Text('更新结算状态失败: $e')),
+                            );
+                          }
+                        }
+                      },
+                      child: Container(
+                        alignment: Alignment.center,
+                        padding: const EdgeInsets.symmetric(vertical: 6),
+                        decoration: BoxDecoration(
+                          color: receipt.isSettled
+                              ? const Color(0xFFE8F5E9)
+                              : const Color(0xFFFFEBEE),
+                          border: Border.all(
+                            color: receipt.isSettled
+                                ? const Color(0xff2d6a4f)
+                                : Colors.redAccent,
+                            width: 1.0,
+                          ),
+                          borderRadius: BorderRadius.circular(20),
+                        ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Container(
+                              width: 6,
+                              height: 6,
+                              decoration: BoxDecoration(
+                                shape: BoxShape.circle,
+                                color: receipt.isSettled
+                                    ? const Color(0xff2d6a4f)
+                                    : Colors.redAccent,
+                              ),
+                            ),
+                            const SizedBox(width: 4),
+                            Text(
+                              receipt.isSettled ? '已结算' : '未结算',
+                              style: TextStyle(
+                                color: receipt.isSettled
+                                    ? const Color(0xff2d6a4f)
+                                    : Colors.redAccent,
+                                fontSize: 11,
+                                fontWeight: FontWeight.bold,
+                              ),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    // 未结算/已结算椭圆空心药丸 Badge
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                          horizontal: 10, vertical: 4),
-                      decoration: BoxDecoration(
-                        border: Border.all(
-                          color: receipt.isSettled
-                              ? const Color(0xff2d6a4f)
-                              : Colors.redAccent,
-                          width: 1.0,
-                        ),
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Container(
-                            width: 6,
-                            height: 6,
-                            decoration: BoxDecoration(
-                              shape: BoxShape.circle,
-                              color: receipt.isSettled
-                                  ? const Color(0xff2d6a4f)
-                                  : Colors.redAccent,
-                            ),
-                          ),
-                          const SizedBox(width: 6),
-                          Text(
-                            receipt.isSettled ? '已结算' : '未结算',
-                            style: TextStyle(
-                              color: receipt.isSettled
-                                  ? const Color(0xff2d6a4f)
-                                  : Colors.redAccent,
-                              fontSize: 12,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ],
-                      ),
-                    )
-                  ],
-                ),
+                  ),
+                ],
+              ),
 
               // 2. 展开显示商品与操作
               if (isExpanded) ...[
-                // 已在上方的 Row 隐藏，直接平铺展示商品列表，无需 SizedBox 和 Divider
+                const SizedBox(height: 12),
+                const Divider(height: 1),
+                const SizedBox(height: 8),
 
                 // 商品明细列表
                 ListView.builder(

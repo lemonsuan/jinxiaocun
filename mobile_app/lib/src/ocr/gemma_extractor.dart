@@ -29,7 +29,7 @@ class GemmaExtractor {
     var model = await _database.loadGeminiModel();
 
     if (apiKey.isEmpty) {
-      if (aiFormat == 'gemini') {
+      if (aiFormat == 'gemini' || aiFormat == 'anthropic') {
         apiKey = '';
       } else {
         apiKey = 'sk-7530d0e7a047446591a992ea3c13c9d2';
@@ -37,8 +37,8 @@ class GemmaExtractor {
     }
 
     if (apiUrl.isEmpty) {
-      if (aiFormat == 'gemini') {
-        apiUrl = 'https://generativelanguage.googleapis.com';
+      if (aiFormat == 'gemini' || aiFormat == 'anthropic') {
+        apiUrl = 'https://api.anthropic.com';
       } else {
         apiUrl = 'https://api.deepseek.com';
       }
@@ -49,8 +49,8 @@ class GemmaExtractor {
     }
 
     if (model.isEmpty) {
-      if (aiFormat == 'gemini') {
-        model = 'gemini-1.5-flash';
+      if (aiFormat == 'gemini' || aiFormat == 'anthropic') {
+        model = 'claude-3-5-sonnet-20241022';
       } else {
         model = 'deepseek-v4-flash';
       }
@@ -66,36 +66,37 @@ class GemmaExtractor {
 
     String content = '';
 
-    if (aiFormat == 'gemini') {
+    if (aiFormat == 'gemini' || aiFormat == 'anthropic') {
       final response = await http
           .post(
-            Uri.parse('$apiUrl/v1beta/models/$model:generateContent?key=$apiKey'),
+            Uri.parse('$apiUrl/v1/messages'),
             headers: {
               'Content-Type': 'application/json; charset=utf-8',
+              'x-api-key': apiKey,
+              'anthropic-version': '2023-06-01',
             },
             body: jsonEncode({
-              'contents': [
+              'model': model,
+              'max_tokens': 2048,
+              'system': systemPrompt,
+              'messages': [
                 {
-                  'parts': [
-                    {'text': '$systemPrompt\n\n$userPrompt'}
-                  ]
+                  'role': 'user',
+                  'content': userPrompt,
                 }
               ],
-              'generationConfig': {
-                'responseMimeType': 'application/json',
-                'temperature': 0.0,
-              },
+              'temperature': 0.0,
             }),
           )
           .timeout(const Duration(seconds: 30));
 
       if (response.statusCode != 200) {
         throw Exception(
-            'Gemini API请求失败 (HTTP ${response.statusCode}): ${utf8.decode(response.bodyBytes)}');
+            'Anthropic API请求失败 (HTTP ${response.statusCode}): ${utf8.decode(response.bodyBytes)}');
       }
 
       final data = jsonDecode(utf8.decode(response.bodyBytes));
-      content = data['candidates'][0]['content']['parts'][0]['text'].toString().trim();
+      content = data['content'][0]['text'].toString().trim();
     } else {
       final response = await http
           .post(
