@@ -43,6 +43,7 @@ class LocalInventoryDatabase {
   static const String _geminiApiKey = 'gemini_api_key';
   static const String _geminiApiUrl = 'gemini_api_url';
   static const String _geminiModelKey = 'gemini_model';
+  static const String _aiApiFormatKey = 'ai_api_format';
 
   Database? _database;
 
@@ -179,6 +180,32 @@ class LocalInventoryDatabase {
       'app_settings',
       {
         'key': _geminiModelKey,
+        'value': value,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<String> loadAiApiFormat() async {
+    final rows = await _db.query(
+      'app_settings',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: [_aiApiFormatKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return 'openai';
+    }
+    return rows.single['value']! as String;
+  }
+
+  Future<void> saveAiApiFormat(String value) async {
+    await _db.insert(
+      'app_settings',
+      {
+        'key': _aiApiFormatKey,
         'value': value,
         'updated_at': DateTime.now().toIso8601String(),
       },

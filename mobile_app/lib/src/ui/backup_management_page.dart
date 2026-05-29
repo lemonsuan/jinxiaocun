@@ -7,7 +7,6 @@ import 'package:flutter/material.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import '../data/local_inventory_database.dart';
-import '../domain/models.dart';
 
 class BackupManagementPage extends StatefulWidget {
   final LocalInventoryDatabase database;
@@ -48,7 +47,8 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
       final dir = await _getBackupDir();
       final list = dir.listSync();
       // 只筛选 json 备份文件并按最后修改时间排序
-      list.retainWhere((entity) => entity is File && entity.path.endsWith('.json'));
+      list.retainWhere(
+          (entity) => entity is File && entity.path.endsWith('.json'));
       list.sort((a, b) {
         return b.statSync().modified.compareTo(a.statSync().modified);
       });
@@ -66,8 +66,11 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
     try {
       final bytes = await widget.database.exportBackupBytes();
       final dir = await _getBackupDir();
-      
-      final timestamp = DateTime.now().toIso8601String().replaceAll(':', '-').replaceAll('.', '-');
+
+      final timestamp = DateTime.now()
+          .toIso8601String()
+          .replaceAll(':', '-')
+          .replaceAll('.', '-');
       final fileName = 'inventory_backup_$timestamp.json';
       final file = File(p.join(dir.path, fileName));
       await file.writeAsBytes(bytes, flush: true);
@@ -100,7 +103,7 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
       }
       final file = File(result.files.single.path!);
       final bytes = await file.readAsBytes();
-      
+
       if (mounted) {
         _showRestoreConfirmationDialog(bytes, result.files.single.name);
       }
@@ -145,7 +148,7 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
   // 3秒倒计时防误触弹窗锁
   void _showRestoreConfirmationDialog(Uint8List bytes, String fileName) {
     final colorScheme = Theme.of(context).colorScheme;
-    
+
     showDialog(
       context: context,
       barrierDismissible: false, // 强制安全操作
@@ -178,9 +181,11 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                   backgroundColor: colorScheme.surface.withOpacity(0.9),
                   title: Row(
                     children: [
-                      Icon(Icons.warning_amber_rounded, color: colorScheme.error),
+                      Icon(Icons.warning_amber_rounded,
+                          color: colorScheme.error),
                       const SizedBox(width: 8),
-                      const Text('安全警示', style: TextStyle(fontWeight: FontWeight.bold)),
+                      const Text('安全警示',
+                          style: TextStyle(fontWeight: FontWeight.bold)),
                     ],
                   ),
                   content: Column(
@@ -189,14 +194,20 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                     children: [
                       const Text(
                         '您正在尝试恢复系统数据库！',
-                        style: TextStyle(fontWeight: FontWeight.bold, color: Colors.redAccent),
+                        style: TextStyle(
+                            fontWeight: FontWeight.bold,
+                            color: Colors.redAccent),
                       ),
                       const SizedBox(height: 12),
                       Text('此操作将用备份数据覆盖当前手机中的所有库存、商品和单据数据。覆盖后，当前数据将不可恢复！',
-                          style: TextStyle(color: colorScheme.outline, fontSize: 13, height: 1.4)),
+                          style: TextStyle(
+                              color: colorScheme.outline,
+                              fontSize: 13,
+                              height: 1.4)),
                       const SizedBox(height: 12),
                       Text('目标备份文件: $fileName',
-                          style: const TextStyle(fontWeight: FontWeight.w600, fontSize: 12)),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 12)),
                     ],
                   ),
                   actions: [
@@ -209,7 +220,9 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                     ),
                     FilledButton(
                       style: FilledButton.styleFrom(
-                        backgroundColor: secondsLeft > 0 ? Colors.grey.shade400 : colorScheme.error,
+                        backgroundColor: secondsLeft > 0
+                            ? Colors.grey.shade400
+                            : colorScheme.error,
                         foregroundColor: Colors.white,
                       ),
                       onPressed: secondsLeft > 0
@@ -217,13 +230,14 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                           : () async {
                               timer?.cancel();
                               Navigator.pop(context); // 关弹窗
-                              
+
                               setState(() => _isLoading = true);
                               try {
                                 await widget.database.importBackupBytes(bytes);
                                 if (mounted) {
                                   ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('数据库覆盖恢复成功！数据已更新')),
+                                    const SnackBar(
+                                        content: Text('数据库覆盖恢复成功！数据已更新')),
                                   );
                                   widget.onDatabaseRestored?.call();
                                 }
@@ -238,7 +252,9 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                               }
                             },
                       child: Text(
-                        secondsLeft > 0 ? '请仔细阅读确认 (${secondsLeft}s)' : '确认覆盖还原',
+                        secondsLeft > 0
+                            ? '请仔细阅读确认 (${secondsLeft}s)'
+                            : '确认覆盖还原',
                         style: const TextStyle(fontWeight: FontWeight.bold),
                       ),
                     ),
@@ -269,7 +285,8 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('备份管理', style: TextStyle(fontWeight: FontWeight.bold)),
+        title:
+            const Text('备份管理', style: TextStyle(fontWeight: FontWeight.bold)),
         elevation: 0,
         backgroundColor: Colors.transparent,
         foregroundColor: colorScheme.onSurface,
@@ -303,7 +320,8 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                   padding: const EdgeInsets.only(bottom: 8),
                   child: Text(
                     '本地历史备份 (${_backupFiles.length})',
-                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                    style: const TextStyle(
+                        fontSize: 16, fontWeight: FontWeight.bold),
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -314,18 +332,23 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                     elevation: 0,
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(16),
-                      side: BorderSide(color: colorScheme.outlineVariant.withOpacity(0.5)),
+                      side: BorderSide(
+                          color: colorScheme.outlineVariant.withOpacity(0.5)),
                     ),
                     child: Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 40, horizontal: 16),
+                      padding: const EdgeInsets.symmetric(
+                          vertical: 40, horizontal: 16),
                       child: Column(
                         children: [
-                          Icon(Icons.backup_table_outlined, size: 40, color: colorScheme.outline.withOpacity(0.5)),
+                          Icon(Icons.backup_table_outlined,
+                              size: 40,
+                              color: colorScheme.outline.withOpacity(0.5)),
                           const SizedBox(height: 12),
                           Text(
                             '暂无本地备份记录，点击上方“一键导出”创建您的第一个备份',
                             textAlign: TextAlign.center,
-                            style: TextStyle(color: colorScheme.outline, fontSize: 13),
+                            style: TextStyle(
+                                color: colorScheme.outline, fontSize: 13),
                           ),
                         ],
                       ),
@@ -345,21 +368,25 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                       color: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
-                        side: BorderSide(color: Colors.grey.shade200.withOpacity(0.8)),
+                        side: BorderSide(
+                            color: Colors.grey.shade200.withOpacity(0.8)),
                       ),
                       child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
                         leading: Container(
                           padding: const EdgeInsets.all(10),
                           decoration: BoxDecoration(
                             color: const Color(0xFFE8F3ED),
                             borderRadius: BorderRadius.circular(8),
                           ),
-                          child: const Icon(Icons.history, color: Color(0xff2d6a4f), size: 20),
+                          child: const Icon(Icons.history,
+                              color: Color(0xff2d6a4f), size: 20),
                         ),
                         title: Text(
                           name,
-                          style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                          style: const TextStyle(
+                              fontSize: 14, fontWeight: FontWeight.bold),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                         ),
@@ -367,7 +394,11 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                           padding: const EdgeInsets.only(top: 4),
                           child: Text(
                             '$timeStr  ·  $sizeStr',
-                            style: const TextStyle(fontSize: 11, color: Colors.grey, height: 1.4, fontWeight: FontWeight.w500),
+                            style: const TextStyle(
+                                fontSize: 11,
+                                color: Colors.grey,
+                                height: 1.4,
+                                fontWeight: FontWeight.w500),
                           ),
                         ),
                         trailing: Row(
@@ -380,12 +411,17 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                                 visualDensity: VisualDensity.compact,
                               ),
                               onPressed: () => _restoreFromLocalFile(file),
-                              icon: const Icon(Icons.settings_backup_restore, size: 16),
-                              label: const Text('还原', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
+                              icon: const Icon(Icons.settings_backup_restore,
+                                  size: 16),
+                              label: const Text('还原',
+                                  style: TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      fontSize: 13)),
                             ),
                             const SizedBox(width: 8),
                             IconButton(
-                              icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
+                              icon: const Icon(Icons.delete_outline,
+                                  color: Colors.redAccent, size: 20),
                               onPressed: () => _deleteBackupFile(file),
                               visualDensity: VisualDensity.compact,
                             ),
@@ -417,12 +453,14 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                 style: FilledButton.styleFrom(
                   backgroundColor: const Color(0xFFFFF3E0),
                   foregroundColor: const Color(0xFFE65100),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
                 onPressed: _exportBackup,
                 icon: const Icon(Icons.unarchive_outlined, size: 18),
-                label: const Text('导出备份', style: TextStyle(fontWeight: FontWeight.bold)),
+                label: const Text('导出备份',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ),
             const SizedBox(width: 12),
@@ -431,12 +469,14 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                 style: FilledButton.styleFrom(
                   backgroundColor: const Color(0xFFE3F2FD),
                   foregroundColor: const Color(0xFF0D47A1),
-                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12)),
                   padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
                 onPressed: _importExternalBackup,
                 icon: const Icon(Icons.publish_outlined, size: 18),
-                label: const Text('导入备份', style: TextStyle(fontWeight: FontWeight.bold)),
+                label: const Text('导入备份',
+                    style: TextStyle(fontWeight: FontWeight.bold)),
               ),
             ),
           ],

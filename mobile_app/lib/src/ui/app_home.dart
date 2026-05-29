@@ -3,7 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-import 'package:file_picker/file_picker.dart';
+
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
@@ -20,8 +20,9 @@ import 'scanner_page.dart';
 import 'product_price_page.dart';
 import 'photo_count_page.dart';
 import 'backup_management_page.dart';
+import 'ai_config_page.dart';
 
-enum _BackupAction { exportData, importData }
+
 
 enum _HistorySettlementFilter { all, settled, unsettled }
 
@@ -72,7 +73,7 @@ class _AppHomeState extends State<AppHome> {
   final List<InboundDraftItem> _draftItems = [];
   final List<_OutboundCartEntry> _outboundCart = [];
   final List<String> _outboundImagePaths = [];
-  final Map<String, int> _stockAddQuantities = {};
+
   List<WarehouseStock> _stockTotals = const [];
   List<InboundReceipt> _inboundHistory = const [];
   List<OutboundOrder> _outboundHistory = const [];
@@ -81,7 +82,7 @@ class _AppHomeState extends State<AppHome> {
   double _ocrRowMergeTolerance = OcrSettings.defaultRowMergeTolerance;
   bool _isSettled = false;
   bool _isReady = false;
-  bool _isBackupBusy = false;
+
   int _selectedTabIndex = 0;
   int _inventorySubTabIndex = 0;
   int? _revealedDraftDeleteIndex;
@@ -176,7 +177,6 @@ class _AppHomeState extends State<AppHome> {
   }
 
   Widget _scanInboundTab() {
-    final colorScheme = Theme.of(context).colorScheme;
     return _page([
       _scanInboundHeader(),
 
@@ -460,7 +460,6 @@ class _AppHomeState extends State<AppHome> {
   }
 
   Widget _profileTab() {
-    final colorScheme = Theme.of(context).colorScheme;
     final valueText = _ocrRowMergeTolerance.toStringAsFixed(2);
 
     return _page([
@@ -529,6 +528,33 @@ class _AppHomeState extends State<AppHome> {
                       builder: (context) => ProductPricePage(
                         database: _database,
                         onPricesUpdated: _refreshData,
+                      ),
+                    ),
+                  );
+                },
+              ),
+              Divider(height: 1, color: Colors.grey.shade100),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.teal.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(Icons.auto_awesome_outlined,
+                      color: Colors.teal.shade600, size: 20),
+                ),
+                title: const Text('AI 智能提取配置',
+                    style:
+                        TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                subtitle: const Text('配置 OpenAI/Gemini 双格式并动态选择大模型',
+                    style: TextStyle(fontSize: 12, color: Colors.grey)),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => AiConfigPage(
+                        database: _database,
                       ),
                     ),
                   );
@@ -639,10 +665,7 @@ class _AppHomeState extends State<AppHome> {
     ]);
   }
 
-  Widget _ocrRowMergeToleranceControl() {
-    // 已废弃，因为滑块已在上面 1:1 原地内联整合
-    return const SizedBox.shrink();
-  }
+
 
   Widget _sectionTitle(String value) {
     return Padding(
@@ -683,47 +706,7 @@ class _AppHomeState extends State<AppHome> {
     );
   }
 
-  Widget _trackingRow() {
-    return Row(
-      children: [
-        Expanded(
-          child: TextField(
-            controller: _trackingController,
-            decoration: const InputDecoration(
-              labelText: '快递单号',
-              border: OutlineInputBorder(),
-            ),
-          ),
-        ),
-        const SizedBox(width: 8),
-        IconButton.filledTonal(
-          tooltip: '扫码',
-          onPressed: _scanTrackingNumber,
-          icon: const Icon(Icons.qr_code_scanner),
-        ),
-      ],
-    );
-  }
 
-  Widget _sellerOrderRow() {
-    return TextField(
-      controller: _sellerOrderController,
-      decoration: const InputDecoration(
-        labelText: '商家单号',
-        border: OutlineInputBorder(),
-      ),
-    );
-  }
-
-  Widget _rebateOrderRow() {
-    return TextField(
-      controller: _rebateOrderController,
-      decoration: const InputDecoration(
-        labelText: '返利单号',
-        border: OutlineInputBorder(),
-      ),
-    );
-  }
 
   Widget _historySettlementFilterControl() {
     return SegmentedButton<_HistorySettlementFilter>(
@@ -784,37 +767,7 @@ class _AppHomeState extends State<AppHome> {
           ),
           const SizedBox(width: 8),
           GestureDetector(
-            onTap: () {
-              showModalBottomSheet(
-                context: context,
-                builder: (context) {
-                  return SafeArea(
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        ListTile(
-                          leading: const Icon(Icons.auto_awesome,
-                              color: Colors.teal),
-                          title: const Text('AI 智能提取'),
-                          onTap: () {
-                            Navigator.pop(context);
-                            _extractWithAi();
-                          },
-                        ),
-                        ListTile(
-                          leading: const Icon(Icons.subject_outlined),
-                          title: const Text('识别文本'),
-                          onTap: () {
-                            Navigator.pop(context);
-                            _showOcrTextDialog();
-                          },
-                        ),
-                      ],
-                    ),
-                  );
-                },
-              );
-            },
+            onTap: _openAiExtractDialog,
             child: Container(
               width: 36,
               height: 36,
@@ -1011,7 +964,6 @@ class _AppHomeState extends State<AppHome> {
   }
 
   Widget _stockTile(WarehouseStock stock) {
-    final colorScheme = Theme.of(context).colorScheme;
     final isOutOfStock = stock.quantity <= 0;
 
     return Column(
@@ -1851,221 +1803,9 @@ class _AppHomeState extends State<AppHome> {
     );
   }
 
-  Widget _inboundReceiptItemList(
-    List<InboundDraftItem> items,
-    List<TextEditingController> quantityControllers, {
-    required VoidCallback onChanged,
-  }) {
-    if (items.isEmpty) {
-      return const ListTile(
-        dense: true,
-        contentPadding: EdgeInsets.zero,
-        title: Text('暂无商品清单'),
-      );
-    }
-    return ExpansionTile(
-      tilePadding: EdgeInsets.zero,
-      childrenPadding: EdgeInsets.zero,
-      title: Text('商品清单 ${items.length}'),
-      children: [
-        for (var index = 0; index < items.length; index += 1)
-          ListTile(
-            dense: true,
-            contentPadding: EdgeInsets.zero,
-            title: Text(items[index].productName),
-            subtitle: Text(items[index].productCode ?? '无商品编号'),
-            trailing: SizedBox(
-              width: 82,
-              child: TextFormField(
-                controller: quantityControllers[index],
-                textAlign: TextAlign.end,
-                keyboardType: TextInputType.number,
-                decoration: const InputDecoration(
-                  isDense: true,
-                  labelText: '数量',
-                  border: OutlineInputBorder(),
-                ),
-                onChanged: (_) => onChanged(),
-              ),
-            ),
-          ),
-      ],
-    );
-  }
 
-  Future<void> _showInboundReceiptDialog(InboundReceipt receipt) async {
-    final quantityControllers = [
-      for (final item in receipt.items)
-        TextEditingController(text: item.quantity.toString()),
-    ];
-    var hasQuantityChanges = false;
-    try {
-      await showDialog<void>(
-        context: context,
-        builder: (dialogContext) {
-          return StatefulBuilder(
-            builder: (dialogContext, setDialogState) {
-              void markChanged() {
-                final changed = _receiptQuantitiesChanged(
-                  receipt,
-                  quantityControllers,
-                );
-                if (changed == hasQuantityChanges) {
-                  return;
-                }
-                setDialogState(() {
-                  hasQuantityChanges = changed;
-                });
-              }
 
-              return AlertDialog(
-                titlePadding: const EdgeInsets.fromLTRB(24, 18, 8, 0),
-                contentPadding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
-                title: Row(
-                  children: [
-                    const Expanded(child: Text('入库单详情')),
-                    IconButton(
-                      tooltip: '关闭',
-                      onPressed: () => Navigator.of(dialogContext).pop(),
-                      icon: const Icon(Icons.close),
-                    ),
-                  ],
-                ),
-                content: SizedBox(
-                  width: 460,
-                  child: SingleChildScrollView(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text('快递单号：${receipt.trackingNumber}'),
-                        if (receipt.sellerOrderNumber?.isNotEmpty ?? false)
-                          Text('商家单号：${receipt.sellerOrderNumber}'),
-                        if (receipt.rebateOrderNumber?.isNotEmpty ?? false)
-                          Text('返利单号：${receipt.rebateOrderNumber}'),
-                        Text('入库单号：${receipt.id}'),
-                        Text('入库时间：${_formatReceiptTime(receipt.createdAt)}'),
-                        SwitchListTile(
-                          contentPadding: EdgeInsets.zero,
-                          title: const Text('本单已结算'),
-                          value: receipt.isSettled,
-                          onChanged: (selected) async {
-                            await _setReceiptSettled(receipt.id, selected);
-                            if (dialogContext.mounted) {
-                              Navigator.of(dialogContext).pop();
-                            }
-                          },
-                        ),
-                        _inboundReceiptItemList(
-                          receipt.items,
-                          quantityControllers,
-                          onChanged: markChanged,
-                        ),
-                        if (receipt.imagePath != null &&
-                            receipt.imagePath!.isNotEmpty) ...[
-                          const SizedBox(height: 8),
-                          Text(
-                            '入库单图片',
-                            style: Theme.of(context).textTheme.titleSmall,
-                          ),
-                          const SizedBox(height: 6),
-                          InkWell(
-                            onTap: () => _showReceiptImage(receipt.imagePath!),
-                            child: _imageThumbnail(File(receipt.imagePath!)),
-                          ),
-                        ],
-                      ],
-                    ),
-                  ),
-                ),
-                actions: [
-                  TextButton.icon(
-                    onPressed: () async {
-                      final confirmed =
-                          await _confirmDeleteInboundReceipt(receipt);
-                      if (confirmed == true && dialogContext.mounted) {
-                        Navigator.of(dialogContext).pop();
-                      }
-                    },
-                    icon: const Icon(Icons.delete_outline),
-                    label: const Text('删除入库单'),
-                  ),
-                  FilledButton.icon(
-                    onPressed: hasQuantityChanges
-                        ? () async {
-                            final saved = await _saveInboundReceiptQuantities(
-                              receipt,
-                              quantityControllers,
-                            );
-                            if (saved && dialogContext.mounted) {
-                              Navigator.of(dialogContext).pop();
-                            }
-                          }
-                        : null,
-                    icon: const Icon(Icons.save_outlined),
-                    label: const Text('保存'),
-                  ),
-                ],
-              );
-            },
-          );
-        },
-      );
-    } finally {
-      for (final controller in quantityControllers) {
-        controller.dispose();
-      }
-    }
-  }
 
-  bool _receiptQuantitiesChanged(
-    InboundReceipt receipt,
-    List<TextEditingController> quantityControllers,
-  ) {
-    for (var index = 0; index < receipt.items.length; index += 1) {
-      final quantity = int.tryParse(quantityControllers[index].text.trim());
-      if (quantity != receipt.items[index].quantity) {
-        return true;
-      }
-    }
-    return false;
-  }
-
-  Future<bool> _saveInboundReceiptQuantities(
-    InboundReceipt receipt,
-    List<TextEditingController> quantityControllers,
-  ) async {
-    final updatedItems = <InboundDraftItem>[];
-    for (var index = 0; index < receipt.items.length; index += 1) {
-      final quantityText = quantityControllers[index].text.trim();
-      final quantity = int.tryParse(quantityText);
-      if (quantity == null || quantity <= 0) {
-        setState(() {
-          _message = '商品数量必须大于 0';
-        });
-        return false;
-      }
-      updatedItems.add(receipt.items[index].copyWith(quantity: quantity));
-    }
-    try {
-      await _database.updateInboundReceiptItems(receipt.id, updatedItems);
-      await _refreshData();
-      if (!mounted) {
-        return true;
-      }
-      setState(() {
-        _message = '已保存入库单数量：${receipt.id}';
-      });
-      return true;
-    } on InventoryException catch (error) {
-      if (!mounted) {
-        return false;
-      }
-      setState(() {
-        _message = error.message;
-      });
-      return false;
-    }
-  }
 
   String _formatReceiptTime(DateTime value) {
     String twoDigits(int value) => value.toString().padLeft(2, '0');
@@ -2481,145 +2221,9 @@ class _AppHomeState extends State<AppHome> {
     }
   }
 
-  Future<void> _onBackupActionSelected(_BackupAction action) async {
-    switch (action) {
-      case _BackupAction.exportData:
-        await _exportBackup();
-        return;
-      case _BackupAction.importData:
-        await _confirmAndImportBackup();
-        return;
-    }
-  }
 
-  Future<void> _exportBackup() async {
-    if (_isBackupBusy) {
-      return;
-    }
-    setState(() {
-      _isBackupBusy = true;
-      _message = '正在生成备份';
-    });
-    try {
-      final bytes = await _database.exportBackupBytes();
-      final savedPath = await FilePicker.saveFile(
-        dialogTitle: '导出库存备份',
-        fileName: _backupFileName(),
-        type: FileType.custom,
-        allowedExtensions: ['json'],
-        bytes: bytes,
-      );
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _message = savedPath == null ? '已取消导出' : '备份已导出';
-      });
-    } on Object catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _message = '导出失败：$error';
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isBackupBusy = false;
-        });
-      }
-    }
-  }
 
-  Future<void> _confirmAndImportBackup() async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('导入备份'),
-          content: const Text('导入会覆盖本机当前库存、入库、出货记录和图片关联。'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('导入'),
-            ),
-          ],
-        );
-      },
-    );
-    if (confirmed != true) {
-      return;
-    }
-    await _importBackup();
-  }
 
-  Future<void> _importBackup() async {
-    if (_isBackupBusy) {
-      return;
-    }
-    setState(() {
-      _isBackupBusy = true;
-      _message = '请选择备份文件';
-    });
-    try {
-      final result = await FilePicker.pickFiles(
-        dialogTitle: '选择库存备份文件',
-        type: FileType.custom,
-        allowedExtensions: ['json'],
-        allowMultiple: false,
-        withData: true,
-      );
-      if (result == null || result.files.isEmpty) {
-        if (!mounted) {
-          return;
-        }
-        setState(() {
-          _message = '已取消导入';
-        });
-        return;
-      }
-      final file = result.files.single;
-      final bytes = file.bytes ??
-          (file.path == null ? null : await File(file.path!).readAsBytes());
-      if (bytes == null) {
-        throw InventoryException('Backup file cannot be read.');
-      }
-      await _database.importBackupBytes(bytes);
-      await _refreshData();
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _message = '备份已导入';
-      });
-    } on Object catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _message = '导入失败：$error';
-      });
-    } finally {
-      if (mounted) {
-        setState(() {
-          _isBackupBusy = false;
-        });
-      }
-    }
-  }
-
-  String _backupFileName() {
-    final now = DateTime.now();
-    String twoDigits(int value) => value.toString().padLeft(2, '0');
-    return 'inventory_backup_'
-        '${now.year}${twoDigits(now.month)}${twoDigits(now.day)}_'
-        '${twoDigits(now.hour)}${twoDigits(now.minute)}${twoDigits(now.second)}'
-        '.json';
-  }
 
   List<InboundReceipt> _filteredInboundHistory() {
     final keyword = _historySearchController.text.trim().toLowerCase();
@@ -2836,69 +2440,9 @@ class _AppHomeState extends State<AppHome> {
     });
   }
 
-  void _parseOcrText() {
-    final text = _ocrTextController.text;
-    final items = _postProcessor.processPlainText(text);
-    final orderNumber = _postProcessor.extractSellerOrderNumber(text);
-    final filledSellerOrder =
-        _sellerOrderController.text.trim().isEmpty && orderNumber != null;
-    setState(() {
-      if (filledSellerOrder) {
-        _sellerOrderController.text = orderNumber;
-      }
-      _draftItems
-        ..clear()
-        ..addAll(items);
-      final orderMessage = filledSellerOrder ? '，已填入商家单号' : '';
-      _message = items.isEmpty
-          ? '未生成商品草稿，有顺丰单号也可先确认入库$orderMessage'
-          : '已重新生成 ${items.length} 条商品草稿$orderMessage';
-    });
-  }
 
-  Future<void> _showOcrTextDialog() async {
-    await showDialog<void>(
-      context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          titlePadding: const EdgeInsets.fromLTRB(24, 18, 8, 0),
-          contentPadding: const EdgeInsets.fromLTRB(24, 12, 24, 16),
-          title: Row(
-            children: [
-              const Expanded(child: Text('识别文本')),
-              IconButton(
-                tooltip: '关闭',
-                onPressed: () => Navigator.of(dialogContext).pop(),
-                icon: const Icon(Icons.close),
-              ),
-            ],
-          ),
-          content: SizedBox(
-            width: 460,
-            child: TextField(
-              controller: _ocrTextController,
-              minLines: 8,
-              maxLines: 14,
-              decoration: const InputDecoration(
-                labelText: '商品清单识别文本',
-                border: OutlineInputBorder(),
-              ),
-            ),
-          ),
-          actions: [
-            FilledButton.icon(
-              onPressed: () {
-                _parseOcrText();
-                Navigator.of(dialogContext).pop();
-              },
-              icon: const Icon(Icons.document_scanner_outlined),
-              label: const Text('从文本重新生成'),
-            ),
-          ],
-        );
-      },
-    );
-  }
+
+
 
   void _addManualDraftItem() {
     setState(() {
@@ -2986,64 +2530,7 @@ class _AppHomeState extends State<AppHome> {
     }
   }
 
-  Future<void> _setReceiptSettled(String receiptId, bool isSettled) async {
-    try {
-      await _database.setReceiptSettled(receiptId, isSettled);
-      await _refreshData();
-    } on InventoryException catch (error) {
-      setState(() {
-        _message = error.message;
-      });
-    }
-  }
 
-  Future<bool> _confirmDeleteInboundReceipt(InboundReceipt receipt) async {
-    final confirmed = await showDialog<bool>(
-      context: context,
-      builder: (context) {
-        return AlertDialog(
-          title: const Text('删除入库单'),
-          content: Text('删除 ${receipt.id} 后会回滚这单商品库存。'),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(context).pop(false),
-              child: const Text('取消'),
-            ),
-            FilledButton(
-              onPressed: () => Navigator.of(context).pop(true),
-              child: const Text('删除'),
-            ),
-          ],
-        );
-      },
-    );
-    if (confirmed != true) {
-      return false;
-    }
-    await _deleteInboundReceipt(receipt);
-    return true;
-  }
-
-  Future<void> _deleteInboundReceipt(InboundReceipt receipt) async {
-    try {
-      await _database.deleteInboundReceipt(receipt.id);
-      await _deleteStoredImage(receipt.imagePath);
-      await _refreshData();
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _message = '已删除入库单：${receipt.id}';
-      });
-    } on InventoryException catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _message = error.message;
-      });
-    }
-  }
 
   Future<void> _deleteStoredImage(String? imagePath) async {
     if (imagePath == null || imagePath.isEmpty) {
@@ -3060,13 +2547,7 @@ class _AppHomeState extends State<AppHome> {
     }
   }
 
-  int _stockAddQuantityFor(WarehouseStock stock) {
-    final quantity = _stockAddQuantities[stock.productCode] ?? 1;
-    if (stock.quantity <= 0) {
-      return 1;
-    }
-    return quantity.clamp(1, stock.quantity).toInt();
-  }
+
 
   void _addStockToOutboundCart(WarehouseStock stock, int quantity) {
     final nextQuantity = quantity.clamp(1, stock.quantity).toInt();
@@ -3230,149 +2711,250 @@ class _AppHomeState extends State<AppHome> {
     }
   }
 
-  Future<void> _extractWithAi() async {
-    final text = _ocrTextController.text.trim();
-    if (text.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('没有可用于提取的识别文本，请先拍照或相册识别')),
-      );
-      return;
-    }
-
-    setState(() {
-      _message = 'AI 正在智能提取中，请稍候...';
-    });
-
-    try {
-      final result = await _gemmaExtractor.extract(text);
-      if (!mounted) return;
-
-      setState(() {
-        if (result.trackingNumber != null &&
-            result.trackingNumber!.isNotEmpty) {
-          _trackingController.text = result.trackingNumber!;
-        }
-        if (result.sellerOrderNumber != null &&
-            result.sellerOrderNumber!.isNotEmpty) {
-          _sellerOrderController.text = result.sellerOrderNumber!;
-        }
-        if (result.schemeNumber != null && result.schemeNumber!.isNotEmpty) {
-          _rebateOrderController.text = result.schemeNumber!;
-        }
-
-        if (result.items.isNotEmpty) {
-          _draftItems
-            ..clear()
-            ..addAll(result.items);
-          _message = 'AI 提取成功，已载入 ${result.items.length} 个商品。';
-        } else {
-          _message = 'AI 提取结束，但未发现有效的商品条目。';
-        }
-      });
-    } catch (e) {
-      if (!mounted) return;
-      setState(() {
-        _message = 'AI 提取失败，已降级使用本地提取。原因: $e';
-      });
-      // 降级使用本地处理器
-      var items = _postProcessor.processPlainText(text);
-      setState(() {
-        if (items.isNotEmpty) {
-          _draftItems
-            ..clear()
-            ..addAll(items);
-        }
-      });
-    }
-  }
-
-  Future<void> _openAIConfigDialog() async {
-    var model = await _database.loadGeminiModel();
-    if (model.isEmpty || model == 'gemini-1.5-flash' || model == 'built-in') {
-      model = 'deepseek-v4-flash';
-    }
-
-    var apiKey = await _database.loadGeminiApiKey();
-    if (apiKey.isEmpty) {
-      apiKey = 'sk-7530d0e7a047446591a992ea3c13c9d2';
-    }
-
-    var apiUrl = await _database.loadGeminiApiUrl();
-    if (apiUrl.isEmpty ||
-        apiUrl == 'https://generativelanguage.googleapis.com') {
-      apiUrl = 'https://api.deepseek.com';
-    }
-
-    final modelController = TextEditingController(text: model);
-    final apiKeyController = TextEditingController(text: apiKey);
-    final apiUrlController = TextEditingController(text: apiUrl);
-
-    if (!mounted) return;
-
-    await showDialog<void>(
+  Future<void> _openAiExtractDialog() async {
+    showDialog<void>(
       context: context,
-      builder: (dialogContext) {
-        return AlertDialog(
-          title: const Text('AI 识别配置'),
-          content: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                TextField(
-                  controller: apiUrlController,
-                  decoration: const InputDecoration(
-                    labelText: '接口地址 (API URL)',
-                    hintText: '例如: https://api.deepseek.com',
-                    border: OutlineInputBorder(),
-                  ),
+      barrierDismissible: false,
+      builder: (context) {
+        bool isExtracting = false;
+        bool isGenerating = false;
+
+        return StatefulBuilder(
+          builder: (dialogContext, setDialogState) {
+            final isLoading = isExtracting || isGenerating;
+            final message = isExtracting
+                ? 'AI 正在智能提取中...'
+                : (isGenerating ? '正在重新生成文本...' : '');
+
+            return Dialog(
+              backgroundColor: Colors.white,
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+              insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // 标题
+                    Row(
+                      children: [
+                        const Expanded(
+                          child: Text(
+                            'AI 智能提取文本预览',
+                            style: TextStyle(
+                              fontSize: 18,
+                              fontWeight: FontWeight.bold,
+                              color: Color(0xFF1E293B),
+                            ),
+                          ),
+                        ),
+                        IconButton(
+                          onPressed: isLoading ? null : () => Navigator.pop(dialogContext),
+                          icon: const Icon(Icons.close, color: Colors.grey),
+                          padding: EdgeInsets.zero,
+                          constraints: const BoxConstraints(),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // 文本预览框
+                    Stack(
+                      alignment: Alignment.center,
+                      children: [
+                        TextField(
+                          controller: _ocrTextController,
+                          maxLines: 8,
+                          enabled: !isLoading,
+                          decoration: const InputDecoration(
+                            hintText: '识别出的 OCR 文本，可手动进行微调...',
+                            border: OutlineInputBorder(),
+                            contentPadding: EdgeInsets.all(12),
+                          ),
+                          style: const TextStyle(fontSize: 14),
+                        ),
+                        if (isLoading)
+                          Container(
+                            height: 200,
+                            decoration: BoxDecoration(
+                              color: Colors.black.withOpacity(0.1),
+                              borderRadius: BorderRadius.circular(4),
+                            ),
+                            child: Center(
+                              child: Column(
+                                mainAxisAlignment: MainAxisAlignment.center,
+                                children: [
+                                  const CircularProgressIndicator(
+                                    color: Color(0xff2d6a4f),
+                                    strokeWidth: 3,
+                                  ),
+                                  const SizedBox(height: 12),
+                                  Text(
+                                    message,
+                                    style: const TextStyle(
+                                      fontWeight: FontWeight.bold,
+                                      color: Color(0xff2d6a4f),
+                                    ),
+                                  ),
+                                ],
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                    const SizedBox(height: 16),
+
+                    // 底部按钮 Row
+                    Row(
+                      children: [
+                        Expanded(
+                          child: OutlinedButton(
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: const Color(0xff2d6a4f),
+                              side: const BorderSide(
+                                  color: Color(0xff2d6a4f), width: 1.2),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(24),
+                              ),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            onPressed: isLoading
+                                ? null
+                                : () async {
+                                    if (_currentInboundImagePath == null ||
+                                        _currentInboundImagePath!.isEmpty) {
+                                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                        const SnackBar(
+                                            content: Text('未找到当前单的图片，请先拍照或相册识别')),
+                                      );
+                                      return;
+                                    }
+                                    setDialogState(() => isGenerating = true);
+                                    try {
+                                      final recognition = await _paddleOcr.recognizeTable(
+                                        _currentInboundImagePath!,
+                                        rowMergeTolerance: _ocrRowMergeTolerance,
+                                      );
+                                      _ocrTextController.text = recognition.editableText;
+                                      if (dialogContext.mounted) {
+                                        ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                          const SnackBar(content: Text('已重新生成 OCR 文字。')),
+                                        );
+                                      }
+                                    } catch (e) {
+                                      if (dialogContext.mounted) {
+                                        ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                          SnackBar(content: Text('重新生成文字失败: $e')),
+                                        );
+                                      }
+                                    } finally {
+                                      setDialogState(() => isGenerating = false);
+                                    }
+                                  },
+                            child: const Text(
+                              '重新生成',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: FilledButton(
+                            style: FilledButton.styleFrom(
+                              backgroundColor: const Color(0xff2d6a4f),
+                              foregroundColor: Colors.white,
+                              shape: RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.circular(24)),
+                              padding: const EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            onPressed: isLoading
+                                ? null
+                                : () async {
+                                    final text = _ocrTextController.text.trim();
+                                    if (text.isEmpty) {
+                                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                        const SnackBar(
+                                            content: Text('识别文本不能为空，无法提取')),
+                                      );
+                                      return;
+                                    }
+                                    setDialogState(() => isExtracting = true);
+                                    try {
+                                      final result = await _gemmaExtractor.extract(text);
+                                      if (!dialogContext.mounted) return;
+                                      setState(() {
+                                        if (result.trackingNumber != null &&
+                                            result.trackingNumber!.isNotEmpty) {
+                                          _trackingController.text = result.trackingNumber!;
+                                        }
+                                        if (result.sellerOrderNumber != null &&
+                                            result.sellerOrderNumber!.isNotEmpty) {
+                                          _sellerOrderController.text =
+                                              result.sellerOrderNumber!;
+                                        }
+                                        if (result.schemeNumber != null &&
+                                            result.schemeNumber!.isNotEmpty) {
+                                          _rebateOrderController.text =
+                                              result.schemeNumber!;
+                                        }
+                                        if (result.items.isNotEmpty) {
+                                          _draftItems
+                                            ..clear()
+                                            ..addAll(result.items);
+                                          _message =
+                                              'AI 提取成功，已载入 ${result.items.length} 个商品。';
+                                        } else {
+                                          _message = 'AI 提取结束，但未发现有效的商品条目。';
+                                        }
+                                      });
+                                      Navigator.pop(dialogContext); // 关闭弹窗
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text(_message!)),
+                                      );
+                                    } catch (e) {
+                                      var items = _postProcessor.processPlainText(text);
+                                      if (!dialogContext.mounted) return;
+                                      setState(() {
+                                        if (items.isNotEmpty) {
+                                          _draftItems
+                                            ..clear()
+                                            ..addAll(items);
+                                          _message =
+                                              'AI 提取失败，已降级本地提取 ${items.length} 个商品。';
+                                        } else {
+                                          _message = 'AI 提取与本地降级提取均未发现商品。';
+                                        }
+                                      });
+                                      Navigator.pop(dialogContext); // 关闭弹窗
+                                      ScaffoldMessenger.of(context).showSnackBar(
+                                        SnackBar(content: Text(_message!)),
+                                      );
+                                    } finally {
+                                      setDialogState(() => isExtracting = false);
+                                    }
+                                  },
+                            child: const Text(
+                              'AI 识别',
+                              style: TextStyle(fontWeight: FontWeight.bold),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: apiKeyController,
-                  obscureText: true,
-                  decoration: const InputDecoration(
-                    labelText: 'API Key',
-                    hintText: '请输入大模型 API 密钥',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-                const SizedBox(height: 12),
-                TextField(
-                  controller: modelController,
-                  decoration: const InputDecoration(
-                    labelText: '识别模型 (Model)',
-                    hintText: '例如: deepseek-v4-flash',
-                    border: OutlineInputBorder(),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.of(dialogContext).pop(),
-              child: const Text('取消'),
-            ),
-            TextButton(
-              onPressed: () async {
-                final newUrl = apiUrlController.text.trim();
-                final newKey = apiKeyController.text.trim();
-                final newModel = modelController.text.trim();
-                await _database.saveGeminiApiUrl(newUrl);
-                await _database.saveGeminiApiKey(newKey);
-                await _database.saveGeminiModel(newModel);
-                if (dialogContext.mounted) {
-                  Navigator.of(dialogContext).pop();
-                }
-                setState(() {});
-              },
-              child: const Text('保存'),
-            ),
-          ],
+              ),
+            );
+          },
         );
       },
     );
   }
+
+
 
   Future<void> _scanDraftItem() async {
     final barcode = await Navigator.of(context).push<String>(

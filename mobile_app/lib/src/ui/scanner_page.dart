@@ -10,7 +10,8 @@ class ScannerPage extends StatefulWidget {
   State<ScannerPage> createState() => _ScannerPageState();
 }
 
-class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStateMixin {
+class _ScannerPageState extends State<ScannerPage>
+    with SingleTickerProviderStateMixin {
   static const List<BarcodeFormat> _linearBarcodeFormats = [
     BarcodeFormat.code128,
     BarcodeFormat.code39,
@@ -57,13 +58,12 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
   @override
   Widget build(BuildContext context) {
     final size = MediaQuery.of(context).size;
-    final colorScheme = Theme.of(context).colorScheme;
-    
+
     // 莫兰迪青蓝色作为扫描线与边角色
     final lineColor = Colors.teal.shade300;
 
-    final double scanWidth = 280;
-    final double scanHeight = 180;
+    const double scanWidth = 280;
+    const double scanHeight = 180;
     final double scanLeft = (size.width - scanWidth) / 2;
     final double scanTop = (size.height - scanHeight) / 2.2;
     final scanRect = Rect.fromLTWH(scanLeft, scanTop, scanWidth, scanHeight);
@@ -135,13 +135,13 @@ class _ScannerPageState extends State<ScannerPage> with SingleTickerProviderStat
                 _glassButton(
                   onPressed: () => _controller.toggleTorch(),
                   icon: Icons.flashlight_on_outlined,
-                  label: "闪光灯",
+                  label: '闪光灯',
                 ),
                 const SizedBox(width: 32),
                 _glassButton(
                   onPressed: () => _controller.switchCamera(),
                   icon: Icons.flip_camera_android_outlined,
-                  label: "翻转",
+                  label: '翻转',
                 ),
               ],
             ),
@@ -205,13 +205,15 @@ class _ScannerMaskPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final maskPaint = Paint()..color = Colors.black.withOpacity(0.65);
-    
+
     // 使用 Path.combine 镂空扫描框
-    final backgroundPath = Path()..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
+    final backgroundPath = Path()
+      ..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
     final holePath = Path()
       ..addRRect(RRect.fromRectAndRadius(scanRect, const Radius.circular(16)));
 
-    final cutPath = Path.combine(PathOperation.difference, backgroundPath, holePath);
+    final cutPath =
+        Path.combine(PathOperation.difference, backgroundPath, holePath);
     canvas.drawPath(cutPath, maskPaint);
   }
 
@@ -240,7 +242,7 @@ class _ScannerOverlayPainter extends CustomPainter {
       ..style = PaintingStyle.stroke
       ..strokeCap = StrokeCap.round;
 
-    final double cornerSize = 24.0;
+    const double cornerSize = 24.0;
     final rrect = RRect.fromRectAndRadius(scanRect, const Radius.circular(16));
 
     // 绘制四个角定位线段
@@ -278,7 +280,8 @@ class _ScannerOverlayPainter extends CustomPainter {
     );
 
     // 绘制呼吸式渐变扫描激光线
-    final double lineY = scanRect.top + 8 + (scanRect.height - 16) * animationValue;
+    final double lineY =
+        scanRect.top + 8 + (scanRect.height - 16) * animationValue;
     final Paint linePaint = Paint()
       ..shader = LinearGradient(
         colors: [
