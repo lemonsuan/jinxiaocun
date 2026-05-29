@@ -85,6 +85,8 @@ class _AppHomeState extends State<AppHome> {
   int? _revealedDraftDeleteIndex;
   _HistorySettlementFilter _historySettlementFilter =
       _HistorySettlementFilter.all;
+  String? _expandedReceiptId;
+  final Map<String, int> _editingReceiptQuantities = {};
 
   @override
   void initState() {
@@ -172,56 +174,178 @@ class _AppHomeState extends State<AppHome> {
   }
 
   Widget _scanInboundTab() {
+    final colorScheme = Theme.of(context).colorScheme;
     return _page([
       _scanInboundHeader(),
-      _trackingRow(),
-      const SizedBox(height: 8),
-      _sellerOrderRow(),
-      const SizedBox(height: 8),
-      _rebateOrderRow(),
+      
+      // 1. 三行输入大圆角白色 Card 容器
+      Card(
+        elevation: 0,
+        color: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Colors.grey.shade200.withOpacity(0.8)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Column(
+            children: [
+              // 第一行：快递单号
+              Row(
+                children: [
+                  const Icon(Icons.mail_outline, color: Colors.grey, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _trackingController,
+                      decoration: const InputDecoration(
+                        hintText: '输入或扫描快递单号',
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      style: const TextStyle(fontSize: 15),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  GestureDetector(
+                    onTap: _scanTrackingNumber,
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: const Color(0xFFE8F3ED),
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: const Icon(Icons.qr_code_scanner, color: Color(0xff2d6a4f), size: 18),
+                    ),
+                  ),
+                ],
+              ),
+              Divider(height: 1, color: Colors.grey.shade100),
+              
+              // 第二行：商家单号
+              Row(
+                children: [
+                  const Icon(Icons.storefront, color: Colors.grey, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _sellerOrderController,
+                      decoration: const InputDecoration(
+                        hintText: '输入商家单号',
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      style: const TextStyle(fontSize: 15),
+                    ),
+                  ),
+                ],
+              ),
+              Divider(height: 1, color: Colors.grey.shade100),
+              
+              // 第三行：方案编号
+              Row(
+                children: [
+                  const Icon(Icons.assignment_outlined, color: Colors.grey, size: 20),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      controller: _rebateOrderController,
+                      decoration: const InputDecoration(
+                        hintText: '输入方案编号',
+                        border: InputBorder.none,
+                        isDense: true,
+                        contentPadding: EdgeInsets.symmetric(vertical: 12),
+                      ),
+                      style: const TextStyle(fontSize: 15),
+                    ),
+                  ),
+                ],
+              ),
+            ],
+          ),
+        ),
+      ),
       const SizedBox(height: 12),
-      Row(
-        children: [
-          Expanded(
-            child: FilledButton.icon(
-              onPressed: _captureAndRecognizeList,
-              icon: const Icon(Icons.photo_camera_outlined),
-              label: const Text('拍照识别'),
-            ),
+
+      // 2. 拍照识别与相册识别动作 Card
+      Card(
+        elevation: 0,
+        color: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Colors.grey.shade200.withOpacity(0.8)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Row(
+            children: [
+              Expanded(
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xff2d6a4f),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  onPressed: _captureAndRecognizeList,
+                  icon: const Icon(Icons.photo_camera_outlined, size: 18),
+                  label: const Text('拍照识别', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ),
+              const SizedBox(width: 12),
+              Expanded(
+                child: FilledButton.icon(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: const Color(0xFFE8F3ED),
+                    foregroundColor: const Color(0xff2d6a4f),
+                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                    padding: const EdgeInsets.symmetric(vertical: 14),
+                  ),
+                  onPressed: _pickAndRecognizeList,
+                  icon: const Icon(Icons.photo_library_outlined, size: 18),
+                  label: const Text('相册识别', style: TextStyle(fontWeight: FontWeight.bold)),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(width: 8),
-          Expanded(
-            child: FilledButton.icon(
-              onPressed: _pickAndRecognizeList,
-              icon: const Icon(Icons.photo_library_outlined),
-              label: const Text('相册识别'),
-            ),
-          ),
-        ],
+        ),
       ),
       if (_currentInboundImagePath != null) ...[
         const SizedBox(height: 8),
         _inboundImageTile(_currentInboundImagePath!),
       ],
-      const SizedBox(height: 8),
+      const SizedBox(height: 12),
       _inboundDraftToolbar(),
       for (var index = 0; index < _draftItems.length; index += 1)
         _draftTile(index, _draftItems[index]),
       SwitchListTile(
         contentPadding: EdgeInsets.zero,
         value: _isSettled,
+        activeColor: const Color(0xff2d6a4f),
         onChanged: (value) {
           setState(() {
             _isSettled = value;
           });
         },
-        title: const Text('本单已结算'),
+        title: const Text('本单已结算', style: TextStyle(fontWeight: FontWeight.bold)),
       ),
-      FilledButton.icon(
-        onPressed: _confirmInbound,
-        icon: const Icon(Icons.archive_outlined),
-        label: const Text('确认入库'),
+      const SizedBox(height: 4),
+      SizedBox(
+        width: double.infinity,
+        height: 52,
+        child: FilledButton.icon(
+          style: FilledButton.styleFrom(
+            backgroundColor: const Color(0xff2d6a4f),
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+          ),
+          onPressed: _confirmInbound,
+          icon: const Icon(Icons.archive_outlined, size: 20),
+          label: const Text('确认入库', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        ),
       ),
+      const SizedBox(height: 12),
     ]);
   }
 
@@ -327,79 +451,196 @@ class _AppHomeState extends State<AppHome> {
   }
 
   Widget _profileTab() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final valueText = _ocrRowMergeTolerance.toStringAsFixed(2);
+
     return _page([
-      _sectionTitle('我的'),
-      _ocrRowMergeToleranceControl(),
+      _sectionTitle('个人中心'),
       const SizedBox(height: 8),
-      ListTile(
-        contentPadding: EdgeInsets.zero,
-        leading: const Icon(Icons.auto_awesome),
-        title: const Text('AI 识别配置'),
-        subtitle: const Text('配置在线 AI 提取的模型、API Key 与接口地址'),
-        onTap: _openAIConfigDialog,
-      ),
-      ListTile(
-        contentPadding: EdgeInsets.zero,
-        leading: const Icon(Icons.price_change_outlined),
-        title: const Text('商品价格管理'),
-        subtitle: const Text('配置入库与销售商品的指导价格'),
-        onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => ProductPricePage(
-                database: _database,
-                onPricesUpdated: _refreshData,
+
+      // 1. 上部白色 Card 容器（拍照计数、商品价格管理）
+      Card(
+        elevation: 0,
+        color: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Colors.grey.shade200.withOpacity(0.8)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Column(
+            children: [
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.blue.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(Icons.center_focus_weak, color: Colors.blue.shade600, size: 20),
+                ),
+                title: const Text('拍照计数', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                subtitle: const Text('端侧离线自动识别与标记计数', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => PhotoCountPage(
+                        database: _database,
+                        onInventoryUpdated: _refreshData,
+                      ),
+                    ),
+                  );
+                },
               ),
-            ),
-          );
-        },
-      ),
-      ListTile(
-        contentPadding: EdgeInsets.zero,
-        leading: const Icon(Icons.settings_backup_restore),
-        title: const Text('数据备份还原'),
-        subtitle: const Text('查看备份历史，导入、导出及覆盖恢复'),
-        onTap: () {
-          Navigator.of(context).push(
-            MaterialPageRoute(
-              builder: (context) => BackupManagementPage(
-                database: _database,
-                onDatabaseRestored: _refreshData,
+              Divider(height: 1, color: Colors.grey.shade100),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.green.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(Icons.local_offer_outlined, color: Colors.green.shade600, size: 20),
+                ),
+                title: const Text('商品价格管理', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                subtitle: const Text('查看全部商品并编辑入库/出库指导价格', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => ProductPricePage(
+                        database: _database,
+                        onPricesUpdated: _refreshData,
+                      ),
+                    ),
+                  );
+                },
               ),
+            ],
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
+
+      // 2. 下部白色 Card 容器（OCR 行距滑块、备份管理）
+      Card(
+        elevation: 0,
+        color: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Colors.grey.shade200.withOpacity(0.8)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: Column(
+            children: [
+              // OCR 行距滑块行 (1:1 像素级复原右侧 Slider 水平对齐)
+              Row(
+                children: [
+                  Expanded(
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Container(
+                        padding: const EdgeInsets.all(10),
+                        decoration: BoxDecoration(
+                          color: Colors.purple.shade50,
+                          borderRadius: BorderRadius.circular(12),
+                        ),
+                        child: Icon(Icons.tune_outlined, color: Colors.purple.shade600, size: 20),
+                      ),
+                      title: Text('OCR 行距 $valueText', style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                      subtitle: const Text('严格 - 宽松', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 130,
+                    child: SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: 3,
+                        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 6),
+                        overlayShape: const RoundSliderOverlayShape(overlayRadius: 12),
+                      ),
+                      child: Slider(
+                        min: OcrSettings.minRowMergeTolerance,
+                        max: OcrSettings.maxRowMergeTolerance,
+                        divisions: 8,
+                        activeColor: const Color(0xff2d6a4f),
+                        value: _ocrRowMergeTolerance,
+                        onChanged: (value) {
+                          setState(() {
+                            _ocrRowMergeTolerance = OcrSettings.normalizeRowMergeTolerance(value);
+                          });
+                        },
+                        onChangeEnd: _saveOcrRowMergeTolerance,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              Divider(height: 1, color: Colors.grey.shade100),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(10),
+                  decoration: BoxDecoration(
+                    color: Colors.orange.shade50,
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  child: Icon(Icons.cloud_upload_outlined, color: Colors.orange.shade600, size: 20),
+                ),
+                title: const Text('备份管理', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                subtitle: const Text('本地备份数据历史、导入/导出与还原', style: TextStyle(fontSize: 12, color: Colors.grey)),
+                onTap: () {
+                  Navigator.of(context).push(
+                    MaterialPageRoute(
+                      builder: (context) => BackupManagementPage(
+                        database: _database,
+                        onDatabaseRestored: _refreshData,
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+        ),
+      ),
+      const SizedBox(height: 16),
+
+      // 3. 独立 AI 识别配置 Card (轻量卡片)
+      Card(
+        elevation: 0,
+        color: Colors.white,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(16),
+          side: BorderSide(color: Colors.grey.shade200.withOpacity(0.8)),
+        ),
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+          child: ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: Container(
+              padding: const EdgeInsets.all(10),
+              decoration: BoxDecoration(
+                color: Colors.teal.shade50,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: const Icon(Icons.auto_awesome, color: Colors.teal, size: 20),
             ),
-          );
-        },
+            title: const Text('AI 识别配置', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+            subtitle: const Text('配置在线 AI 提取的模型、API Key 与接口地址', style: TextStyle(fontSize: 12, color: Colors.grey)),
+            onTap: _openAIConfigDialog,
+          ),
+        ),
       ),
     ]);
   }
 
   Widget _ocrRowMergeToleranceControl() {
-    final valueText = _ocrRowMergeTolerance.toStringAsFixed(2);
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        ListTile(
-          contentPadding: EdgeInsets.zero,
-          leading: const Icon(Icons.tune_outlined),
-          title: Text('OCR 行距参数 $valueText'),
-          subtitle: const Text('严格 - 宽松'),
-        ),
-        Slider(
-          min: OcrSettings.minRowMergeTolerance,
-          max: OcrSettings.maxRowMergeTolerance,
-          divisions: 8,
-          label: valueText,
-          value: _ocrRowMergeTolerance,
-          onChanged: (value) {
-            setState(() {
-              _ocrRowMergeTolerance =
-                  OcrSettings.normalizeRowMergeTolerance(value);
-            });
-          },
-          onChangeEnd: _saveOcrRowMergeTolerance,
-        ),
-      ],
-    );
+    // 已废弃，因为滑块已在上面 1:1 原地内联整合
+    return const SizedBox.shrink();
   }
 
   Widget _sectionTitle(String value) {
@@ -411,34 +652,29 @@ class _AppHomeState extends State<AppHome> {
 
   Widget _scanInboundHeader() {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Row(
         children: [
           Expanded(
             child: Text(
               '扫码入库',
-              style: Theme.of(context).textTheme.titleLarge,
+              style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                    fontWeight: FontWeight.bold,
+                  ),
             ),
           ),
           OutlinedButton.icon(
-            onPressed: () {
-              Navigator.of(context).push(
-                MaterialPageRoute(
-                  builder: (context) => PhotoCountPage(
-                    database: _database,
-                    onInventoryUpdated: _refreshData,
-                  ),
-                ),
-              );
-            },
-            icon: const Icon(Icons.camera_alt_outlined, size: 18),
-            label: const Text('拍照盘点', style: TextStyle(fontSize: 12)),
-          ),
-          const SizedBox(width: 8),
-          OutlinedButton.icon(
             onPressed: _clearCurrentInboundDraft,
-            icon: const Icon(Icons.cleaning_services_outlined),
-            label: const Text('清空当前单'),
+            icon: const Icon(Icons.cleaning_services_outlined, size: 16),
+            label: const Text('清空当前单', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: const Color(0xff2d6a4f),
+              side: const BorderSide(color: Color(0xff2d6a4f), width: 1.2),
+              shape: RoundedRectangleBorder(
+                borderRadius: BorderRadius.circular(24),
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+            ),
           ),
         ],
       ),
@@ -515,35 +751,67 @@ class _AppHomeState extends State<AppHome> {
 
   Widget _inboundDraftToolbar() {
     return Padding(
-      padding: const EdgeInsets.only(bottom: 4),
+      padding: const EdgeInsets.only(bottom: 8),
       child: Row(
         children: [
           Expanded(
             child: Text(
               '商品草稿 ${_draftItems.length}',
-              style: Theme.of(context).textTheme.titleMedium,
+              style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
             ),
           ),
           TextButton.icon(
             onPressed: _addManualDraftItem,
-            icon: const Icon(Icons.add),
-            label: const Text('手动添加'),
+            icon: const Icon(Icons.edit, size: 16, color: Color(0xff2d6a4f)),
+            label: const Text('手动添加', style: TextStyle(color: Color(0xff2d6a4f), fontSize: 13, fontWeight: FontWeight.bold)),
           ),
+          const SizedBox(width: 4),
           TextButton.icon(
             onPressed: _scanDraftItem,
-            icon: const Icon(Icons.qr_code_scanner),
-            label: const Text('扫码添加'),
-          ),
-          IconButton.filledTonal(
-            tooltip: 'AI 智能提取',
-            onPressed: _extractWithAi,
-            icon: const Icon(Icons.auto_awesome),
+            icon: const Icon(Icons.qr_code_scanner, size: 16, color: Color(0xff2d6a4f)),
+            label: const Text('扫码添加', style: TextStyle(color: Color(0xff2d6a4f), fontSize: 13, fontWeight: FontWeight.bold)),
           ),
           const SizedBox(width: 8),
-          IconButton.filledTonal(
-            tooltip: '识别文本',
-            onPressed: _showOcrTextDialog,
-            icon: const Icon(Icons.subject_outlined),
+          GestureDetector(
+            onTap: () {
+              showModalBottomSheet(
+                context: context,
+                builder: (context) {
+                  return SafeArea(
+                    child: Column(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        ListTile(
+                          leading: const Icon(Icons.auto_awesome, color: Colors.teal),
+                          title: const Text('AI 智能提取'),
+                          onTap: () {
+                            Navigator.pop(context);
+                            _extractWithAi();
+                          },
+                        ),
+                        ListTile(
+                          leading: const Icon(Icons.subject_outlined),
+                          title: const Text('识别文本'),
+                          onTap: () {
+                            Navigator.pop(context);
+                            _showOcrTextDialog();
+                          },
+                        ),
+                      ],
+                    ),
+                  );
+                },
+              );
+            },
+            child: Container(
+              width: 36,
+              height: 36,
+              decoration: const BoxDecoration(
+                color: Color(0xFFE8F3ED),
+                shape: BoxShape.circle,
+              ),
+              child: const Icon(Icons.menu, color: Color(0xff2d6a4f), size: 18),
+            ),
           ),
         ],
       ),
@@ -731,11 +999,13 @@ class _AppHomeState extends State<AppHome> {
   }
 
   Widget _stockTile(WarehouseStock stock) {
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final nameMaxWidth = constraints.maxWidth * 0.7;
-        return Padding(
-          padding: const EdgeInsets.symmetric(vertical: 6),
+    final colorScheme = Theme.of(context).colorScheme;
+    final isOutOfStock = stock.quantity <= 0;
+
+    return Column(
+      children: [
+        Padding(
+          padding: const EdgeInsets.symmetric(vertical: 12),
           child: Row(
             crossAxisAlignment: CrossAxisAlignment.center,
             children: [
@@ -743,94 +1013,413 @@ class _AppHomeState extends State<AppHome> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    ConstrainedBox(
-                      constraints: BoxConstraints(maxWidth: nameMaxWidth),
-                      child: Text(
-                        stock.productName,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: Theme.of(context).textTheme.bodyLarge,
-                      ),
-                    ),
-                    const SizedBox(height: 2),
                     Text(
-                      '商品编码：${stock.productCode}',
-                      style: Theme.of(context).textTheme.bodySmall,
+                      stock.productName,
+                      style: const TextStyle(fontSize: 15, fontWeight: FontWeight.bold),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      '商品数量：${stock.quantity}',
-                      style: Theme.of(context).textTheme.bodySmall,
+                    const SizedBox(height: 6),
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                          decoration: BoxDecoration(
+                            color: Colors.grey.shade100,
+                            borderRadius: BorderRadius.circular(4),
+                          ),
+                          child: Text(
+                            '编码：${stock.productCode}',
+                            style: TextStyle(fontSize: 10, color: Colors.grey.shade600, fontWeight: FontWeight.bold),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Text(
+                          '库存：${stock.quantity}',
+                          style: TextStyle(
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                            color: isOutOfStock ? Colors.redAccent : const Color(0xff2d6a4f),
+                          ),
+                        ),
+                      ],
                     ),
                   ],
                 ),
               ),
               const SizedBox(width: 8),
-              SizedBox(
-                width: 58,
-                child: TextFormField(
-                  key: ValueKey('stock-add-${stock.productCode}'),
-                  initialValue: _stockAddQuantityFor(stock).toString(),
-                  textAlign: TextAlign.center,
-                  keyboardType: TextInputType.number,
-                  decoration: const InputDecoration(
-                    isDense: true,
-                    border: OutlineInputBorder(),
-                    contentPadding: EdgeInsets.symmetric(
-                      horizontal: 6,
-                      vertical: 8,
-                    ),
+              if (isOutOfStock)
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: Colors.red.shade50,
+                    borderRadius: BorderRadius.circular(6),
                   ),
-                  onChanged: (value) {
-                    final quantity = int.tryParse(value.trim());
-                    if (quantity == null) {
-                      return;
-                    }
-                    _stockAddQuantities[stock.productCode] = quantity;
+                  child: const Text(
+                    '无货',
+                    style: TextStyle(color: Colors.redAccent, fontSize: 11, fontWeight: FontWeight.bold),
+                  ),
+                )
+              else
+                GestureDetector(
+                  onTap: () {
+                    _addStockToOutboundCart(stock, 1);
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(
+                        content: Text('已加入出库车：${stock.productName}'),
+                        duration: const Duration(milliseconds: 800),
+                        behavior: SnackBarBehavior.floating,
+                      ),
+                    );
                   },
+                  child: Container(
+                    padding: const EdgeInsets.all(8),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE8F3ED),
+                      borderRadius: BorderRadius.circular(8),
+                    ),
+                    child: const Icon(Icons.add_shopping_cart, color: Color(0xff2d6a4f), size: 18),
+                  ),
                 ),
-              ),
-              const SizedBox(width: 4),
-              IconButton(
-                tooltip: '加入出库车',
-                onPressed: stock.quantity <= 0
-                    ? null
-                    : () => _addStockToOutboundCart(
-                          stock,
-                          _stockAddQuantityFor(stock),
-                        ),
-                icon: const Icon(Icons.add_shopping_cart_outlined),
-              ),
             ],
           ),
-        );
-      },
+        ),
+        Divider(height: 1, color: Colors.grey.shade100),
+      ],
     );
   }
 
+  Future<void> _reRecognizeReceipt(InboundReceipt receipt) async {
+    final path = receipt.imagePath;
+    if (path == null || path.isEmpty) return;
+    
+    // 显示加载 Progress
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (_) => const Center(child: CircularProgressIndicator(color: Color(0xff2d6a4f))),
+    );
+
+    try {
+      final ocrText = await _paddleOcr.detect(path, rowMergeTolerance: _ocrRowMergeTolerance);
+      final extracted = await _gemmaExtractor.extract(ocrText);
+      final draftItems = extracted.items.map((item) => InboundDraftItem(
+        productName: item.productName,
+        quantity: item.quantity,
+        productCode: (item.productCode == null || item.productCode == '未提及') ? null : item.productCode,
+        purchasePrice: (item.purchasePrice == null || item.purchasePrice == '未提及') ? null : double.tryParse(item.purchasePrice!),
+        salePrice: (item.salePrice == null || item.salePrice == '未提及') ? null : double.tryParse(item.salePrice!),
+        sourceText: '重新识别提取',
+      )).toList();
+      
+      await _database.updateInboundReceiptItems(receipt.id, draftItems);
+      
+      if (mounted) {
+        Navigator.pop(context); // 关 Loading
+        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('重新识别并更新成功！')));
+        _refreshData();
+        setState(() {
+          _expandedReceiptId = null;
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        Navigator.pop(context); // 关 Loading
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('重新识别失败: $e')));
+      }
+    }
+  }
+
   Widget _receiptTile(InboundReceipt receipt) {
-    final primaryStyle = Theme.of(context).textTheme.bodyLarge;
-    final secondaryStyle = Theme.of(context).textTheme.bodyMedium;
-    final orderParts = <String>[
-      if (receipt.sellerOrderNumber?.isNotEmpty ?? false)
-        '商家单号：${receipt.sellerOrderNumber}',
-      if (receipt.rebateOrderNumber?.isNotEmpty ?? false)
-        '返利单号：${receipt.rebateOrderNumber}',
-    ];
-    return ListTile(
-      contentPadding: EdgeInsets.zero,
-      onTap: () => _showInboundReceiptDialog(receipt),
-      title: Text('快递单号：${receipt.trackingNumber}', style: primaryStyle),
-      subtitle: Text(
-        [
-          _formatReceiptTime(receipt.createdAt),
-          '${receipt.items.length} 个商品',
-          receipt.isSettled ? '已结算' : '未结算',
-          ...orderParts,
-        ].join(' · '),
-        style: secondaryStyle,
+    final isExpanded = _expandedReceiptId == receipt.id;
+    final totalQuantity = receipt.items.fold<int>(0, (sum, item) => sum + item.quantity);
+
+    // 如果展开，将数量读入 Map 进行初始化
+    if (isExpanded) {
+      for (final item in receipt.items) {
+        final key = '${receipt.id}_${item.productCode}';
+        _editingReceiptQuantities.putIfAbsent(key, () => item.quantity);
+      }
+    }
+
+    bool hasChanges = false;
+    if (isExpanded) {
+      for (final item in receipt.items) {
+        final key = '${receipt.id}_${item.productCode}';
+        final edited = _editingReceiptQuantities[key] ?? item.quantity;
+        if (edited != item.quantity) {
+          hasChanges = true;
+          break;
+        }
+      }
+    }
+
+    final String timeStr = '${receipt.createdAt.year}年${receipt.createdAt.month.toString().padLeft(2, '0')}月${receipt.createdAt.day.toString().padLeft(2, '0')}日 '
+        '${receipt.createdAt.hour.toString().padLeft(2, '0')}时${receipt.createdAt.minute.toString().padLeft(2, '0')}分';
+
+    return Card(
+      margin: const EdgeInsets.only(bottom: 12),
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.grey.shade200.withOpacity(0.8)),
       ),
-      trailing: const Icon(Icons.chevron_right),
+      child: InkWell(
+        borderRadius: BorderRadius.circular(16),
+        onTap: () {
+          setState(() {
+            if (isExpanded) {
+              _expandedReceiptId = null;
+            } else {
+              _expandedReceiptId = receipt.id;
+            }
+          });
+        },
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              // 1. 未展开时展现头部
+              Row(
+                crossAxisAlignment: CrossAxisAlignment.center,
+                children: [
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '快递：${receipt.trackingNumber}',
+                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                        ),
+                        const SizedBox(height: 6),
+                        Text(
+                          '$timeStr  ·  $totalQuantity 件货',
+                          style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w500),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  // 未结算/已结算椭圆空心药丸 Badge
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                    decoration: BoxDecoration(
+                      border: Border.all(
+                        color: receipt.isSettled ? const Color(0xff2d6a4f) : Colors.redAccent,
+                        width: 1.0,
+                      ),
+                      borderRadius: BorderRadius.circular(20),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Container(
+                          width: 6,
+                          height: 6,
+                          decoration: BoxDecoration(
+                            shape: BoxShape.circle,
+                            color: receipt.isSettled ? const Color(0xff2d6a4f) : Colors.redAccent,
+                          ),
+                        ),
+                        const SizedBox(width: 6),
+                        Text(
+                          receipt.isSettled ? '已结算' : '未结算',
+                          style: TextStyle(
+                            color: receipt.isSettled ? const Color(0xff2d6a4f) : Colors.redAccent,
+                            fontSize: 12,
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                ],
+              ),
+
+              // 2. 展开显示商品与操作
+              if (isExpanded) ...[
+                const SizedBox(height: 16),
+                const Divider(height: 1),
+                const SizedBox(height: 12),
+                
+                // 商品明细列表
+                ListView.builder(
+                  shrinkWrap: true,
+                  physics: const NeverScrollableScrollPhysics(),
+                  itemCount: receipt.items.length,
+                  itemBuilder: (context, idx) {
+                    final item = receipt.items[idx];
+                    final key = '${receipt.id}_${item.productCode}';
+                    final currentQty = _editingReceiptQuantities[key] ?? item.quantity;
+                    
+                    return Padding(
+                      padding: const EdgeInsets.symmetric(vertical: 8),
+                      child: Row(
+                        children: [
+                          Expanded(
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  item.productName,
+                                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                ),
+                                const SizedBox(height: 4),
+                                Container(
+                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  decoration: BoxDecoration(
+                                    color: Colors.grey.shade100,
+                                    borderRadius: BorderRadius.circular(4),
+                                  ),
+                                  child: Text(
+                                    '编码：${item.productCode ?? '无'}',
+                                    style: TextStyle(fontSize: 10, color: Colors.grey.shade600, fontWeight: FontWeight.bold),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          // 数字微调器
+                          Container(
+                            decoration: BoxDecoration(
+                              color: const Color(0xFFF4F9F4),
+                              borderRadius: BorderRadius.circular(20),
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                IconButton(
+                                  icon: const Icon(Icons.remove, size: 14, color: Colors.grey),
+                                  visualDensity: VisualDensity.compact,
+                                  onPressed: () {
+                                    if (currentQty > 1) {
+                                      setState(() {
+                                        _editingReceiptQuantities[key] = currentQty - 1;
+                                      });
+                                    }
+                                  },
+                                ),
+                                Text(
+                                  '$currentQty',
+                                  style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                                ),
+                                IconButton(
+                                  icon: const Icon(Icons.add, size: 14, color: Colors.grey),
+                                  visualDensity: VisualDensity.compact,
+                                  onPressed: () {
+                                    setState(() {
+                                      _editingReceiptQuantities[key] = currentQty + 1;
+                                    });
+                                  },
+                                ),
+                              ],
+                            ),
+                          ),
+                        ],
+                      ),
+                    );
+                  },
+                ),
+
+                // 拍照预览缩略图
+                if (receipt.imagePath != null && File(receipt.imagePath!).existsSync()) ...[
+                  const SizedBox(height: 8),
+                  ClipRRect(
+                    borderRadius: BorderRadius.circular(10),
+                    child: Image.file(
+                      File(receipt.imagePath!),
+                      width: 80,
+                      height: 80,
+                      fit: BoxFit.cover,
+                    ),
+                  ),
+                ],
+
+                const SizedBox(height: 16),
+                const Divider(height: 1),
+                const SizedBox(height: 12),
+
+                // 底部操作区（重新识别、删除单据、保存）
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Row(
+                      children: [
+                        TextButton.icon(
+                          onPressed: () => _reRecognizeReceipt(receipt),
+                          icon: const Icon(Icons.refresh, size: 16, color: Color(0xff2d6a4f)),
+                          label: const Text('重新识别', style: TextStyle(color: Color(0xff2d6a4f), fontSize: 13, fontWeight: FontWeight.bold)),
+                          style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+                        ),
+                        const SizedBox(width: 16),
+                        TextButton.icon(
+                          onPressed: () async {
+                            final ok = await showDialog<bool>(
+                              context: context,
+                              builder: (ctx) => AlertDialog(
+                                title: const Text('删除单据'),
+                                content: const Text('确认要删除这笔入库单据及对应的库存吗？该操作不可撤销！'),
+                                actions: [
+                                  TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('取消')),
+                                  TextButton(
+                                    onPressed: () => Navigator.pop(ctx, true),
+                                    child: const Text('确认删除', style: TextStyle(color: Colors.redAccent, fontWeight: FontWeight.bold)),
+                                  ),
+                                ],
+                              ),
+                            );
+                            if (ok == true) {
+                              await _database.deleteInboundReceipt(receipt.id);
+                              _refreshData();
+                            }
+                          },
+                          icon: const Icon(Icons.delete_outline, size: 16, color: Colors.redAccent),
+                          label: const Text('删除单据', style: TextStyle(color: Colors.redAccent, fontSize: 13, fontWeight: FontWeight.bold)),
+                          style: TextButton.styleFrom(padding: EdgeInsets.zero, visualDensity: VisualDensity.compact),
+                        ),
+                      ],
+                    ),
+                    FilledButton(
+                      style: FilledButton.styleFrom(
+                        backgroundColor: hasChanges ? const Color(0xff2d6a4f) : Colors.grey.shade200,
+                        foregroundColor: hasChanges ? Colors.white : Colors.grey.shade400,
+                        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        visualDensity: VisualDensity.compact,
+                      ),
+                      onPressed: !hasChanges
+                          ? null
+                          : () async {
+                              final updatedItems = receipt.items.map((item) {
+                                final key = '${receipt.id}_${item.productCode}';
+                                final newQty = _editingReceiptQuantities[key] ?? item.quantity;
+                                return item.copyWith(quantity: newQty);
+                              }).toList();
+                              try {
+                                await _database.updateInboundReceiptItems(receipt.id, updatedItems);
+                                ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('修改保存成功！')));
+                                _refreshData();
+                                setState(() {
+                                  _expandedReceiptId = null;
+                                });
+                              } catch (e) {
+                                ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('保存失败: $e')));
+                              }
+                            },
+                      child: const Text('保存', style: TextStyle(fontSize: 13, fontWeight: FontWeight.bold)),
+                    ),
+                  ],
+                ),
+              ],
+            ],
+          ),
+        ),
+      ),
     );
   }
 

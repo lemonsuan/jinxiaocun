@@ -348,15 +348,20 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                     return Card(
                       margin: const EdgeInsets.only(bottom: 12),
                       elevation: 0,
+                      color: Colors.white,
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(16),
-                        side: BorderSide(color: colorScheme.outlineVariant.withOpacity(0.5)),
+                        side: BorderSide(color: Colors.grey.shade200.withOpacity(0.8)),
                       ),
                       child: ListTile(
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-                        leading: CircleAvatar(
-                          backgroundColor: colorScheme.secondaryContainer,
-                          child: Icon(Icons.settings_backup_restore, color: colorScheme.primary),
+                        leading: Container(
+                          padding: const EdgeInsets.all(10),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFFE8F3ED),
+                            shape: BoxShape.circle,
+                          ),
+                          child: const Icon(Icons.history, color: Color(0xff2d6a4f), size: 20),
                         ),
                         title: Text(
                           name,
@@ -367,22 +372,28 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                         subtitle: Padding(
                           padding: const EdgeInsets.only(top: 4),
                           child: Text(
-                            '时间: $timeStr\n大小: $sizeStr',
-                            style: TextStyle(fontSize: 11, color: colorScheme.outline, height: 1.4),
+                            '$timeStr  ·  $sizeStr',
+                            style: const TextStyle(fontSize: 11, color: Colors.grey, height: 1.4, fontWeight: FontWeight.w500),
                           ),
                         ),
                         trailing: Row(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            IconButton(
-                              icon: const Icon(Icons.cloud_download_outlined, color: Colors.teal),
-                              tooltip: '覆盖恢复此备份',
+                            TextButton.icon(
+                              style: TextButton.styleFrom(
+                                foregroundColor: const Color(0xff2d6a4f),
+                                padding: EdgeInsets.zero,
+                                visualDensity: VisualDensity.compact,
+                              ),
                               onPressed: () => _restoreFromLocalFile(file),
+                              icon: const Icon(Icons.settings_backup_restore, size: 16),
+                              label: const Text('还原', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13)),
                             ),
+                            const SizedBox(width: 8),
                             IconButton(
-                              icon: const Icon(Icons.delete_outline, color: Colors.redAccent),
-                              tooltip: '删除备份文件',
+                              icon: const Icon(Icons.delete_outline, color: Colors.redAccent, size: 20),
                               onPressed: () => _deleteBackupFile(file),
+                              visualDensity: VisualDensity.compact,
                             ),
                           ],
                         ),
@@ -394,67 +405,48 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
     );
   }
 
-  // 备份核心操作卡片
+  // 1:1 像素级复原导出/导入操作卡片
   Widget _actionCard(ColorScheme colorScheme) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(20),
-        gradient: LinearGradient(
-          colors: [
-            colorScheme.primaryContainer.withOpacity(0.4),
-            colorScheme.secondaryContainer.withOpacity(0.3),
-          ],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        border: Border.all(color: colorScheme.outlineVariant.withOpacity(0.4)),
+    return Card(
+      elevation: 0,
+      color: Colors.white,
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(16),
+        side: BorderSide(color: Colors.grey.shade200.withOpacity(0.8)),
       ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.shield_outlined, color: colorScheme.primary),
-              const SizedBox(width: 8),
-              const Text(
-                '数据防丢失守护',
-                style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            '导出当前所有入库明细、出货账单及商品指导价格库，或从外部数据包进行灾备恢复。',
-            style: TextStyle(fontSize: 13, color: colorScheme.outline, height: 1.4),
-          ),
-          const SizedBox(height: 20),
-          Row(
-            children: [
-              Expanded(
-                child: FilledButton.icon(
-                  onPressed: _exportBackup,
-                  icon: const Icon(Icons.unarchive_outlined, size: 18),
-                  label: const Text('一键导出备份'),
-                  style: FilledButton.styleFrom(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          children: [
+            Expanded(
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFFFF3E0),
+                  foregroundColor: const Color(0xFFE65100),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
+                onPressed: _exportBackup,
+                icon: const Icon(Icons.unarchive_outlined, size: 18),
+                label: const Text('导出备份', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: OutlinedButton.icon(
-                  onPressed: _importExternalBackup,
-                  icon: const Icon(Icons.publish_outlined, size: 18),
-                  label: const Text('导入外部备份'),
-                  style: OutlinedButton.styleFrom(
-                    shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
-                  ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: FilledButton.icon(
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFE3F2FD),
+                  foregroundColor: const Color(0xFF0D47A1),
+                  shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+                  padding: const EdgeInsets.symmetric(vertical: 14),
                 ),
+                onPressed: _importExternalBackup,
+                icon: const Icon(Icons.publish_outlined, size: 18),
+                label: const Text('导入备份', style: TextStyle(fontWeight: FontWeight.bold)),
               ),
-            ],
-          ),
-        ],
+            ),
+          ],
+        ),
       ),
     );
   }

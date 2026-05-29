@@ -17,6 +17,7 @@ class InventoryApp extends StatelessWidget {
       scrollBehavior: const _NoStretchScrollBehavior(),
       theme: ThemeData(
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xff2d6a4f)),
+        scaffoldBackgroundColor: const Color(0xFFF4F9F4),
         useMaterial3: true,
       ),
       home: const AppHome(),
