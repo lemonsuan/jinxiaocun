@@ -1101,14 +1101,15 @@ class _AppHomeState extends State<AppHome> {
     );
 
     try {
-      final ocrText = await _paddleOcr.detect(path, rowMergeTolerance: _ocrRowMergeTolerance);
+      final ocrResult = await _paddleOcr.recognizeTable(path, rowMergeTolerance: _ocrRowMergeTolerance);
+      final ocrText = ocrResult.editableText;
       final extracted = await _gemmaExtractor.extract(ocrText);
       final draftItems = extracted.items.map((item) => InboundDraftItem(
         productName: item.productName,
         quantity: item.quantity,
-        productCode: (item.productCode == null || item.productCode == '未提及') ? null : item.productCode,
-        purchasePrice: (item.purchasePrice == null || item.purchasePrice == '未提及') ? null : double.tryParse(item.purchasePrice!),
-        salePrice: (item.salePrice == null || item.salePrice == '未提及') ? null : double.tryParse(item.salePrice!),
+        productCode: item.productCode,
+        purchasePrice: item.purchasePrice,
+        salePrice: item.salePrice,
         sourceText: '重新识别提取',
       )).toList();
       
