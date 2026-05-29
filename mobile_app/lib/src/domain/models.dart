@@ -123,3 +123,32 @@ class WarehouseStock {
   final String productName;
   final int quantity;
 }
+
+class ProductCatalogItem {
+  const ProductCatalogItem({
+    required this.productCode,
+    required this.productName,
+    this.defaultPurchasePrice,
+    this.defaultSalePrice,
+  });
+
+  final String productCode;
+  final String productName;
+  final double? defaultPurchasePrice;
+  final double? defaultSalePrice;
+
+  ProductCatalogItem copyWith({
+    String? productCode,
+    String? productName,
+    double? defaultPurchasePrice,
+    double? defaultSalePrice,
+  }) {
+    return ProductCatalogItem(
+      productCode: productCode ?? this.productCode,
+      productName: productName ?? this.productName,
+      defaultPurchasePrice: defaultPurchasePrice ?? this.defaultPurchasePrice,
+      defaultSalePrice: defaultSalePrice ?? this.defaultSalePrice,
+    );
+  }
+}
+

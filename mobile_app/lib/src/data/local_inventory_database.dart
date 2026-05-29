@@ -40,6 +40,10 @@ class LocalInventoryDatabase {
     'products',
   ];
   static const String _ocrRowMergeToleranceKey = 'ocr_row_merge_tolerance';
+  static const String _geminiApiKey = 'gemini_api_key';
+  static const String _geminiApiUrl = 'gemini_api_url';
+  static const String _geminiModelKey = 'gemini_model';
+  static const String _aiApiFormatKey = 'ai_api_format';
 
   Database? _database;
 
@@ -99,6 +103,110 @@ class LocalInventoryDatabase {
       {
         'key': _ocrRowMergeToleranceKey,
         'value': normalized.toStringAsFixed(2),
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<String> loadGeminiApiKey() async {
+    final rows = await _db.query(
+      'app_settings',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: [_geminiApiKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return '';
+    }
+    return rows.single['value']! as String;
+  }
+
+  Future<void> saveGeminiApiKey(String value) async {
+    await _db.insert(
+      'app_settings',
+      {
+        'key': _geminiApiKey,
+        'value': value,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<String> loadGeminiApiUrl() async {
+    final rows = await _db.query(
+      'app_settings',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: [_geminiApiUrl],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return 'https://generativelanguage.googleapis.com';
+    }
+    return rows.single['value']! as String;
+  }
+
+  Future<void> saveGeminiApiUrl(String value) async {
+    await _db.insert(
+      'app_settings',
+      {
+        'key': _geminiApiUrl,
+        'value': value,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<String> loadGeminiModel() async {
+    final rows = await _db.query(
+      'app_settings',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: [_geminiModelKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return '';
+    }
+    return rows.single['value']! as String;
+  }
+
+  Future<void> saveGeminiModel(String value) async {
+    await _db.insert(
+      'app_settings',
+      {
+        'key': _geminiModelKey,
+        'value': value,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<String> loadAiApiFormat() async {
+    final rows = await _db.query(
+      'app_settings',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: [_aiApiFormatKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return 'openai';
+    }
+    return rows.single['value']! as String;
+  }
+
+  Future<void> saveAiApiFormat(String value) async {
+    await _db.insert(
+      'app_settings',
+      {
+        'key': _aiApiFormatKey,
+        'value': value,
         'updated_at': DateTime.now().toIso8601String(),
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
@@ -821,5 +929,37 @@ class LocalInventoryDatabase {
 
   String _nextId(String prefix) {
     return '$prefix-${DateTime.now().microsecondsSinceEpoch}';
+  }
+
+  Future<List<ProductCatalogItem>> loadProductCatalog() async {
+    final rows = await _db.query(
+      'products',
+      orderBy: 'name COLLATE NOCASE ASC',
+    );
+    return rows.map((row) {
+      return ProductCatalogItem(
+        productCode: row['code']! as String,
+        productName: row['name']! as String,
+        defaultPurchasePrice: row['default_purchase_price'] as double?,
+        defaultSalePrice: row['default_sale_price'] as double?,
+      );
+    }).toList(growable: false);
+  }
+
+  Future<void> updateProductPrice(
+    String productCode, {
+    double? purchasePrice,
+    double? salePrice,
+  }) async {
+    await _db.update(
+      'products',
+      {
+        'default_purchase_price': purchasePrice,
+        'default_sale_price': salePrice,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'code = ?',
+      whereArgs: [productCode],
+    );
   }
 }
