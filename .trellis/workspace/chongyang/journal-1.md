@@ -71,3 +71,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 3: 移除备份恢复确认弹窗的 3 秒倒计时限制
+
+**Date**: 2026-05-29
+**Task**: 移除备份恢复确认弹窗的 3 秒倒计时限制
+**Branch**: `feature/mobile-ocr`
+
+### Summary
+
+去掉了数据库备份恢复确认弹窗上的 3 秒强制安全倒计时锁，移除了 Timer 与 StatefulBuilder 并精简了逻辑层，使得用户确认后即可直接覆盖恢复，操作更为流畅。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `283a0f7` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
