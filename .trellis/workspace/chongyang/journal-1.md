@@ -38,3 +38,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 2: 升级 AI 提取第二协议为 Anthropic 并重构历史入库卡片交互
+
+**Date**: 2026-05-29
+**Task**: 升级 AI 提取第二协议为 Anthropic 并重构历史入库卡片交互
+**Branch**: `feature/mobile-ocr`
+
+### Summary
+
+将 AI 双格式提取的第二种协议格式由 Google Gemini 更替为 Anthropic 官方 Messages API 标准格式；同时重构了历史入库的卡片头部渲染，改为了紧凑的 7:3 左右结构布局，右侧支持点击直接反转结算状态，且在卡片展开后最上方还原展示了单据 ID。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `08e2742` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
