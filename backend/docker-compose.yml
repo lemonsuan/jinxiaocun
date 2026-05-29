@@ -1,0 +1,18 @@
+version: '3.8'
+
+services:
+  db:
+    image: postgres:15-alpine
+    container_name: shop_inventory_pg
+    environment:
+      POSTGRES_DB: shop_inventory
+      POSTGRES_USER: shop_admin
+      POSTGRES_PASSWORD: admin_secure_pass_123
+    ports:
+      - "5433:5432"
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    restart: always
+
+volumes:
+  pgdata:

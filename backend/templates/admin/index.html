@@ -1,0 +1,74 @@
+{% extends "admin/base_site.html" %}
+{% load i18n %}
+
+{% block content %}
+<div class="px-6 py-8 md:px-10 max-w-7xl mx-auto">
+    <!-- 头部欢迎卡片 -->
+    <div class="bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm p-8 mb-10 flex flex-col md:flex-row md:items-center md:justify-between">
+        <div>
+            <h1 class="text-2xl font-bold text-gray-900 dark:text-white">你好，{{ user.username }} 👋</h1>
+            <p class="text-gray-500 dark:text-gray-400 text-sm mt-2 max-w-xl">欢迎使用商品管理后台。下方是您当前有权管理的店铺，请选择需要操作的店铺卡片进入操作控制中心。</p>
+        </div>
+        <div class="mt-4 md:mt-0">
+            <span class="inline-flex items-center px-4 py-2 rounded-full text-xs font-semibold bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400">
+                角色: {% if user.is_superuser %}系统超级管理员{% else %}店铺管理员{% endif %}
+            </span>
+        </div>
+    </div>
+
+    <!-- 店铺卡片列表 -->
+    <h2 class="text-xl font-bold text-gray-900 dark:text-white mb-6 flex items-center">
+        <span class="mr-2">🏪</span> 我的店铺列表
+    </h2>
+    
+    {% if my_shops %}
+        <div class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
+            {% for shop in my_shops %}
+                <a href="/admin/shops/shop/{{ shop.id }}/change/" class="group block bg-white dark:bg-gray-800 rounded-2xl border border-gray-100 dark:border-gray-700 shadow-sm hover:shadow-md hover:border-teal-500 dark:hover:border-teal-500 hover:-translate-y-0.5 transition-all duration-200 p-6">
+                    <div class="flex items-center space-x-4">
+                        <div class="p-3 bg-teal-50 dark:bg-teal-900/30 text-teal-600 dark:text-teal-400 rounded-xl group-hover:scale-105 transition-transform duration-200">
+                            <!-- SVG 房屋/商铺图标 -->
+                            <svg class="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"></path>
+                            </svg>
+                        </div>
+                        <div>
+                            <h3 class="text-lg font-bold text-gray-800 dark:text-gray-100 group-hover:text-teal-600 dark:group-hover:text-teal-400 transition-colors duration-150">{{ shop.name }}</h3>
+                            <p class="text-xs text-gray-400 mt-1">店铺ID: {{ shop.id|stringformat:".8s" }}...</p>
+                        </div>
+                    </div>
+                    
+                    <!-- 卡片小数据面板（仅展示概览） -->
+                    <div class="mt-6 pt-4 border-t border-gray-50 dark:border-gray-700/50 flex items-center justify-between text-xs text-gray-500 dark:text-gray-400">
+                        <span class="flex items-center">
+                            <span class="w-2 h-2 rounded-full bg-emerald-500 mr-2"></span>
+                            数据在线托管中
+                        </span>
+                        <span class="font-medium text-teal-600 dark:text-teal-400 group-hover:translate-x-1 transition-transform duration-150">
+                            进入店铺管理 ➔
+                        </span>
+                    </div>
+                </a>
+            {% endfor %}
+        </div>
+    {% else %}
+        <div class="bg-amber-50 dark:bg-amber-950/20 border border-amber-100 dark:border-amber-900/30 text-amber-800 dark:text-amber-300 rounded-xl p-5 flex items-start space-x-3">
+            <span class="text-xl">⚠️</span>
+            <div>
+                <h4 class="font-bold text-sm">暂无可用店铺</h4>
+                <p class="text-xs mt-1">您当前尚未被授予任何店铺的管理权限。请联系系统超级管理员审批您的加入申请，或在左侧“店铺”菜单中新建一个属于您的店铺。</p>
+            </div>
+        </div>
+    {% endif %}
+
+    <!-- 侧边栏和常规后台模块（超级管理员系统看板，防备其他全局管理用） -->
+    {% if user.is_superuser %}
+        <div class="mt-14 border-t border-gray-100 dark:border-gray-700/50 pt-8">
+            <h2 class="text-lg font-bold text-gray-900 dark:text-white mb-6 flex items-center">
+                <span class="mr-2">⚙️</span> 系统级物理数据表管理 (仅超级管理员可见)
+            </h2>
+            {% include "admin/app_list.html" %}
+        </div>
+    {% endif %}
+</div>
+{% endblock %}
