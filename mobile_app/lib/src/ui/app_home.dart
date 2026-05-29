@@ -387,7 +387,6 @@ class _AppHomeState extends State<AppHome> {
   Widget _stockTotalsTab() {
     final stocks = _filteredStockTotals();
     return _page([
-      _sectionTitle('商品总量'),
       TextField(
         controller: _stockSearchController,
         onChanged: (_) => setState(() {}),
@@ -420,7 +419,6 @@ class _AppHomeState extends State<AppHome> {
   Widget _historyOutboundTab() {
     final orders = _filteredOutboundHistory();
     return _page([
-      _sectionTitle('历史出库'),
       TextField(
         controller: _outboundHistorySearchController,
         onChanged: (_) => setState(() {}),
@@ -609,32 +607,6 @@ class _AppHomeState extends State<AppHome> {
       ),
       const SizedBox(height: 16),
 
-      // 3. 独立 AI 识别配置 Card (轻量卡片)
-      Card(
-        elevation: 0,
-        color: Colors.white,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(16),
-          side: BorderSide(color: Colors.grey.shade200.withOpacity(0.8)),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          child: ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.teal.shade50,
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: const Icon(Icons.auto_awesome, color: Colors.teal, size: 20),
-            ),
-            title: const Text('AI 识别配置', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
-            subtitle: const Text('配置在线 AI 提取的模型、API Key 与接口地址', style: TextStyle(fontSize: 12, color: Colors.grey)),
-            onTap: _openAIConfigDialog,
-          ),
-        ),
-      ),
     ]);
   }
 
@@ -1182,68 +1154,67 @@ class _AppHomeState extends State<AppHome> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              // 1. 未展开时展现头部
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '快递：${receipt.trackingNumber}',
-                          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          '$timeStr  ·  $totalQuantity 件货',
-                          style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w500),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  // 未结算/已结算椭圆空心药丸 Badge
-                  Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
-                    decoration: BoxDecoration(
-                      border: Border.all(
-                        color: receipt.isSettled ? const Color(0xff2d6a4f) : Colors.redAccent,
-                        width: 1.0,
+              // 1. 未展开时展现头部 Row
+              if (!isExpanded)
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.center,
+                  children: [
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            '快递：${receipt.trackingNumber}',
+                            style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                          ),
+                          const SizedBox(height: 6),
+                          Text(
+                            '$timeStr  ·  $totalQuantity 件货',
+                            style: const TextStyle(fontSize: 12, color: Colors.grey, fontWeight: FontWeight.w500),
+                          ),
+                        ],
                       ),
-                      borderRadius: BorderRadius.circular(20),
                     ),
-                    child: Row(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Container(
-                          width: 6,
-                          height: 6,
-                          decoration: BoxDecoration(
-                            shape: BoxShape.circle,
-                            color: receipt.isSettled ? const Color(0xff2d6a4f) : Colors.redAccent,
-                          ),
+                    const SizedBox(width: 8),
+                    // 未结算/已结算椭圆空心药丸 Badge
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+                      decoration: BoxDecoration(
+                        border: Border.all(
+                          color: receipt.isSettled ? const Color(0xff2d6a4f) : Colors.redAccent,
+                          width: 1.0,
                         ),
-                        const SizedBox(width: 6),
-                        Text(
-                          receipt.isSettled ? '已结算' : '未结算',
-                          style: TextStyle(
-                            color: receipt.isSettled ? const Color(0xff2d6a4f) : Colors.redAccent,
-                            fontSize: 12,
-                            fontWeight: FontWeight.bold,
+                        borderRadius: BorderRadius.circular(20),
+                      ),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
+                            decoration: BoxDecoration(
+                              shape: BoxShape.circle,
+                              color: receipt.isSettled ? const Color(0xff2d6a4f) : Colors.redAccent,
+                            ),
                           ),
-                        ),
-                      ],
-                    ),
-                  )
-                ],
-              ),
+                          const SizedBox(width: 6),
+                          Text(
+                            receipt.isSettled ? '已结算' : '未结算',
+                            style: TextStyle(
+                              color: receipt.isSettled ? const Color(0xff2d6a4f) : Colors.redAccent,
+                              fontSize: 12,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  ],
+                ),
 
               // 2. 展开显示商品与操作
               if (isExpanded) ...[
-                const SizedBox(height: 16),
-                const Divider(height: 1),
-                const SizedBox(height: 12),
+                // 已在上方的 Row 隐藏，直接平铺展示商品列表，无需 SizedBox 和 Divider
                 
                 // 商品明细列表
                 ListView.builder(
@@ -3026,20 +2997,29 @@ class _AppHomeState extends State<AppHome> {
 
   Widget _inventoryManagementTab() {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
+        Padding(
+          padding: const EdgeInsets.only(left: 16, right: 16, top: 8, bottom: 4),
+          child: Text(
+            '库存管理',
+            style: Theme.of(context).textTheme.titleLarge?.copyWith(
+                  fontWeight: FontWeight.bold,
+                ),
+          ),
+        ),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: SegmentedButton<int>(
+            showSelectedIcon: false,
             segments: const [
               ButtonSegment<int>(
                 value: 0,
-                label: Text('库存管理'),
-                icon: Icon(Icons.inventory_2_outlined),
+                label: Text('库存商品'),
               ),
               ButtonSegment<int>(
                 value: 1,
                 label: Text('历史出库'),
-                icon: Icon(Icons.local_shipping_outlined),
               ),
             ],
             selected: {_inventorySubTabIndex},

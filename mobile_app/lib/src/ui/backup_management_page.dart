@@ -269,7 +269,7 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('数据备份还原', style: TextStyle(fontWeight: FontWeight.bold)),
+        title: const Text('备份管理', style: TextStyle(fontWeight: FontWeight.bold)),
         elevation: 0,
         backgroundColor: Colors.transparent,
         foregroundColor: colorScheme.onSurface,
@@ -299,18 +299,12 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                 const SizedBox(height: 24),
 
                 // 2. 备份历史标头
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Text(
-                      '本地备份历史',
-                      style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
-                    ),
-                    IconButton(
-                      icon: const Icon(Icons.refresh, size: 20),
-                      onPressed: _loadBackupList,
-                    )
-                  ],
+                Padding(
+                  padding: const EdgeInsets.only(bottom: 8),
+                  child: Text(
+                    '本地历史备份 (${_backupFiles.length})',
+                    style: const TextStyle(fontSize: 16, fontWeight: FontWeight.bold),
+                  ),
                 ),
                 const SizedBox(height: 8),
 
@@ -357,9 +351,9 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
                         leading: Container(
                           padding: const EdgeInsets.all(10),
-                          decoration: const BoxDecoration(
-                            color: Color(0xFFE8F3ED),
-                            shape: BoxShape.circle,
+                          decoration: BoxDecoration(
+                            color: const Color(0xFFE8F3ED),
+                            borderRadius: BorderRadius.circular(8),
                           ),
                           child: const Icon(Icons.history, color: Color(0xff2d6a4f), size: 20),
                         ),
