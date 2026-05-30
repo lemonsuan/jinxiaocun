@@ -4,6 +4,8 @@ import 'dart:typed_data';
 import 'dart:ui';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import '../data/local_inventory_database.dart';
@@ -75,9 +77,33 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
       final file = File(p.join(dir.path, fileName));
       await file.writeAsBytes(bytes, flush: true);
 
+      // 如果是 Android 平台，直接写到系统公共 Downloads 文件夹
+      bool exportedToDownloads = false;
+      if (Platform.isAndroid) {
+        try {
+          final bool? success = await const MethodChannel('inventory_app/system_utils')
+              .invokeMethod<bool>('saveToDownloads', {
+            'fileName': fileName,
+            'bytes': bytes,
+          });
+          exportedToDownloads = success ?? false;
+        } catch (e) {
+          debugPrint('写入公共 Downloads 失败: $e');
+        }
+      }
+
       if (mounted) {
+        String msg = '备份导出成功！已保存为本地还原点';
+        if (exportedToDownloads) {
+          msg = '备份成功！已导出到系统「Download/」目录并生成本地还原点';
+        } else {
+          msg = '备份成功！已保存为本地还原点: $fileName';
+        }
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('备份导出成功！已保存为: $fileName')),
+          SnackBar(
+            content: Text(msg),
+            duration: const Duration(seconds: 3),
+          ),
         );
       }
       _loadBackupList();
@@ -361,6 +387,14 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                       ),
                       child: ListTile(
                         contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                        onLongPress: () async {
+                          if (await file.exists()) {
+                            await Share.shareXFiles(
+                              [XFile(file.path)],
+                              text: '分享商品管理系统数据备份：$name',
+                            );
+                          }
+                        },
                         leading: const Icon(
                           Icons.insert_drive_file_outlined,
                           color: Color(0xFF94A3B8),

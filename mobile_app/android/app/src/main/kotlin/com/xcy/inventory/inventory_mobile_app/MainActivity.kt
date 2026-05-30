@@ -5,6 +5,12 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.ResultReceiver
+import android.content.ContentValues
+import android.provider.MediaStore
+import android.os.Build
+import android.os.Environment
+import java.io.File
+import java.io.FileOutputStream
 import com.xcy.yuntuitui.inventory.ocr.OcrService
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
@@ -42,6 +48,62 @@ class MainActivity : FlutterActivity() {
                     recognizeTableInOcrProcess(imagePath, rowMergeTolerance, result)
                 }
                 else -> result.notImplemented()
+            }
+        }
+
+        MethodChannel(
+            flutterEngine.dartExecutor.binaryMessenger,
+            "inventory_app/system_utils"
+        ).setMethodCallHandler { call, result ->
+            when (call.method) {
+                "saveToDownloads" -> {
+                    val fileName = call.argument<String>("fileName").orEmpty()
+                    val bytes = call.argument<ByteArray>("bytes")
+                    if (fileName.isBlank() || bytes == null) {
+                        result.error("INVALID_ARGS", "fileName or bytes is empty", null)
+                        return@setMethodCallHandler
+                    }
+                    val ok = saveToDownloads(fileName, bytes)
+                    result.success(ok)
+                }
+                else -> result.notImplemented()
+            }
+        }
+    }
+
+    private fun saveToDownloads(fileName: String, bytes: ByteArray): Boolean {
+        val resolver = contentResolver
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val contentValues = ContentValues().apply {
+                put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                put(MediaStore.Downloads.MIME_TYPE, "application/json")
+                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            }
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues) ?: return false
+            return try {
+                resolver.openOutputStream(uri)?.use { outputStream ->
+                    outputStream.write(bytes)
+                    true
+                } ?: false
+            } catch (e: Exception) {
+                e.printStackTrace()
+                false
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (!downloadsDir.exists()) {
+                downloadsDir.mkdirs()
+            }
+            val file = File(downloadsDir, fileName)
+            return try {
+                FileOutputStream(file).use { out ->
+                    out.write(bytes)
+                    true
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+                false
             }
         }
     }
