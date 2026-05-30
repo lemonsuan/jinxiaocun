@@ -1341,9 +1341,9 @@ class _AppHomeState extends State<AppHome> {
       final int width = image.width;
       final int height = image.height;
 
-      // 如果宽度大于高度，则是横屏图，强制顺时针旋转90度
+      // 如果宽度大于高度，则是横屏图，强制逆时针旋转90度（即顺时针旋转270度）
       if (width > height) {
-        final double angle = 90 * 3.141592653589793 / 180;
+        final double angle = 270 * 3.141592653589793 / 180;
         final int targetWidth = height;
         final int targetHeight = width;
 
