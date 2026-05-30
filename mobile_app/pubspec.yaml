@@ -1,7 +1,7 @@
 name: inventory_mobile_app
 description: Offline-first inventory receiving app.
 publish_to: "none"
-version: 1.0.2+4
+version: 1.0.3+5
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
