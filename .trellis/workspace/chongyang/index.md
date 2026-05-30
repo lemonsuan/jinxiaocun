@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 8
+- **Total Sessions**: 9
 - **Last Active**: 2026-05-30
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~271 | Active |
+| `journal-1.md` | ~304 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 9 | 2026-05-30 | 解决Android在Release混淆下导致的JNI方法找不到Crash | `dd262e3` | `master` |
 | 8 | 2026-05-30 | 优化CI/CD触发条件为仅限标签发版触发并完成推送 | `faf924d` | `master` |
 | 7 | 2026-05-30 | 清理Git历史大文件并顺利完成远程推送与Tag发版 | `e9b91d1` | `master` |
 | 6 | 2026-05-30 | 优化历史入库单展开样式使排版紧凑单号对齐 | `4ecaddc` | `master` |

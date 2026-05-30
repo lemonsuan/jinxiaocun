@@ -269,3 +269,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 9: 解决Android在Release混淆下导致的JNI方法找不到Crash
+
+**Date**: 2026-05-30
+**Task**: 解决Android在Release混淆下导致的JNI方法找不到Crash
+**Branch**: `master`
+
+### Summary
+
+分析出了 Release 模式下 R8 混淆器在优化裁剪中对 NativeOcrResult 类及其主构造函数的混淆裁剪是导致真机崩溃 NoSuchMethodError 的真因。配置了 build.gradle.kts 并新建了 proguard-rules.pro 混淆规则文件，物理保全了 JNI 的数据流通信契约。代码成功推送远程并成功无线部署到真机上进行了闭环测试验证。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `dd262e3` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
