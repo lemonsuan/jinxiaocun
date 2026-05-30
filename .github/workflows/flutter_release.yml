@@ -8,6 +8,9 @@ on:
 permissions:
   contents: write # 确保 Actions 有权限创建 Release 并上传附件
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: 'true' # 强制 Javascript Actions 在 Node 24 上运行，消除废弃警告
+
 jobs:
   build:
     name: Build & Release Android APK
@@ -25,31 +28,47 @@ jobs:
           distribution: 'temurin'
           java-version: '17'
 
-      # 3. 安装并配置 Flutter SDK 环境
+      # 3. 预先配置 NDK 以防止 Gradle 云端下载超时或协议未同意报错
+      - name: Install Android NDK
+        run: |
+          echo "Accepting licenses..."
+          yes | sdkmanager --licenses || true
+          echo "Installing NDK 29.0.14206865..."
+          sdkmanager --install "ndk;29.0.14206865"
+        continue-on-error: true
+
+      # 4. 安装并配置 Flutter SDK 环境
       - name: Set up Flutter
         uses: subosito/flutter-action@v2
         with:
           channel: 'stable'
           cache: true
 
-      # 4. 获取移动端 Flutter 项目依赖
+      # 5. 获取移动端 Flutter 项目依赖
       - name: Install Dependencies
         run: |
           cd mobile_app
           flutter pub get
 
-      # 5. 执行 Release APK 编译打包
+      # 6. 执行 Release APK 编译打包
       - name: Build Release APK
         run: |
           cd mobile_app
           flutter build apk --release
 
-      # 6. 将 APK 重命名以方便识别 (可选，包含提交 hash)
+      # 7. 将 APK 重命名以方便识别 (使用 find 自动适配不同 Flutter 版本的输出路径，避免硬编码报错)
       - name: Rename APK Output
         run: |
-          mv mobile_app/build/app/outputs/flutter-apk/app-release.apk mobile_app/build/app/outputs/flutter-apk/inventory_app_release.apk
+          APK_PATH=$(find mobile_app/build -name "app-release.apk" | head -n 1)
+          if [ -z "$APK_PATH" ]; then
+            echo "Error: app-release.apk not found!"
+            exit 1
+          fi
+          echo "Found APK at: $APK_PATH"
+          mkdir -p mobile_app/build/app/outputs/flutter-apk
+          cp "$APK_PATH" mobile_app/build/app/outputs/flutter-apk/inventory_app_release.apk
 
-      # 7. 自动创建 GitHub Release 并上传生成的 APK 附件
+      # 8. 自动创建 GitHub Release 并上传生成的 APK 附件
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/') # 仅当带有版本 tag 推送时才自动发布 Release
         uses: softprops/action-gh-release@v2
