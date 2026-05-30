@@ -203,3 +203,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 7: 清理Git历史大文件并顺利完成远程推送与Tag发版
+
+**Date**: 2026-05-30
+**Task**: 清理Git历史大文件并顺利完成远程推送与Tag发版
+**Branch**: `master`
+
+### Summary
+
+通过第一性原理分析出本地 master 历史中曾提交了 3GB 的 safetensors 大文件。执行了 git reset --soft origin/master 将本地修改撤回暂存区，并将 download/ 大模型目录彻底 unstage 并加入 .gitignore。成功将精简后的代码合并提交并瞬间 push 到了 GitHub，同时推送了 v1.0.0 标签，成功激活了自动构建 CI/CD 工作流。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `e9b91d1` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
