@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 7
+- **Total Sessions**: 8
 - **Last Active**: 2026-05-30
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~238 | Active |
+| `journal-1.md` | ~271 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 8 | 2026-05-30 | 优化CI/CD触发条件为仅限标签发版触发并完成推送 | `faf924d` | `master` |
 | 7 | 2026-05-30 | 清理Git历史大文件并顺利完成远程推送与Tag发版 | `e9b91d1` | `master` |
 | 6 | 2026-05-30 | 优化历史入库单展开样式使排版紧凑单号对齐 | `4ecaddc` | `master` |
 | 5 | 2026-05-30 | 实现注册页密码二次确认与手机号前后端校验并修复注销失效Bug | `fec4018` | `master` |

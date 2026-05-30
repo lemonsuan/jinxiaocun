@@ -236,3 +236,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 8: 优化CI/CD触发条件为仅限标签发版触发并完成推送
+
+**Date**: 2026-05-30
+**Task**: 优化CI/CD触发条件为仅限标签发版触发并完成推送
+**Branch**: `master`
+
+### Summary
+
+应用户要求优化了 GitHub Actions 的触发条件，将 master 分支的普通推送触发彻底移除，改为仅在推送版本标签 v* 时才启动自动编译。这一改动已通过本地 Git 提交并在一瞬间成功 push 到远程 GitHub。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `faf924d` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
