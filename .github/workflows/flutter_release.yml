@@ -3,9 +3,7 @@ name: Flutter CI/CD Release Build
 on:
   push:
     tags:
-      - 'v*' # 当推送版本标签如 v1.0.0 时自动编译发版
-    branches:
-      - master # 当向 master 分支推送代码时自动运行编译工作流
+      - 'v*' # 仅当推送版本标签如 v1.0.0 时才自动在云端编译并发版
 
 permissions:
   contents: write # 确保 Actions 有权限创建 Release 并上传附件

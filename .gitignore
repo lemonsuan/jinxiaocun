@@ -17,3 +17,6 @@ mobile_app/ios/LocalPods/InventoryPaddleOcr/OpenCV/opencv2.framework/Versions/A/
 .trellis/.runtime/
 .trellis/.developer
 **/__pycache__/
+
+# Local downloads and big model files
+download/
