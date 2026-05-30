@@ -22,6 +22,8 @@ import 'photo_count_page.dart';
 import 'backup_management_page.dart';
 import 'ai_config_page.dart';
 import 'login_page.dart';
+import 'express_inbound_page.dart';
+
 
 
 
@@ -90,7 +92,6 @@ class _AppHomeState extends State<AppHome> {
   double _ocrRowMergeTolerance = OcrSettings.defaultRowMergeTolerance;
   bool _isSettled = false;
   bool _isReady = false;
-  bool _isExpressModeActive = false;
 
   int _selectedTabIndex = 0;
   int _inventorySubTabIndex = 0;
@@ -202,225 +203,237 @@ class _AppHomeState extends State<AppHome> {
   }
 
   Widget _scanInboundTab() {
-    return _page([
-      _scanInboundHeader(),
+    return Column(
+      children: [
+        // 可滚动的主体区域
+        Expanded(
+          child: _page([
+            _scanInboundHeader(),
 
-      // ⚡ 极速模式动作大按钮
-      SizedBox(
-        width: double.infinity,
-        height: 50,
-        child: OutlinedButton.icon(
-          style: OutlinedButton.styleFrom(
-            backgroundColor: _isExpressModeActive ? const Color(0xFFD11A2A) : Colors.black,
-            foregroundColor: Colors.white,
-            side: BorderSide.none,
-            shape: const RoundedRectangleBorder(
-              borderRadius: BorderRadius.zero,
+            // 1. 三行输入直角白色容器
+
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border.all(color: _notionBorder, width: 1.0),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                child: Column(
+                  children: [
+                    // 第一行：快递单号
+                    Row(
+                      children: [
+                        const Icon(Icons.mail_outline, color: _notionGreyText, size: 18),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: _trackingController,
+                            decoration: const InputDecoration(
+                              hintText: '输入或扫描快递单号',
+                              border: InputBorder.none,
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            style: const TextStyle(fontSize: 14, color: _notionText),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        GestureDetector(
+                          onTap: _scanTrackingNumber,
+                          child: Container(
+                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              border: Border.all(color: _notionBorder, width: 1.0),
+                            ),
+                            child: const Icon(Icons.qr_code_scanner,
+                                color: _notionText, size: 16),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 1, color: _notionBorder),
+
+                    // 第二行：订单号
+                    Row(
+                      children: [
+                        const Icon(Icons.storefront, color: _notionGreyText, size: 18),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: _sellerOrderController,
+                            decoration: const InputDecoration(
+                              hintText: '输入订单号',
+                              border: InputBorder.none,
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            style: const TextStyle(fontSize: 14, color: _notionText),
+                          ),
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 1, color: _notionBorder),
+
+                    // 第三行：方案编号
+                    Row(
+                      children: [
+                        const Icon(Icons.assignment_outlined,
+                            color: _notionGreyText, size: 18),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: TextField(
+                            controller: _rebateOrderController,
+                            decoration: const InputDecoration(
+                              hintText: '输入方案编号',
+                              border: InputBorder.none,
+                              isDense: true,
+                              contentPadding: EdgeInsets.symmetric(vertical: 12),
+                            ),
+                            style: const TextStyle(fontSize: 14, color: _notionText),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
             ),
-          ),
-          onPressed: () {
-            if (_isExpressModeActive) {
-              setState(() {
-                _isExpressModeActive = false;
-                _message = '已退出极速模式';
-              });
-            } else {
-              _startExpressInbound();
-            }
-          },
-          icon: Icon(
-            _isExpressModeActive ? Icons.cancel_outlined : Icons.flash_on_outlined,
-            size: 18,
-            color: Colors.white,
-          ),
-          label: Text(
-            _isExpressModeActive ? '🔴 正在进行极速扫码，点击退出' : '⚡ 极速扫码拍照入库 (自动下一单)',
-            style: const TextStyle(
-              fontSize: 14,
-              fontFamily: 'monospace',
-              fontWeight: FontWeight.bold,
+            const SizedBox(height: 12),
+
+            // 2. 拍照识别与相册识别动作区
+            Container(
+              decoration: BoxDecoration(
+                color: Colors.white,
+                border: Border.all(color: _notionBorder, width: 1.0),
+              ),
+              padding: const EdgeInsets.all(12),
+              child: Row(
+                children: [
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        backgroundColor: _notionText,
+                        foregroundColor: Colors.white,
+                        side: BorderSide.none,
+                        shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.zero),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      onPressed: _captureAndRecognizeList,
+                      icon: const Icon(Icons.photo_camera_outlined, size: 16, color: Colors.white),
+                      label: const Text('拍照识别',
+                          style: TextStyle(fontWeight: FontWeight.normal)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: OutlinedButton.icon(
+                      style: OutlinedButton.styleFrom(
+                        backgroundColor: Colors.white,
+                        foregroundColor: _notionText,
+                        side: const BorderSide(color: _notionBorder, width: 1.0),
+                        shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.zero),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                      onPressed: _pickAndRecognizeList,
+                      icon: const Icon(Icons.photo_library_outlined, size: 16, color: _notionText),
+                      label: const Text('相册识别',
+                          style: TextStyle(fontWeight: FontWeight.normal)),
+                    ),
+                  ),
+                ],
+              ),
             ),
-          ),
-        ),
-      ),
-      const SizedBox(height: 12),
-
-      // 1. 三行输入直角白色容器
-      Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border.all(color: _notionBorder, width: 1.0),
-        ),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-          child: Column(
-            children: [
-              // 第一行：快递单号
-              Row(
-                children: [
-                  const Icon(Icons.mail_outline, color: _notionGreyText, size: 18),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: _trackingController,
-                      decoration: const InputDecoration(
-                        hintText: '输入或扫描快递单号',
-                        border: InputBorder.none,
-                        isDense: true,
-                        contentPadding: EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      style: const TextStyle(fontSize: 14, color: _notionText),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  GestureDetector(
-                    onTap: _scanTrackingNumber,
-                    child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        border: Border.all(color: _notionBorder, width: 1.0),
-                      ),
-                      child: const Icon(Icons.qr_code_scanner,
-                          color: _notionText, size: 16),
-                    ),
-                  ),
-                ],
-              ),
-              const Divider(height: 1, color: _notionBorder),
-
-              // 第二行：订单号
-              Row(
-                children: [
-                  const Icon(Icons.storefront, color: _notionGreyText, size: 18),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: _sellerOrderController,
-                      decoration: const InputDecoration(
-                        hintText: '输入订单号',
-                        border: InputBorder.none,
-                        isDense: true,
-                        contentPadding: EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      style: const TextStyle(fontSize: 14, color: _notionText),
-                    ),
-                  ),
-                ],
-              ),
-              const Divider(height: 1, color: _notionBorder),
-
-              // 第三行：方案编号
-              Row(
-                children: [
-                  const Icon(Icons.assignment_outlined,
-                      color: _notionGreyText, size: 18),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      controller: _rebateOrderController,
-                      decoration: const InputDecoration(
-                        hintText: '输入方案编号',
-                        border: InputBorder.none,
-                        isDense: true,
-                        contentPadding: EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      style: const TextStyle(fontSize: 14, color: _notionText),
-                    ),
-                  ),
-                ],
-              ),
+            if (_currentInboundImagePath != null) ...[
+              const SizedBox(height: 8),
+              _inboundImageTile(_currentInboundImagePath!),
             ],
-          ),
+            const SizedBox(height: 12),
+            _inboundDraftToolbar(),
+            for (var index = 0; index < _draftItems.length; index += 1)
+              _draftTile(index, _draftItems[index]),
+            // 底部留白，防止被浮动栏遮挡
+            const SizedBox(height: 72),
+          ]),
         ),
-      ),
-      const SizedBox(height: 12),
 
-      // 2. 拍照识别与相册识别动作区
-      Container(
-        decoration: BoxDecoration(
-          color: Colors.white,
-          border: Border.all(color: _notionBorder, width: 1.0),
-        ),
-        padding: const EdgeInsets.all(12),
-        child: Row(
-          children: [
-            Expanded(
-              child: OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  backgroundColor: _notionText,
-                  foregroundColor: Colors.white,
-                  side: BorderSide.none,
-                  shape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.zero),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                onPressed: _captureAndRecognizeList,
-                icon: const Icon(Icons.photo_camera_outlined, size: 16, color: Colors.white),
-                label: const Text('拍照识别',
-                    style: TextStyle(fontWeight: FontWeight.normal)),
-              ),
+        // 底部浮动操作栏
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+          decoration: const BoxDecoration(
+            color: Colors.white,
+            border: Border(
+              top: BorderSide(color: Color(0xFFEDEDEB), width: 0.8),
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  backgroundColor: Colors.white,
-                  foregroundColor: _notionText,
-                  side: const BorderSide(color: _notionBorder, width: 1.0),
-                  shape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.zero),
-                  padding: const EdgeInsets.symmetric(vertical: 14),
-                ),
-                onPressed: _pickAndRecognizeList,
-                icon: const Icon(Icons.photo_library_outlined, size: 16, color: _notionText),
-                label: const Text('相册识别',
-                    style: TextStyle(fontWeight: FontWeight.normal)),
-              ),
-            ),
-          ],
-        ),
-      ),
-      if (_currentInboundImagePath != null) ...[
-        const SizedBox(height: 8),
-        _inboundImageTile(_currentInboundImagePath!),
-      ],
-      const SizedBox(height: 12),
-      _inboundDraftToolbar(),
-      for (var index = 0; index < _draftItems.length; index += 1)
-        _draftTile(index, _draftItems[index]),
-      SwitchListTile(
-        contentPadding: EdgeInsets.zero,
-        value: _isSettled,
-        activeColor: _notionText,
-        onChanged: (value) {
-          setState(() {
-            _isSettled = value;
-          });
-        },
-        title:
-            const Text('本单已结算', style: TextStyle(fontWeight: FontWeight.w600)),
-      ),
-      const SizedBox(height: 4),
-      SizedBox(
-        width: double.infinity,
-        height: 48,
-        child: OutlinedButton.icon(
-          style: OutlinedButton.styleFrom(
-            backgroundColor: _notionText,
-            foregroundColor: Colors.white,
-            side: BorderSide.none,
-            shape: const RoundedRectangleBorder(
-                borderRadius: BorderRadius.zero),
           ),
-          onPressed: _confirmInbound,
-          icon: const Icon(Icons.archive_outlined, size: 18, color: Colors.white),
-          label: const Text('确认入库',
-              style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+          child: SafeArea(
+            top: false,
+            child: Row(
+              children: [
+                // 结算状态切换
+                const Text(
+                  '结算状态：',
+                  style: TextStyle(
+                    fontSize: 13,
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black,
+                  ),
+                ),
+                GestureDetector(
+                  onTap: () {
+                    setState(() {
+                      _isSettled = !_isSettled;
+                    });
+                  },
+                  child: Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    decoration: BoxDecoration(
+                      color: _isSettled ? const Color(0xFFDCF5DC) : const Color(0xFFFDE8E8),
+                      border: Border.all(
+                        color: _isSettled ? const Color(0xFF4CAF50) : const Color(0xFFE53935),
+                        width: 0.8,
+                      ),
+                    ),
+                    child: Text(
+                      _isSettled ? '已结算' : '未结算',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.bold,
+                        color: _isSettled ? const Color(0xFF2E7D32) : const Color(0xFFC62828),
+                      ),
+                    ),
+                  ),
+                ),
+                const Spacer(),
+                // 确认入库按钮
+                SizedBox(
+                  height: 40,
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      backgroundColor: _notionText,
+                      foregroundColor: Colors.white,
+                      side: BorderSide.none,
+                      shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.zero),
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                    ),
+                    onPressed: _confirmInbound,
+                    icon: const Icon(Icons.archive_outlined, size: 16, color: Colors.white),
+                    label: const Text('确认入库',
+                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
-      ),
-      const SizedBox(height: 12),
-    ]);
+      ],
+    );
   }
 
   Widget _historyInboundTab() {
@@ -842,6 +855,33 @@ class _AppHomeState extends State<AppHome> {
             ),
           ),
           OutlinedButton.icon(
+            onPressed: () {
+              Navigator.of(context).push(
+                MaterialPageRoute(
+                  builder: (_) => ExpressInboundPage(
+                    database: _database,
+                    paddleOcr: _paddleOcr,
+                    postProcessor: _postProcessor,
+                    ocrRowMergeTolerance: _ocrRowMergeTolerance,
+                    onRefreshHomeData: _refreshData,
+                  ),
+                ),
+              );
+            },
+            icon: const Icon(Icons.flash_on, size: 14, color: Colors.black),
+            label: const Text('极速模式',
+                style: TextStyle(fontSize: 12, fontFamily: 'monospace', color: Colors.black)),
+            style: OutlinedButton.styleFrom(
+              foregroundColor: Colors.black,
+              side: const BorderSide(color: Colors.black, width: 0.8),
+              shape: const RoundedRectangleBorder(
+                borderRadius: BorderRadius.zero,
+              ),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
+            ),
+          ),
+          const SizedBox(width: 8),
+          OutlinedButton.icon(
             onPressed: _clearCurrentInboundDraft,
             icon: const Icon(Icons.cleaning_services_outlined, size: 14, color: Colors.black),
             label: const Text('清空当前单',
@@ -852,13 +892,14 @@ class _AppHomeState extends State<AppHome> {
               shape: const RoundedRectangleBorder(
                 borderRadius: BorderRadius.zero,
               ),
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 6),
             ),
           ),
         ],
       ),
     );
   }
+
 
 
 
@@ -1286,6 +1327,52 @@ class _AppHomeState extends State<AppHome> {
     rotatedImage.dispose();
   }
 
+  /// 如果图片是横屏（宽度 > 高度），将其物理旋转 90 度为竖屏
+  Future<void> _ensureVerticalImage(String path) async {
+    try {
+      final File file = File(path);
+      if (!file.existsSync()) return;
+
+      final Uint8List bytes = await file.readAsBytes();
+      final ui.Codec codec = await ui.instantiateImageCodec(bytes);
+      final ui.FrameInfo frameInfo = await codec.getNextFrame();
+      final ui.Image image = frameInfo.image;
+
+      final int width = image.width;
+      final int height = image.height;
+
+      // 如果宽度大于高度，则是横屏图，强制顺时针旋转90度
+      if (width > height) {
+        final double angle = 90 * 3.141592653589793 / 180;
+        final int targetWidth = height;
+        final int targetHeight = width;
+
+        final ui.PictureRecorder recorder = ui.PictureRecorder();
+        final ui.Canvas canvas = ui.Canvas(recorder);
+
+        canvas.translate(targetWidth / 2, targetHeight / 2);
+        canvas.rotate(angle);
+        canvas.translate(-width / 2, -height / 2);
+        canvas.drawImage(image, Offset.zero, ui.Paint());
+
+        final ui.Picture picture = recorder.endRecording();
+        final ui.Image rotatedImage = await picture.toImage(targetWidth, targetHeight);
+        final ByteData? byteData = await rotatedImage.toByteData(format: ui.ImageByteFormat.png);
+
+        if (byteData != null) {
+          await file.writeAsBytes(byteData.buffer.asUint8List(), flush: true);
+        }
+        rotatedImage.dispose();
+      }
+      image.dispose();
+
+      // 清理 Flutter ImageCache 缓存，防止缩略图缓存不刷新
+      PaintingBinding.instance.imageCache.evict(FileImage(file));
+    } catch (e) {
+      debugPrint('图片纠偏异常: $e');
+    }
+  }
+
   Future<void> _reRecognizeReceipt(InboundReceipt receipt) async {
     final path = receipt.imagePath;
     if (path == null || path.isEmpty) return;
@@ -1437,16 +1524,21 @@ class _AppHomeState extends State<AppHome> {
                                           });
                                         }
 
-                                        // 2. 调用 OCR 和 Gemma 提取
+                                        // 2. 调用本地 OCR
                                         final ocrResult = await _paddleOcr
                                             .recognizeTable(path,
                                                 rowMergeTolerance:
                                                     _ocrRowMergeTolerance);
+                                        final rows = ocrResult.rows;
                                         final ocrText = ocrResult.editableText;
-                                        final extracted = await _gemmaExtractor
-                                            .extract(ocrText);
 
-                                        newDraftItems = extracted.items
+                                        // 使用本地处理器提取商品，优先以表格结构提取，其次退化为纯文本提取
+                                        var items = _postProcessor.processRows(rows);
+                                        if (items.isEmpty && ocrText.isNotEmpty) {
+                                          items = _postProcessor.processPlainText(ocrText);
+                                        }
+
+                                        newDraftItems = items
                                             .map((item) => InboundDraftItem(
                                                   productName: item.productName,
                                                   quantity: item.quantity,
@@ -1675,27 +1767,28 @@ class _AppHomeState extends State<AppHome> {
         color: Colors.white,
         border: Border.all(color: Colors.grey.shade300, width: 0.5),
       ),
-      child: InkWell(
-        onTap: () {
-          setState(() {
-            if (isExpanded) {
-              _expandedReceiptId = null;
-            } else {
-              _expandedReceiptId = receipt.id;
-            }
-          });
-        },
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              // 1. 头部 Row
-              Row(
-                crossAxisAlignment: CrossAxisAlignment.center,
-                children: [
-                  Expanded(
-                    flex: 7,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            // 1. 头部 Row (分离点击逻辑)
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                // 左侧文本点击区域：展开或收起
+                Expanded(
+                  flex: 7,
+                  child: InkWell(
+                    onTap: () {
+                      setState(() {
+                        if (isExpanded) {
+                          _expandedReceiptId = null;
+                        } else {
+                          _expandedReceiptId = receipt.id;
+                        }
+                      });
+                    },
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
@@ -1731,324 +1824,324 @@ class _AppHomeState extends State<AppHome> {
                       ],
                     ),
                   ),
-                  const SizedBox(width: 8),
-                  // 右侧 30%：结算状态按钮，纯黑白直角框线样式
-                  Expanded(
-                    flex: 3,
-                    child: GestureDetector(
-                      onTap: () async {
-                        try {
-                          await _database.setReceiptSettled(
-                              receipt.id, !receipt.isSettled);
-                          await _refreshData();
-                        } catch (e) {
-                          if (mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(content: Text('更新结算状态失败: $e')),
-                            );
-                          }
+                ),
+                const SizedBox(width: 8),
+                // 右侧 30%：结算状态按钮，纯黑白直角框线样式
+                Expanded(
+                  flex: 3,
+                  child: GestureDetector(
+                    onTap: () async {
+                      try {
+                        await _database.setReceiptSettled(
+                            receipt.id, !receipt.isSettled);
+                        await _refreshData();
+                      } catch (e) {
+                        if (mounted) {
+                          ScaffoldMessenger.of(context).showSnackBar(
+                            SnackBar(content: Text('更新结算状态失败: $e')),
+                          );
                         }
-                      },
-                      child: Container(
-                        alignment: Alignment.center,
-                        padding: const EdgeInsets.symmetric(vertical: 6),
-                        decoration: BoxDecoration(
+                      }
+                    },
+                    child: Container(
+                      alignment: Alignment.center,
+                      padding: const EdgeInsets.symmetric(vertical: 6),
+                      decoration: BoxDecoration(
+                        color: receipt.isSettled
+                            ? const Color(0xFFE8F5E9)
+                            : const Color(0xFFFFEBEE),
+                        border: Border.all(
                           color: receipt.isSettled
-                              ? const Color(0xFFE8F5E9)
-                              : const Color(0xFFFFEBEE),
-                          border: Border.all(
+                              ? const Color(0xff2d6a4f)
+                              : Colors.redAccent,
+                          width: 0.8,
+                        ),
+                        borderRadius: BorderRadius.zero,
+                      ),
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Container(
+                            width: 6,
+                            height: 6,
                             color: receipt.isSettled
                                 ? const Color(0xff2d6a4f)
                                 : Colors.redAccent,
-                            width: 0.8,
                           ),
-                          borderRadius: BorderRadius.zero,
-                        ),
-                        child: Row(
-                          mainAxisAlignment: MainAxisAlignment.center,
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            Container(
-                              width: 6,
-                              height: 6,
+                          const SizedBox(width: 6),
+                          Text(
+                            receipt.isSettled ? '已结算' : '未结算',
+                            style: TextStyle(
                               color: receipt.isSettled
                                   ? const Color(0xff2d6a4f)
                                   : Colors.redAccent,
+                              fontFamily: 'monospace',
+                              fontSize: 11,
+                              fontWeight: FontWeight.bold,
                             ),
-                            const SizedBox(width: 6),
-                            Text(
-                              receipt.isSettled ? '已结算' : '未结算',
-                              style: TextStyle(
-                                color: receipt.isSettled
-                                    ? const Color(0xff2d6a4f)
-                                    : Colors.redAccent,
-                                fontFamily: 'monospace',
-                                fontSize: 11,
-                                fontWeight: FontWeight.bold,
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+
+            // 2. 展开显示商品与操作
+            if (isExpanded) ...[
+              const SizedBox(height: 8),
+              const Divider(height: 1),
+              const SizedBox(height: 6),
+
+              // 商品明细列表
+              ListView.builder(
+                shrinkWrap: true,
+                physics: const NeverScrollableScrollPhysics(),
+                itemCount: receipt.items.length,
+                itemBuilder: (context, idx) {
+                  final item = receipt.items[idx];
+                  final key = '${receipt.id}_${item.productCode}';
+                  final currentQty =
+                      _editingReceiptQuantities[key] ?? item.quantity;
+
+                  return Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 5),
+                        child: Row(
+                          crossAxisAlignment: CrossAxisAlignment.center,
+                          children: [
+                            Expanded(
+                              child: Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    item.productName,
+                                    style: const TextStyle(
+                                        fontSize: 14,
+                                        color: _notionText,
+                                        fontWeight: FontWeight.w600),
+                                    maxLines: 1,
+                                    overflow: TextOverflow.ellipsis,
+                                  ),
+                                  const SizedBox(height: 4),
+                                  Row(
+                                    children: [
+                                      Container(
+                                        padding: const EdgeInsets.symmetric(
+                                            horizontal: 6, vertical: 2),
+                                        decoration: BoxDecoration(
+                                          color: Colors.white,
+                                          border: Border.all(color: _notionBorder, width: 1.0),
+                                        ),
+                                        child: Text(
+                                          '编码：${item.productCode ?? '无'}',
+                                          style: const TextStyle(
+                                              fontSize: 9,
+                                              fontFamily: 'monospace',
+                                              color: _notionGreyText,
+                                              fontWeight: FontWeight.normal),
+                                        ),
+                                      ),
+                                      const SizedBox(width: 8),
+                                      Text(
+                                        '数量：$currentQty',
+                                        style: const TextStyle(
+                                          fontSize: 12,
+                                          fontFamily: 'monospace',
+                                          fontWeight: FontWeight.bold,
+                                          color: _notionText,
+                                        ),
+                                      ),
+                                    ],
+                                  ),
+                                ],
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            // 数字微调器
+                            Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                border: Border.all(color: _notionBorder, width: 1.0),
+                              ),
+                              child: Row(
+                                mainAxisSize: MainAxisSize.min,
+                                children: [
+                                  IconButton(
+                                    icon: const Icon(Icons.remove,
+                                        size: 14, color: _notionText),
+                                    visualDensity: VisualDensity.compact,
+                                    onPressed: () {
+                                      if (currentQty > 1) {
+                                        setState(() {
+                                          _editingReceiptQuantities[key] =
+                                              currentQty - 1;
+                                        });
+                                      }
+                                    },
+                                  ),
+                                  Text(
+                                    '$currentQty',
+                                    style: const TextStyle(
+                                        fontFamily: 'monospace',
+                                        fontWeight: FontWeight.bold,
+                                        color: _notionText,
+                                        fontSize: 13),
+                                  ),
+                                  IconButton(
+                                    icon: const Icon(Icons.add,
+                                        size: 14, color: _notionText),
+                                    visualDensity: VisualDensity.compact,
+                                    onPressed: () {
+                                      setState(() {
+                                        _editingReceiptQuantities[key] =
+                                            currentQty + 1;
+                                      });
+                                    },
+                                  ),
+                                ],
                               ),
                             ),
                           ],
                         ),
                       ),
+                      Divider(height: 1, color: Colors.grey.shade100),
+                    ],
+                  );
+                },
+              ),
+
+              // 拍照预览缩略图，点击展开大图
+              if (receipt.imagePath != null &&
+                  File(receipt.imagePath!).existsSync()) ...[
+                const SizedBox(height: 8),
+                GestureDetector(
+                  onTap: () => _showReceiptImage(receipt.imagePath!),
+                  child: ClipRect(
+                    child: Image.file(
+                      File(receipt.imagePath!),
+                      width: 80,
+                      height: 80,
+                      fit: BoxFit.cover,
                     ),
+                  ),
+                ),
+              ],
+
+              const SizedBox(height: 10),
+              const Divider(height: 1),
+              const SizedBox(height: 8),
+
+              // 底部操作区（重新识别、删除单据、保存）
+              Row(
+                mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                children: [
+                  Row(
+                    children: [
+                      TextButton.icon(
+                        onPressed: () => _reRecognizeReceipt(receipt),
+                        icon: const Icon(Icons.refresh,
+                            size: 14, color: Colors.black),
+                        label: const Text('重新识别',
+                            style: TextStyle(
+                                color: Colors.black,
+                                fontSize: 12,
+                                fontFamily: 'monospace',
+                                fontWeight: FontWeight.bold)),
+                        style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact),
+                      ),
+                      const SizedBox(width: 16),
+                      TextButton.icon(
+                        onPressed: () async {
+                          final ok = await showDialog<bool>(
+                            context: context,
+                            builder: (ctx) => AlertDialog(
+                              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                              title: const Text('删除单据', style: TextStyle(fontFamily: 'monospace')),
+                              content:
+                                  const Text('确认要删除这笔入库单据及对应的库存吗？该操作不可撤销！', style: TextStyle(fontFamily: 'monospace')),
+                              actions: [
+                                TextButton(
+                                    onPressed: () =>
+                                        Navigator.pop(ctx, false),
+                                    child: const Text('取消', style: TextStyle(fontFamily: 'monospace', color: Colors.black))),
+                                TextButton(
+                                  onPressed: () => Navigator.pop(ctx, true),
+                                  child: const Text('确认删除',
+                                      style: TextStyle(
+                                          color: Colors.black,
+                                          fontFamily: 'monospace',
+                                          fontWeight: FontWeight.bold)),
+                                ),
+                              ],
+                            ),
+                          );
+                          if (ok == true) {
+                            await _database.deleteInboundReceipt(receipt.id);
+                            _refreshData();
+                          }
+                        },
+                        icon: const Icon(Icons.delete_outline,
+                            size: 14, color: Colors.black54),
+                        label: const Text('删除单据',
+                            style: TextStyle(
+                                color: Colors.black54,
+                                fontSize: 12,
+                                fontFamily: 'monospace',
+                                fontWeight: FontWeight.normal)),
+                        style: TextButton.styleFrom(
+                            padding: EdgeInsets.zero,
+                            visualDensity: VisualDensity.compact),
+                      ),
+                    ],
+                  ),
+                  OutlinedButton(
+                    style: OutlinedButton.styleFrom(
+                      backgroundColor: hasChanges ? Colors.black : Colors.white,
+                      foregroundColor: hasChanges ? Colors.white : Colors.grey.shade400,
+                      side: BorderSide(color: hasChanges ? Colors.black : Colors.grey.shade300, width: 0.8),
+                      shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.zero),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 16, vertical: 8),
+                      visualDensity: VisualDensity.compact,
+                    ),
+                    onPressed: !hasChanges
+                        ? null
+                        : () async {
+                            final updatedItems = receipt.items.map((item) {
+                              final key = '${receipt.id}_${item.productCode}';
+                              final newQty = _editingReceiptQuantities[key] ??
+                                  item.quantity;
+                              return item.copyWith(quantity: newQty);
+                            }).toList();
+                            try {
+                              await _database.updateInboundReceiptItems(
+                                  receipt.id, updatedItems);
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                  const SnackBar(content: Text('修改保存成功！')));
+                              _refreshData();
+                              setState(() {
+                                _expandedReceiptId = null;
+                              });
+                            } catch (e) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                  SnackBar(content: Text('保存失败: $e')));
+                            }
+                          },
+                    child: const Text('保存',
+                        style: TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.bold)),
                   ),
                 ],
               ),
-
-              // 2. 展开显示商品与操作
-              if (isExpanded) ...[
-                const SizedBox(height: 8),
-                const Divider(height: 1),
-                const SizedBox(height: 6),
-
-                // 商品明细列表
-                ListView.builder(
-                  shrinkWrap: true,
-                  physics: const NeverScrollableScrollPhysics(),
-                  itemCount: receipt.items.length,
-                  itemBuilder: (context, idx) {
-                    final item = receipt.items[idx];
-                    final key = '${receipt.id}_${item.productCode}';
-                    final currentQty =
-                        _editingReceiptQuantities[key] ?? item.quantity;
-
-                    return Column(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.symmetric(vertical: 5),
-                          child: Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      item.productName,
-                                      style: const TextStyle(
-                                          fontSize: 14,
-                                          color: _notionText,
-                                          fontWeight: FontWeight.w600),
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                    ),
-                                    const SizedBox(height: 4),
-                                    Row(
-                                      children: [
-                                        Container(
-                                          padding: const EdgeInsets.symmetric(
-                                              horizontal: 6, vertical: 2),
-                                          decoration: BoxDecoration(
-                                            color: Colors.white,
-                                            border: Border.all(color: _notionBorder, width: 1.0),
-                                          ),
-                                          child: Text(
-                                            '编码：${item.productCode ?? '无'}',
-                                            style: const TextStyle(
-                                                fontSize: 9,
-                                                fontFamily: 'monospace',
-                                                color: _notionGreyText,
-                                                fontWeight: FontWeight.normal),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 8),
-                                        Text(
-                                          '数量：$currentQty',
-                                          style: const TextStyle(
-                                            fontSize: 12,
-                                            fontFamily: 'monospace',
-                                            fontWeight: FontWeight.bold,
-                                            color: _notionText,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ],
-                                ),
-                              ),
-                              const SizedBox(width: 8),
-                              // 数字微调器
-                              Container(
-                                decoration: BoxDecoration(
-                                  color: Colors.white,
-                                  border: Border.all(color: _notionBorder, width: 1.0),
-                                ),
-                                child: Row(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    IconButton(
-                                      icon: const Icon(Icons.remove,
-                                          size: 14, color: _notionText),
-                                      visualDensity: VisualDensity.compact,
-                                      onPressed: () {
-                                        if (currentQty > 1) {
-                                          setState(() {
-                                            _editingReceiptQuantities[key] =
-                                                currentQty - 1;
-                                          });
-                                        }
-                                      },
-                                    ),
-                                    Text(
-                                      '$currentQty',
-                                      style: const TextStyle(
-                                          fontFamily: 'monospace',
-                                          fontWeight: FontWeight.bold,
-                                          color: _notionText,
-                                          fontSize: 13),
-                                    ),
-                                    IconButton(
-                                      icon: const Icon(Icons.add,
-                                          size: 14, color: _notionText),
-                                      visualDensity: VisualDensity.compact,
-                                      onPressed: () {
-                                        setState(() {
-                                          _editingReceiptQuantities[key] =
-                                              currentQty + 1;
-                                        });
-                                      },
-                                    ),
-                                  ],
-                                ),
-                              ),
-                            ],
-                          ),
-                        ),
-                        Divider(height: 1, color: Colors.grey.shade100),
-                      ],
-                    );
-                  },
-                ),
-
-                // 拍照预览缩略图，点击展开大图
-                if (receipt.imagePath != null &&
-                    File(receipt.imagePath!).existsSync()) ...[
-                  const SizedBox(height: 8),
-                  GestureDetector(
-                    onTap: () => _showReceiptImage(receipt.imagePath!),
-                    child: ClipRect(
-                      child: Image.file(
-                        File(receipt.imagePath!),
-                        width: 80,
-                        height: 80,
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                  ),
-                ],
-
-                const SizedBox(height: 10),
-                const Divider(height: 1),
-                const SizedBox(height: 8),
-
-                // 底部操作区（重新识别、删除单据、保存）
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    Row(
-                      children: [
-                        TextButton.icon(
-                          onPressed: () => _reRecognizeReceipt(receipt),
-                          icon: const Icon(Icons.refresh,
-                              size: 14, color: Colors.black),
-                          label: const Text('重新识别',
-                              style: TextStyle(
-                                  color: Colors.black,
-                                  fontSize: 12,
-                                  fontFamily: 'monospace',
-                                  fontWeight: FontWeight.bold)),
-                          style: TextButton.styleFrom(
-                              padding: EdgeInsets.zero,
-                              visualDensity: VisualDensity.compact),
-                        ),
-                        const SizedBox(width: 16),
-                        TextButton.icon(
-                          onPressed: () async {
-                            final ok = await showDialog<bool>(
-                              context: context,
-                              builder: (ctx) => AlertDialog(
-                                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-                                title: const Text('删除单据', style: TextStyle(fontFamily: 'monospace')),
-                                content:
-                                    const Text('确认要删除这笔入库单据及对应的库存吗？该操作不可撤销！', style: TextStyle(fontFamily: 'monospace')),
-                                actions: [
-                                  TextButton(
-                                      onPressed: () =>
-                                          Navigator.pop(ctx, false),
-                                      child: const Text('取消', style: TextStyle(fontFamily: 'monospace', color: Colors.black))),
-                                  TextButton(
-                                    onPressed: () => Navigator.pop(ctx, true),
-                                    child: const Text('确认删除',
-                                        style: TextStyle(
-                                            color: Colors.black,
-                                            fontFamily: 'monospace',
-                                            fontWeight: FontWeight.bold)),
-                                  ),
-                                ],
-                              ),
-                            );
-                            if (ok == true) {
-                              await _database.deleteInboundReceipt(receipt.id);
-                              _refreshData();
-                            }
-                          },
-                          icon: const Icon(Icons.delete_outline,
-                              size: 14, color: Colors.black54),
-                          label: const Text('删除单据',
-                              style: TextStyle(
-                                  color: Colors.black54,
-                                  fontSize: 12,
-                                  fontFamily: 'monospace',
-                                  fontWeight: FontWeight.normal)),
-                          style: TextButton.styleFrom(
-                              padding: EdgeInsets.zero,
-                              visualDensity: VisualDensity.compact),
-                        ),
-                      ],
-                    ),
-                    OutlinedButton(
-                      style: OutlinedButton.styleFrom(
-                        backgroundColor: hasChanges ? Colors.black : Colors.white,
-                        foregroundColor: hasChanges ? Colors.white : Colors.grey.shade400,
-                        side: BorderSide(color: hasChanges ? Colors.black : Colors.grey.shade300, width: 0.8),
-                        shape: const RoundedRectangleBorder(
-                            borderRadius: BorderRadius.zero),
-                        padding: const EdgeInsets.symmetric(
-                            horizontal: 16, vertical: 8),
-                        visualDensity: VisualDensity.compact,
-                      ),
-                      onPressed: !hasChanges
-                          ? null
-                          : () async {
-                              final updatedItems = receipt.items.map((item) {
-                                final key = '${receipt.id}_${item.productCode}';
-                                final newQty = _editingReceiptQuantities[key] ??
-                                    item.quantity;
-                                return item.copyWith(quantity: newQty);
-                              }).toList();
-                              try {
-                                await _database.updateInboundReceiptItems(
-                                    receipt.id, updatedItems);
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                    const SnackBar(content: Text('修改保存成功！')));
-                                _refreshData();
-                                setState(() {
-                                  _expandedReceiptId = null;
-                                });
-                              } catch (e) {
-                                ScaffoldMessenger.of(context).showSnackBar(
-                                    SnackBar(content: Text('保存失败: $e')));
-                              }
-                            },
-                      child: const Text('保存',
-                          style: TextStyle(
-                              fontSize: 13, fontWeight: FontWeight.bold)),
-                    ),
-                  ],
-                ),
-              ],
             ],
-          ),
+          ],
         ),
       ),
     );
@@ -2592,12 +2685,13 @@ class _AppHomeState extends State<AppHome> {
   Future<void> _processImage(XFile image) async {
     try {
       final storedImagePath = await _storeInboundImage(image);
+      await _ensureVerticalImage(storedImagePath);
       if (!mounted) {
         return;
       }
       setState(() {
         _currentInboundImagePath = storedImagePath;
-        _message = '已保存商品清单图片，正在识别';
+        _message = '已保存商品清单图片并纠正方向，正在识别';
       });
       final recognition = await _paddleOcr.recognizeTable(
         storedImagePath,
@@ -2819,130 +2913,6 @@ class _AppHomeState extends State<AppHome> {
     }
   }
 
-  Future<void> _startExpressInbound() async {
-    setState(() {
-      _isExpressModeActive = true;
-      _message = '已开启极速入库模式';
-    });
-    await _expressInboundLoop();
-  }
-
-  Future<void> _expressInboundLoop() async {
-    if (!_isExpressModeActive || !mounted) return;
-
-    try {
-      // 1. 自动拉起扫码界面
-      final trackingNumber = await Navigator.of(context).push<String>(
-        MaterialPageRoute(builder: (_) => const ScannerPage()),
-      );
-      if (trackingNumber == null || trackingNumber.isEmpty) {
-        setState(() {
-          _isExpressModeActive = false;
-          _message = '已退出极速入库模式';
-        });
-        return;
-      }
-
-      // 2. 扫码成功，紧接着拍照
-      final image = await _imagePicker.pickImage(
-        source: ImageSource.camera,
-        imageQuality: 80,
-        maxWidth: 1600,
-        maxHeight: 1600,
-      );
-      if (image == null) {
-        setState(() {
-          _isExpressModeActive = false;
-          _message = '拍照取消，已退出极速模式';
-        });
-        return;
-      }
-
-      // 3. 保存图片
-      final storedImagePath = await _storeInboundImage(image);
-
-      // 4. 立即执行默认入库（商品为空，状态为 pending）
-      final receipt = await _database.confirmInbound(
-        trackingNumber: trackingNumber,
-        items: const [],
-        imagePath: storedImagePath,
-        ocrStatus: OcrStatus.pending,
-      );
-
-      // 5. 刷新界面
-      await _refreshData();
-
-      // 6. SnackBar 提示入库成功
-      if (mounted) {
-        final shortTracking = trackingNumber.length > 6
-            ? '...${trackingNumber.substring(trackingNumber.length - 6)}'
-            : trackingNumber;
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              '快递 $shortTracking 入库成功，已开启后台商品提取',
-              style: const TextStyle(fontFamily: 'monospace', color: Colors.white),
-            ),
-            backgroundColor: Colors.black,
-            duration: const Duration(seconds: 2),
-          ),
-        );
-      }
-
-      // 7. 异步非阻塞执行后台 OCR
-      unawaited(_runAsyncOcr(receipt.id, storedImagePath));
-
-      // 8. 短暂延时后自动进入下一单扫描
-      await Future.delayed(const Duration(milliseconds: 600));
-      if (_isExpressModeActive && mounted) {
-        await _expressInboundLoop();
-      }
-    } catch (e) {
-      setState(() {
-        _isExpressModeActive = false;
-        _message = '极速入库出错：$e';
-      });
-    }
-  }
-
-  Future<void> _runAsyncOcr(String receiptId, String imagePath) async {
-    try {
-      final recognition = await _paddleOcr.recognizeTable(
-        imagePath,
-        rowMergeTolerance: _ocrRowMergeTolerance,
-      );
-      final rows = recognition.rows;
-      final editableText = recognition.editableText;
-      final orderNumber = _postProcessor.extractSellerOrderNumber(editableText);
-
-      var items = _postProcessor.processRows(rows);
-      if (items.isEmpty && editableText.isNotEmpty) {
-        items = _postProcessor.processPlainText(editableText);
-      }
-
-      // 补录数据回数据库
-      await _database.updateInboundOcrResult(
-        receiptId: receiptId,
-        items: items,
-        ocrStatus: OcrStatus.confirmed,
-        sellerOrderNumber: orderNumber,
-      );
-
-      if (mounted) {
-        await _refreshData();
-      }
-    } catch (e) {
-      // 识别失败时，回填标记为失败，避免后续卡在 pending
-      await _database.updateInboundOcrResult(
-        receiptId: receiptId,
-        items: const [],
-        ocrStatus: OcrStatus.failed,
-      );
-      if (mounted) {
-        await _refreshData();
-      }
-    }
-  }
 
 
 

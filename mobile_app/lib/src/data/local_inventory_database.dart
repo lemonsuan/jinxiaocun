@@ -494,6 +494,27 @@ class LocalInventoryDatabase {
     return receipts;
   }
 
+  /// 轻量查询最近 [limit] 条入库单（不加载商品明细）
+  Future<List<InboundReceipt>> loadRecentInboundReceipts(int limit) async {
+    final receiptRows = await _db.query(
+      'inbound_receipts',
+      orderBy: 'created_at DESC',
+      limit: limit,
+    );
+    return receiptRows.map((row) => InboundReceipt(
+      id: row['id']! as String,
+      trackingNumber: row['tracking_number']! as String,
+      sellerOrderNumber: row['seller_order_number'] as String?,
+      rebateOrderNumber: row['rebate_order_number'] as String?,
+      schemeNumber: row['scheme_number'] as String?,
+      createdAt: DateTime.parse(row['created_at']! as String),
+      items: const [],
+      isSettled: (row['is_settled']! as int) == 1,
+      ocrStatus: _ocrStatusFromName(row['ocr_status']! as String),
+      imagePath: row['image_path'] as String?,
+    )).toList();
+  }
+
   Future<List<OutboundOrder>> loadOutboundHistory() async {
     final orderRows = await _db.query(
       'outbound_orders',
