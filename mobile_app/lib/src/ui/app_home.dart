@@ -90,6 +90,7 @@ class _AppHomeState extends State<AppHome> {
   double _ocrRowMergeTolerance = OcrSettings.defaultRowMergeTolerance;
   bool _isSettled = false;
   bool _isReady = false;
+  bool _isExpressModeActive = false;
 
   int _selectedTabIndex = 0;
   int _inventorySubTabIndex = 0;
@@ -203,6 +204,46 @@ class _AppHomeState extends State<AppHome> {
   Widget _scanInboundTab() {
     return _page([
       _scanInboundHeader(),
+
+      // ⚡ 极速模式动作大按钮
+      SizedBox(
+        width: double.infinity,
+        height: 50,
+        child: OutlinedButton.icon(
+          style: OutlinedButton.styleFrom(
+            backgroundColor: _isExpressModeActive ? const Color(0xFFD11A2A) : Colors.black,
+            foregroundColor: Colors.white,
+            side: BorderSide.none,
+            shape: const RoundedRectangleBorder(
+              borderRadius: BorderRadius.zero,
+            ),
+          ),
+          onPressed: () {
+            if (_isExpressModeActive) {
+              setState(() {
+                _isExpressModeActive = false;
+                _message = '已退出极速模式';
+              });
+            } else {
+              _startExpressInbound();
+            }
+          },
+          icon: Icon(
+            _isExpressModeActive ? Icons.cancel_outlined : Icons.flash_on_outlined,
+            size: 18,
+            color: Colors.white,
+          ),
+          label: Text(
+            _isExpressModeActive ? '🔴 正在进行极速扫码，点击退出' : '⚡ 极速扫码拍照入库 (自动下一单)',
+            style: const TextStyle(
+              fontSize: 14,
+              fontFamily: 'monospace',
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+        ),
+      ),
+      const SizedBox(height: 12),
 
       // 1. 三行输入直角白色容器
       Container(
@@ -2777,6 +2818,132 @@ class _AppHomeState extends State<AppHome> {
       });
     }
   }
+
+  Future<void> _startExpressInbound() async {
+    setState(() {
+      _isExpressModeActive = true;
+      _message = '已开启极速入库模式';
+    });
+    await _expressInboundLoop();
+  }
+
+  Future<void> _expressInboundLoop() async {
+    if (!_isExpressModeActive || !mounted) return;
+
+    try {
+      // 1. 自动拉起扫码界面
+      final trackingNumber = await Navigator.of(context).push<String>(
+        MaterialPageRoute(builder: (_) => const ScannerPage()),
+      );
+      if (trackingNumber == null || trackingNumber.isEmpty) {
+        setState(() {
+          _isExpressModeActive = false;
+          _message = '已退出极速入库模式';
+        });
+        return;
+      }
+
+      // 2. 扫码成功，紧接着拍照
+      final image = await _imagePicker.pickImage(
+        source: ImageSource.camera,
+        imageQuality: 80,
+        maxWidth: 1600,
+        maxHeight: 1600,
+      );
+      if (image == null) {
+        setState(() {
+          _isExpressModeActive = false;
+          _message = '拍照取消，已退出极速模式';
+        });
+        return;
+      }
+
+      // 3. 保存图片
+      final storedImagePath = await _storeInboundImage(image);
+
+      // 4. 立即执行默认入库（商品为空，状态为 pending）
+      final receipt = await _database.confirmInbound(
+        trackingNumber: trackingNumber,
+        items: const [],
+        imagePath: storedImagePath,
+        ocrStatus: OcrStatus.pending,
+      );
+
+      // 5. 刷新界面
+      await _refreshData();
+
+      // 6. SnackBar 提示入库成功
+      if (mounted) {
+        final shortTracking = trackingNumber.length > 6
+            ? '...${trackingNumber.substring(trackingNumber.length - 6)}'
+            : trackingNumber;
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(
+              '快递 $shortTracking 入库成功，已开启后台商品提取',
+              style: const TextStyle(fontFamily: 'monospace', color: Colors.white),
+            ),
+            backgroundColor: Colors.black,
+            duration: const Duration(seconds: 2),
+          ),
+        );
+      }
+
+      // 7. 异步非阻塞执行后台 OCR
+      unawaited(_runAsyncOcr(receipt.id, storedImagePath));
+
+      // 8. 短暂延时后自动进入下一单扫描
+      await Future.delayed(const Duration(milliseconds: 600));
+      if (_isExpressModeActive && mounted) {
+        await _expressInboundLoop();
+      }
+    } catch (e) {
+      setState(() {
+        _isExpressModeActive = false;
+        _message = '极速入库出错：$e';
+      });
+    }
+  }
+
+  Future<void> _runAsyncOcr(String receiptId, String imagePath) async {
+    try {
+      final recognition = await _paddleOcr.recognizeTable(
+        imagePath,
+        rowMergeTolerance: _ocrRowMergeTolerance,
+      );
+      final rows = recognition.rows;
+      final editableText = recognition.editableText;
+      final orderNumber = _postProcessor.extractSellerOrderNumber(editableText);
+
+      var items = _postProcessor.processRows(rows);
+      if (items.isEmpty && editableText.isNotEmpty) {
+        items = _postProcessor.processPlainText(editableText);
+      }
+
+      // 补录数据回数据库
+      await _database.updateInboundOcrResult(
+        receiptId: receiptId,
+        items: items,
+        ocrStatus: OcrStatus.confirmed,
+        sellerOrderNumber: orderNumber,
+      );
+
+      if (mounted) {
+        await _refreshData();
+      }
+    } catch (e) {
+      // 识别失败时，回填标记为失败，避免后续卡在 pending
+      await _database.updateInboundOcrResult(
+        receiptId: receiptId,
+        items: const [],
+        ocrStatus: OcrStatus.failed,
+      );
+      if (mounted) {
+        await _refreshData();
+      }
+    }
+  }
+
 
 
 

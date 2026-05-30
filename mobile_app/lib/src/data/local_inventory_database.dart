@@ -538,6 +538,7 @@ class LocalInventoryDatabase {
     String? schemeNumber,
     String? imagePath,
     bool isSettled = false,
+    OcrStatus ocrStatus = OcrStatus.confirmed,
   }) async {
     final normalizedTracking = trackingNumber.trim();
     final normalizedSellerOrder = _optionalText(sellerOrderNumber);
@@ -547,6 +548,7 @@ class LocalInventoryDatabase {
       throw InventoryException('Tracking number is required.');
     }
     if (items.isEmpty &&
+        ocrStatus == OcrStatus.confirmed &&
         !allowsEmptyInboundItemsForTracking(normalizedTracking)) {
       throw InventoryException('Inbound items are required.');
     }
@@ -565,10 +567,11 @@ class LocalInventoryDatabase {
           'rebate_order_number': normalizedRebateOrder,
           'scheme_number': normalizedScheme,
           'image_path': imagePath,
-          'ocr_status': OcrStatus.confirmed.name,
+          'ocr_status': ocrStatus.name,
           'is_settled': isSettled ? 1 : 0,
           'created_at': now.toIso8601String(),
         });
+
         for (var index = 0; index < items.length; index += 1) {
           final item = items[index];
           final code = _productCodeFor(item.productCode, item.productName);
@@ -609,9 +612,80 @@ class LocalInventoryDatabase {
       createdAt: now,
       items: List.unmodifiable(items),
       isSettled: isSettled,
-      ocrStatus: OcrStatus.confirmed,
+      ocrStatus: ocrStatus,
       imagePath: imagePath,
     );
+  }
+
+  Future<void> updateInboundOcrResult({
+    required String receiptId,
+    required List<InboundDraftItem> items,
+    required OcrStatus ocrStatus,
+    String? sellerOrderNumber,
+  }) async {
+    final now = DateTime.now();
+    await _db.transaction((txn) async {
+      // 1. 防重幂等安全检查
+      final receipts = await txn.query(
+        'inbound_receipts',
+        columns: ['ocr_status', 'seller_order_number'],
+        where: 'id = ?',
+        whereArgs: [receiptId],
+      );
+      if (receipts.isEmpty) {
+        return; // 单据不存在，直接退出
+      }
+      final currentStatus = receipts.first['ocr_status'] as String?;
+      if (currentStatus != OcrStatus.pending.name && currentStatus != OcrStatus.processing.name) {
+        return; // 如果不是 pending/processing，说明已被处理过，为避免库存和台账重复累加，直接退出
+      }
+
+      // 2. 更新主表状态
+      final updateValues = <String, Object?>{
+        'ocr_status': ocrStatus.name,
+      };
+      // 如果提取出了订单号，且主表当前的订单号为空时才回填
+      final currentSellerOrder = receipts.first['seller_order_number'] as String?;
+      if ((currentSellerOrder == null || currentSellerOrder.trim().isEmpty) &&
+          sellerOrderNumber != null &&
+          sellerOrderNumber.trim().isNotEmpty) {
+        updateValues['seller_order_number'] = sellerOrderNumber.trim();
+      }
+      await txn.update(
+        'inbound_receipts',
+        updateValues,
+        where: 'id = ?',
+        whereArgs: [receiptId],
+      );
+
+      // 3. 写入商品明细，并递增库存和台账记录
+      for (var index = 0; index < items.length; index += 1) {
+        final item = items[index];
+        final code = _productCodeFor(item.productCode, item.productName);
+        await _upsertProduct(txn, code, item.productName, now);
+
+        await txn.insert('inbound_items', {
+          'id': '$receiptId-item-$index',
+          'receipt_id': receiptId,
+          'product_code': code,
+          'product_name': item.productName.trim(),
+          'quantity': item.quantity,
+          'purchase_price': item.purchasePrice,
+          'sale_price': item.salePrice,
+        });
+
+        await _increaseStock(txn, code, item.productName, item.quantity);
+        await _insertLedger(
+          txn,
+          productCode: code,
+          productName: item.productName,
+          delta: item.quantity,
+          reason: LedgerReason.inbound,
+          sourceId: receiptId,
+          createdAt: now,
+        );
+      }
+    });
   }
 
   Future<void> setReceiptSettled(String receiptId, bool isSettled) async {
