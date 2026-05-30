@@ -76,6 +76,7 @@ class RegisterSchema(Schema):
     username: str
     password: str
     email: Optional[str] = ""
+    phone: Optional[str] = ""
 
 class LoginSchema(Schema):
     username: str
@@ -114,7 +115,8 @@ def register(request, data: RegisterSchema):
     user = CustomUser.objects.create_user(
         username=data.username,
         password=data.password,
-        email=data.email
+        email=data.email,
+        phone=data.phone
     )
     token = generate_token(user)
     return 200, {

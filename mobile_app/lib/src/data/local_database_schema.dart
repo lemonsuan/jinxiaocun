@@ -1,5 +1,5 @@
 class LocalDatabaseSchema {
-  static const int version = 4;
+  static const int version = 6;
 
   static const List<String> createStatements = [
     '''
@@ -18,6 +18,7 @@ class LocalDatabaseSchema {
       tracking_number TEXT NOT NULL UNIQUE,
       seller_order_number TEXT,
       rebate_order_number TEXT,
+      scheme_number TEXT,
       image_path TEXT,
       ocr_status TEXT NOT NULL,
       is_settled INTEGER NOT NULL DEFAULT 0,
@@ -131,5 +132,11 @@ class LocalDatabaseSchema {
       ALTER TABLE outbound_orders ADD COLUMN logistics_number TEXT
       ''',
     ],
+    5: [
+      '''
+      ALTER TABLE inbound_receipts ADD COLUMN scheme_number TEXT
+      ''',
+    ],
+    6: [],
   };
 }

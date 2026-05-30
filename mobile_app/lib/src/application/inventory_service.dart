@@ -33,12 +33,14 @@ class InventoryService {
     required List<InboundDraftItem> items,
     String? sellerOrderNumber,
     String? rebateOrderNumber,
+    String? schemeNumber,
     String? imagePath,
     bool isSettled = false,
   }) {
     final normalizedTracking = trackingNumber.trim();
     final normalizedSellerOrder = _optionalText(sellerOrderNumber);
     final normalizedRebateOrder = _optionalText(rebateOrderNumber);
+    final normalizedScheme = _optionalText(schemeNumber);
     if (normalizedTracking.isEmpty) {
       throw InventoryException('Tracking number is required.');
     }
@@ -59,6 +61,7 @@ class InventoryService {
       trackingNumber: normalizedTracking,
       sellerOrderNumber: normalizedSellerOrder,
       rebateOrderNumber: normalizedRebateOrder,
+      schemeNumber: normalizedScheme,
       createdAt: now,
       items: List.unmodifiable(items),
       isSettled: isSettled,
@@ -96,6 +99,7 @@ class InventoryService {
       trackingNumber: current.trackingNumber,
       sellerOrderNumber: current.sellerOrderNumber,
       rebateOrderNumber: current.rebateOrderNumber,
+      schemeNumber: current.schemeNumber,
       createdAt: current.createdAt,
       items: current.items,
       isSettled: isSettled,
@@ -170,6 +174,7 @@ class InventoryService {
       trackingNumber: current.trackingNumber,
       sellerOrderNumber: current.sellerOrderNumber,
       rebateOrderNumber: current.rebateOrderNumber,
+      schemeNumber: current.schemeNumber,
       createdAt: current.createdAt,
       items: List.unmodifiable(items),
       isSettled: current.isSettled,

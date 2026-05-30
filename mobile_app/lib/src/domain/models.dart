@@ -48,6 +48,7 @@ class InboundReceipt {
     required this.ocrStatus,
     this.sellerOrderNumber,
     this.rebateOrderNumber,
+    this.schemeNumber,
     this.imagePath,
   });
 
@@ -55,11 +56,38 @@ class InboundReceipt {
   final String trackingNumber;
   final String? sellerOrderNumber;
   final String? rebateOrderNumber;
+  final String? schemeNumber;
   final DateTime createdAt;
   final List<InboundDraftItem> items;
   final bool isSettled;
   final OcrStatus ocrStatus;
   final String? imagePath;
+
+  InboundReceipt copyWith({
+    String? id,
+    String? trackingNumber,
+    String? sellerOrderNumber,
+    String? rebateOrderNumber,
+    String? schemeNumber,
+    DateTime? createdAt,
+    List<InboundDraftItem>? items,
+    bool? isSettled,
+    OcrStatus? ocrStatus,
+    String? imagePath,
+  }) {
+    return InboundReceipt(
+      id: id ?? this.id,
+      trackingNumber: trackingNumber ?? this.trackingNumber,
+      sellerOrderNumber: sellerOrderNumber ?? this.sellerOrderNumber,
+      rebateOrderNumber: rebateOrderNumber ?? this.rebateOrderNumber,
+      schemeNumber: schemeNumber ?? this.schemeNumber,
+      createdAt: createdAt ?? this.createdAt,
+      items: items ?? this.items,
+      isSettled: isSettled ?? this.isSettled,
+      ocrStatus: ocrStatus ?? this.ocrStatus,
+      imagePath: imagePath ?? this.imagePath,
+    );
+  }
 }
 
 class OutboundItem {
@@ -123,3 +151,32 @@ class WarehouseStock {
   final String productName;
   final int quantity;
 }
+
+class ProductCatalogItem {
+  const ProductCatalogItem({
+    required this.productCode,
+    required this.productName,
+    this.defaultPurchasePrice,
+    this.defaultSalePrice,
+  });
+
+  final String productCode;
+  final String productName;
+  final double? defaultPurchasePrice;
+  final double? defaultSalePrice;
+
+  ProductCatalogItem copyWith({
+    String? productCode,
+    String? productName,
+    double? defaultPurchasePrice,
+    double? defaultSalePrice,
+  }) {
+    return ProductCatalogItem(
+      productCode: productCode ?? this.productCode,
+      productName: productName ?? this.productName,
+      defaultPurchasePrice: defaultPurchasePrice ?? this.defaultPurchasePrice,
+      defaultSalePrice: defaultSalePrice ?? this.defaultSalePrice,
+    );
+  }
+}
+

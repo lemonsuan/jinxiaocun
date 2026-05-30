@@ -1,0 +1,75 @@
+name: Flutter CI/CD Release Build
+
+on:
+  push:
+    tags:
+      - 'v*' # 当推送版本标签如 v1.0.0 时自动编译发版
+    branches:
+      - master # 当向 master 分支推送代码时自动运行编译工作流
+
+permissions:
+  contents: write # 确保 Actions 有权限创建 Release 并上传附件
+
+jobs:
+  build:
+    name: Build & Release Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. 检出当前仓库代码
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # 2. 配置 JDK 运行环境 (Flutter 构建 Android 必须)
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      # 3. 安装并配置 Flutter SDK 环境
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: 'stable'
+          cache: true
+
+      # 4. 获取移动端 Flutter 项目依赖
+      - name: Install Dependencies
+        run: |
+          cd mobile_app
+          flutter pub get
+
+      # 5. 执行 Release APK 编译打包
+      - name: Build Release APK
+        run: |
+          cd mobile_app
+          flutter build apk --release
+
+      # 6. 将 APK 重命名以方便识别 (可选，包含提交 hash)
+      - name: Rename APK Output
+        run: |
+          mv mobile_app/build/app/outputs/flutter-apk/app-release.apk mobile_app/build/app/outputs/flutter-apk/inventory_app_release.apk
+
+      # 7. 自动创建 GitHub Release 并上传生成的 APK 附件
+      - name: Create GitHub Release
+        if: startsWith(github.ref, 'refs/tags/') # 仅当带有版本 tag 推送时才自动发布 Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: mobile_app/build/app/outputs/flutter-apk/inventory_app_release.apk
+          name: App Release ${{ github.ref_name }}
+          body: |
+            ## 云推推库存管理应用最新发版 (${{ github.ref_name }})
+            
+            这是由 GitHub Actions CI/CD 工作流自动编译并发布的全新版本。
+            
+            ### 变更日志
+            * 自动打包最新 master 提交代码。
+            * 包含最近关于默认本地店铺一体化重构、注册密码二次确认及手机号非空强校验的修改。
+            
+            ### 附件下载
+            直接下载下方的 `inventory_app_release.apk` 即可安装至您的 Android 设备。
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

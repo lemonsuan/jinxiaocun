@@ -40,6 +40,15 @@ class LocalInventoryDatabase {
     'products',
   ];
   static const String _ocrRowMergeToleranceKey = 'ocr_row_merge_tolerance';
+  static const String _geminiApiKey = 'gemini_api_key';
+  static const String _geminiApiUrl = 'gemini_api_url';
+  static const String _geminiModelKey = 'gemini_model';
+  static const String _aiApiFormatKey = 'ai_api_format';
+  static const String _authModeKey = 'auth_mode';
+  static const String _syncServerUrlKey = 'sync_server_url';
+  static const String _authTokenKey = 'auth_token';
+  static const String _activeShopIdKey = 'active_shop_id';
+  static const String _activeShopNameKey = 'active_shop_name';
 
   Database? _database;
 
@@ -99,6 +108,248 @@ class LocalInventoryDatabase {
       {
         'key': _ocrRowMergeToleranceKey,
         'value': normalized.toStringAsFixed(2),
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<String> loadAuthMode() async {
+    final rows = await _db.query(
+      'app_settings',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: [_authModeKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return '';
+    }
+    return rows.single['value']! as String;
+  }
+
+  Future<void> saveAuthMode(String value) async {
+    await _db.insert(
+      'app_settings',
+      {
+        'key': _authModeKey,
+        'value': value,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<String> loadSyncServerUrl() async {
+    final rows = await _db.query(
+      'app_settings',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: [_syncServerUrlKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return 'http://10.0.2.2:8000';
+    }
+    return rows.single['value']! as String;
+  }
+
+  Future<void> saveSyncServerUrl(String value) async {
+    await _db.insert(
+      'app_settings',
+      {
+        'key': _syncServerUrlKey,
+        'value': value,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<String> loadAuthToken() async {
+    final rows = await _db.query(
+      'app_settings',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: [_authTokenKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return '';
+    }
+    return rows.single['value']! as String;
+  }
+
+  Future<void> saveAuthToken(String value) async {
+    await _db.insert(
+      'app_settings',
+      {
+        'key': _authTokenKey,
+        'value': value,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> clearAuthCredentials() async {
+    await _db.delete(
+      'app_settings',
+      where: 'key = ? OR key = ? OR key = ? OR key = ?',
+      whereArgs: [_authModeKey, _authTokenKey, _activeShopIdKey, _activeShopNameKey],
+    );
+  }
+
+  Future<String> loadActiveShopId() async {
+    final rows = await _db.query(
+      'app_settings',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: [_activeShopIdKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return '';
+    }
+    return rows.single['value']! as String;
+  }
+
+  Future<void> saveActiveShopId(String value) async {
+    await _db.insert(
+      'app_settings',
+      {
+        'key': _activeShopIdKey,
+        'value': value,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<String> loadActiveShopName() async {
+    final rows = await _db.query(
+      'app_settings',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: [_activeShopNameKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return '';
+    }
+    return rows.single['value']! as String;
+  }
+
+  Future<void> saveActiveShopName(String value) async {
+    await _db.insert(
+      'app_settings',
+      {
+        'key': _activeShopNameKey,
+        'value': value,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<String> loadGeminiApiKey() async {
+    final rows = await _db.query(
+      'app_settings',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: [_geminiApiKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return '';
+    }
+    return rows.single['value']! as String;
+  }
+
+  Future<void> saveGeminiApiKey(String value) async {
+    await _db.insert(
+      'app_settings',
+      {
+        'key': _geminiApiKey,
+        'value': value,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<String> loadGeminiApiUrl() async {
+    final rows = await _db.query(
+      'app_settings',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: [_geminiApiUrl],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return 'https://generativelanguage.googleapis.com';
+    }
+    return rows.single['value']! as String;
+  }
+
+  Future<void> saveGeminiApiUrl(String value) async {
+    await _db.insert(
+      'app_settings',
+      {
+        'key': _geminiApiUrl,
+        'value': value,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<String> loadGeminiModel() async {
+    final rows = await _db.query(
+      'app_settings',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: [_geminiModelKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return '';
+    }
+    return rows.single['value']! as String;
+  }
+
+  Future<void> saveGeminiModel(String value) async {
+    await _db.insert(
+      'app_settings',
+      {
+        'key': _geminiModelKey,
+        'value': value,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<String> loadAiApiFormat() async {
+    final rows = await _db.query(
+      'app_settings',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: [_aiApiFormatKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return 'openai';
+    }
+    return rows.single['value']! as String;
+  }
+
+  Future<void> saveAiApiFormat(String value) async {
+    await _db.insert(
+      'app_settings',
+      {
+        'key': _aiApiFormatKey,
+        'value': value,
         'updated_at': DateTime.now().toIso8601String(),
       },
       conflictAlgorithm: ConflictAlgorithm.replace,
@@ -231,6 +482,7 @@ class LocalInventoryDatabase {
           trackingNumber: row['tracking_number']! as String,
           sellerOrderNumber: row['seller_order_number'] as String?,
           rebateOrderNumber: row['rebate_order_number'] as String?,
+          schemeNumber: row['scheme_number'] as String?,
           createdAt: DateTime.parse(row['created_at']! as String),
           items: itemRows.map(_inboundItemFromRow).toList(growable: false),
           isSettled: (row['is_settled']! as int) == 1,
@@ -283,12 +535,14 @@ class LocalInventoryDatabase {
     required List<InboundDraftItem> items,
     String? sellerOrderNumber,
     String? rebateOrderNumber,
+    String? schemeNumber,
     String? imagePath,
     bool isSettled = false,
   }) async {
     final normalizedTracking = trackingNumber.trim();
     final normalizedSellerOrder = _optionalText(sellerOrderNumber);
     final normalizedRebateOrder = _optionalText(rebateOrderNumber);
+    final normalizedScheme = _optionalText(schemeNumber);
     if (normalizedTracking.isEmpty) {
       throw InventoryException('Tracking number is required.');
     }
@@ -309,6 +563,7 @@ class LocalInventoryDatabase {
           'tracking_number': normalizedTracking,
           'seller_order_number': normalizedSellerOrder,
           'rebate_order_number': normalizedRebateOrder,
+          'scheme_number': normalizedScheme,
           'image_path': imagePath,
           'ocr_status': OcrStatus.confirmed.name,
           'is_settled': isSettled ? 1 : 0,
@@ -821,5 +1076,37 @@ class LocalInventoryDatabase {
 
   String _nextId(String prefix) {
     return '$prefix-${DateTime.now().microsecondsSinceEpoch}';
+  }
+
+  Future<List<ProductCatalogItem>> loadProductCatalog() async {
+    final rows = await _db.query(
+      'products',
+      orderBy: 'name COLLATE NOCASE ASC',
+    );
+    return rows.map((row) {
+      return ProductCatalogItem(
+        productCode: row['code']! as String,
+        productName: row['name']! as String,
+        defaultPurchasePrice: row['default_purchase_price'] as double?,
+        defaultSalePrice: row['default_sale_price'] as double?,
+      );
+    }).toList(growable: false);
+  }
+
+  Future<void> updateProductPrice(
+    String productCode, {
+    double? purchasePrice,
+    double? salePrice,
+  }) async {
+    await _db.update(
+      'products',
+      {
+        'default_purchase_price': purchasePrice,
+        'default_sale_price': salePrice,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      where: 'code = ?',
+      whereArgs: [productCode],
+    );
   }
 }
