@@ -800,6 +800,26 @@ class _AppHomeState extends State<AppHome> {
                     color: Colors.white,
                     border: Border.all(color: Colors.black, width: 0.8),
                   ),
+                  child: const Icon(Icons.psychology_outlined,
+                      color: Colors.black, size: 18),
+                ),
+                title: const Text('AI 图片分析重整库房',
+                    style:
+                        TextStyle(fontSize: 14, fontFamily: 'monospace', fontWeight: FontWeight.bold)),
+                subtitle: const Text('对所有带图片的入库单重跑 AI 识别并一键重整库存',
+                    style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.grey)),
+                onTap: _startAiInventoryRebuilding,
+              ),
+              Divider(height: 1, color: Colors.grey.shade200),
+              ListTile(
+                contentPadding: EdgeInsets.zero,
+                leading: Container(
+                  padding: const EdgeInsets.all(8),
+
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: Colors.black, width: 0.8),
+                  ),
                   child: Icon(
                     _authMode == 'online' ? Icons.logout_outlined : Icons.cloud_queue_outlined,
                     color: Colors.black,
@@ -2807,6 +2827,186 @@ class _AppHomeState extends State<AppHome> {
       });
     }
   }
+
+  Future<void> _startAiInventoryRebuilding() async {
+    // 1. 二次确认弹窗
+    final confirm = await showDialog<bool>(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          shape: const RoundedRectangleBorder(), // Notion直角风
+          title: const Text('AI 一键重整库房',
+              style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold)),
+          content: const Text(
+            '此操作将直接读取所有带照片的入库单，将图片作为多模态数据发给云端 AI 大模型进行视觉识别解析（请确认已在 AI 配置中配置了多模态 Vision 模型）。\n\n'
+            'AI 分析的商品清单将直接覆盖入库单商品明细。处理完后，系统将物理清空并重新生成全局库存表与台账流水以完成对账。\n\n'
+            '确认要开始吗？',
+            style: TextStyle(fontSize: 13),
+          ),
+          actions: [
+            OutlinedButton(
+              onPressed: () => Navigator.pop(context, false),
+              style: OutlinedButton.styleFrom(shape: const RoundedRectangleBorder()),
+              child: const Text('取消', style: TextStyle(color: Colors.black)),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: FilledButton.styleFrom(
+                  backgroundColor: Colors.black,
+                  foregroundColor: Colors.white,
+                  shape: const RoundedRectangleBorder()),
+              child: const Text('确认重整'),
+            ),
+          ],
+        );
+      },
+    );
+
+    if (confirm != true) return;
+
+    // 2. 筛选带物理图片的入库单
+    final List<InboundReceipt> allReceipts = await _database.loadInboundHistory();
+    final targetReceipts = allReceipts.where((r) {
+      if (r.imagePath == null || r.imagePath!.isEmpty) return false;
+      return File(r.imagePath!).existsSync();
+    }).toList();
+
+    if (targetReceipts.isEmpty) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('未找到任何附带物理图片的入库单，无需重整。')),
+      );
+      return;
+    }
+
+    // 3. 展示进度 Dialog
+    int successCount = 0;
+    int failCount = 0;
+    int currentIndex = 0;
+    String statusMessage = '开始重整，正在排队分析图片...';
+    bool isFinished = false;
+    StateSetter? dialogStateSetter;
+
+    if (!mounted) return;
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return StatefulBuilder(
+          builder: (context, setDialogState) {
+            dialogStateSetter = setDialogState;
+            final progress = targetReceipts.isEmpty ? 0.0 : currentIndex / targetReceipts.length;
+            return AlertDialog(
+              shape: const RoundedRectangleBorder(),
+              title: Text(isFinished ? '重整已完成' : 'AI 多模态图片分析中',
+                  style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold)),
+              content: SizedBox(
+                width: double.maxFinite,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (!isFinished) ...[
+                      LinearProgressIndicator(
+                        value: progress,
+                        backgroundColor: Colors.grey.shade200,
+                        color: Colors.black,
+                      ),
+                      const SizedBox(height: 12),
+                      Text(
+                        '正在处理第 ${currentIndex + 1}/${targetReceipts.length} 张图片...',
+                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                    Text(
+                      statusMessage,
+                      style: const TextStyle(fontSize: 12, color: Colors.grey),
+                    ),
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text('成功覆盖: $successCount', style: const TextStyle(fontSize: 12, color: Colors.green)),
+                        Text('处理失败: $failCount', style: const TextStyle(fontSize: 12, color: Colors.red)),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              actions: [
+                if (isFinished)
+                  FilledButton(
+                    onPressed: () {
+                      Navigator.pop(dialogContext);
+                    },
+                    style: FilledButton.styleFrom(
+                        backgroundColor: Colors.black,
+                        foregroundColor: Colors.white,
+                        shape: const RoundedRectangleBorder()),
+                    child: const Text('确定'),
+                  ),
+              ],
+            );
+          },
+        );
+      },
+    );
+
+    // 4. 串行异步执行 AI 重构
+    for (int i = 0; i < targetReceipts.length; i++) {
+      final receipt = targetReceipts[i];
+      dialogStateSetter?.call(() {
+        currentIndex = i;
+        statusMessage = '发送多模态 Vision 分析：${receipt.trackingNumber}\n单据ID: ${receipt.id}';
+      });
+
+      try {
+        // 直接读取图片编码 Base64 发送大模型多模态解析（不需要 PaddleOCR 提取文本）
+        final result = await _gemmaExtractor.extractFromImage(receipt.imagePath!);
+
+        await _database.overwriteInboundItems(
+          receiptId: receipt.id,
+          items: result.items,
+          sellerOrderNumber: result.sellerOrderNumber,
+          schemeNumber: result.schemeNumber,
+          ocrStatus: OcrStatus.confirmed,
+        );
+
+        successCount++;
+      } catch (e) {
+        failCount++;
+        await _database.overwriteInboundItems(
+          receiptId: receipt.id,
+          items: const [],
+          ocrStatus: OcrStatus.failed,
+        );
+        debugPrint('AI 图片重整单据 ${receipt.id} 发生异常: $e');
+      }
+    }
+
+    // 5. 调用全局重整对账
+    dialogStateSetter?.call(() {
+      statusMessage = '正在进行全局库存与台账对账重算...';
+    });
+
+    try {
+      await _database.rebuildInventoryStockAndLedger();
+      dialogStateSetter?.call(() {
+        statusMessage = '重整成功！已使用大模型多模态视觉分析结果物理覆盖单据商品清单，并重新计算了所有库存与台账记录。';
+        isFinished = true;
+      });
+    } catch (e) {
+      dialogStateSetter?.call(() {
+        statusMessage = '全局对账重算失败: $e';
+        isFinished = true;
+      });
+    }
+
+    // 6. 刷新主界面数据
+    _refreshData();
+  }
+
 
   Future<void> _refreshData() async {
     final stockTotals = await _database.loadStockTotals();

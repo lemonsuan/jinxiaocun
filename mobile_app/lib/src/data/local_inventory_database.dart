@@ -196,7 +196,12 @@ class LocalInventoryDatabase {
     await _db.delete(
       'app_settings',
       where: 'key = ? OR key = ? OR key = ? OR key = ?',
-      whereArgs: [_authModeKey, _authTokenKey, _activeShopIdKey, _activeShopNameKey],
+      whereArgs: [
+        _authModeKey,
+        _authTokenKey,
+        _activeShopIdKey,
+        _activeShopNameKey
+      ],
     );
   }
 
@@ -501,18 +506,20 @@ class LocalInventoryDatabase {
       orderBy: 'created_at DESC',
       limit: limit,
     );
-    return receiptRows.map((row) => InboundReceipt(
-      id: row['id']! as String,
-      trackingNumber: row['tracking_number']! as String,
-      sellerOrderNumber: row['seller_order_number'] as String?,
-      rebateOrderNumber: row['rebate_order_number'] as String?,
-      schemeNumber: row['scheme_number'] as String?,
-      createdAt: DateTime.parse(row['created_at']! as String),
-      items: const [],
-      isSettled: (row['is_settled']! as int) == 1,
-      ocrStatus: _ocrStatusFromName(row['ocr_status']! as String),
-      imagePath: row['image_path'] as String?,
-    )).toList();
+    return receiptRows
+        .map((row) => InboundReceipt(
+              id: row['id']! as String,
+              trackingNumber: row['tracking_number']! as String,
+              sellerOrderNumber: row['seller_order_number'] as String?,
+              rebateOrderNumber: row['rebate_order_number'] as String?,
+              schemeNumber: row['scheme_number'] as String?,
+              createdAt: DateTime.parse(row['created_at']! as String),
+              items: const [],
+              isSettled: (row['is_settled']! as int) == 1,
+              ocrStatus: _ocrStatusFromName(row['ocr_status']! as String),
+              imagePath: row['image_path'] as String?,
+            ))
+        .toList();
   }
 
   Future<List<OutboundOrder>> loadOutboundHistory() async {
@@ -657,7 +664,8 @@ class LocalInventoryDatabase {
         return; // 单据不存在，直接退出
       }
       final currentStatus = receipts.first['ocr_status'] as String?;
-      if (currentStatus != OcrStatus.pending.name && currentStatus != OcrStatus.processing.name) {
+      if (currentStatus != OcrStatus.pending.name &&
+          currentStatus != OcrStatus.processing.name) {
         return; // 如果不是 pending/processing，说明已被处理过，为避免库存和台账重复累加，直接退出
       }
 
@@ -666,7 +674,8 @@ class LocalInventoryDatabase {
         'ocr_status': ocrStatus.name,
       };
       // 如果提取出了订单号，且主表当前的订单号为空时才回填
-      final currentSellerOrder = receipts.first['seller_order_number'] as String?;
+      final currentSellerOrder =
+          receipts.first['seller_order_number'] as String?;
       if ((currentSellerOrder == null || currentSellerOrder.trim().isEmpty) &&
           sellerOrderNumber != null &&
           sellerOrderNumber.trim().isNotEmpty) {
@@ -1204,4 +1213,187 @@ class LocalInventoryDatabase {
       whereArgs: [productCode],
     );
   }
+
+  /// 使用 AI 识别后的新明细覆盖指定入库单
+  Future<void> overwriteInboundItems({
+    required String receiptId,
+    required List<InboundDraftItem> items,
+    String? sellerOrderNumber,
+    String? schemeNumber,
+    required OcrStatus ocrStatus,
+  }) async {
+    final now = DateTime.now();
+    await _db.transaction((txn) async {
+      // 1. 删除旧的明细
+      await txn.delete(
+        'inbound_items',
+        where: 'receipt_id = ?',
+        whereArgs: [receiptId],
+      );
+
+      // 2. 更新主表状态及相关单号
+      final updateValues = <String, Object?>{
+        'ocr_status': ocrStatus.name,
+      };
+      if (sellerOrderNumber != null && sellerOrderNumber.trim().isNotEmpty) {
+        updateValues['seller_order_number'] = sellerOrderNumber.trim();
+      }
+      if (schemeNumber != null && schemeNumber.trim().isNotEmpty) {
+        updateValues['scheme_number'] = schemeNumber.trim();
+      }
+      await txn.update(
+        'inbound_receipts',
+        updateValues,
+        where: 'id = ?',
+        whereArgs: [receiptId],
+      );
+
+      // 3. 写入新的明细
+      for (var index = 0; index < items.length; index += 1) {
+        final item = items[index];
+        final code = _productCodeFor(item.productCode, item.productName);
+        await _upsertProduct(txn, code, item.productName, now);
+
+        await txn.insert('inbound_items', {
+          'id': '$receiptId-item-$index',
+          'receipt_id': receiptId,
+          'product_code': code,
+          'product_name': item.productName.trim(),
+          'quantity': item.quantity,
+          'purchase_price': item.purchasePrice,
+          'sale_price': item.salePrice,
+        });
+      }
+    });
+  }
+
+  /// 全局重新生成库存和台账
+  Future<void> rebuildInventoryStockAndLedger() async {
+    await _db.transaction((txn) async {
+      // 1. 物理清空已有的台账和库存
+      await txn.delete('stock_ledger');
+      await txn.delete('warehouse_stock');
+
+      int ledgerIndex = 0;
+
+      // 2. 遍历所有入库单明细并重写
+      final receipts = await txn.query('inbound_receipts', orderBy: 'created_at ASC');
+      for (final receipt in receipts) {
+        final receiptId = receipt['id']! as String;
+        final createdAtStr = receipt['created_at']! as String;
+        final createdAt = DateTime.parse(createdAtStr);
+
+        final items = await txn.query(
+          'inbound_items',
+          where: 'receipt_id = ?',
+          whereArgs: [receiptId],
+        );
+
+        for (final item in items) {
+          final code = item['product_code']! as String;
+          final name = item['product_name']! as String;
+          final qty = item['quantity']! as int;
+
+          // 累加库存
+          await _increaseStockRaw(txn, code, name, qty);
+
+          // 插入台账
+          await _insertLedgerRaw(
+            txn,
+            productCode: code,
+            productName: name,
+            delta: qty,
+            reason: 'inbound',
+            sourceId: receiptId,
+            createdAt: createdAt,
+            index: ledgerIndex++,
+          );
+        }
+      }
+
+      // 3. 遍历所有出库单明细并重写
+      final orders = await txn.query('outbound_orders', orderBy: 'created_at ASC');
+      for (final order in orders) {
+        final orderId = order['id']! as String;
+        final createdAtStr = order['created_at']! as String;
+        final createdAt = DateTime.parse(createdAtStr);
+
+        final items = await txn.query(
+          'outbound_items',
+          where: 'order_id = ?',
+          whereArgs: [orderId],
+        );
+
+        for (final item in items) {
+          final code = item['product_code']! as String;
+          final name = item['product_name']! as String;
+          final qty = item['quantity']! as int;
+
+          // 扣减库存
+          await _increaseStockRaw(txn, code, name, -qty);
+
+          // 插入台账
+          await _insertLedgerRaw(
+            txn,
+            productCode: code,
+            productName: name,
+            delta: -qty,
+            reason: 'outbound',
+            sourceId: orderId,
+            createdAt: createdAt,
+            index: ledgerIndex++,
+          );
+        }
+      }
+    });
+  }
+
+  /// 无负库存校验的底层操作方法
+  Future<void> _increaseStockRaw(
+    Transaction txn,
+    String code,
+    String name,
+    int delta,
+  ) async {
+    final rows = await txn.query(
+      'warehouse_stock',
+      columns: ['quantity'],
+      where: 'product_code = ?',
+      whereArgs: [code],
+      limit: 1,
+    );
+    final current = rows.isEmpty ? 0 : rows.single['quantity']! as int;
+    final next = current + delta;
+    await txn.insert(
+      'warehouse_stock',
+      {
+        'product_code': code,
+        'product_name': name.trim(),
+        'quantity': next,
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<void> _insertLedgerRaw(
+    Transaction txn, {
+    required String productCode,
+    required String productName,
+    required int delta,
+    required String reason,
+    required String sourceId,
+    required DateTime createdAt,
+    required int index,
+  }) async {
+    await txn.insert('stock_ledger', {
+      'id': 'lg-${DateTime.now().microsecondsSinceEpoch}-$index',
+      'product_code': productCode,
+      'product_name': productName.trim(),
+      'delta': delta,
+      'reason': reason,
+      'source_id': sourceId,
+      'created_at': createdAt.toIso8601String(),
+    });
+  }
 }
+

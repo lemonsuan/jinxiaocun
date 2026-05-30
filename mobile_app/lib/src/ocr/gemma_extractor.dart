@@ -1,4 +1,5 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../data/local_inventory_database.dart';
 import '../domain/models.dart';
@@ -22,7 +23,7 @@ class GemmaExtractor {
 
   final LocalInventoryDatabase _database;
 
-  Future<GemmaExtractionResult> extract(String ocrText) async {
+  Future<Map<String, String>> _loadConfig() async {
     final aiFormat = await _database.loadAiApiFormat();
     var apiKey = await _database.loadGeminiApiKey();
     var apiUrl = await _database.loadGeminiApiUrl();
@@ -55,6 +56,21 @@ class GemmaExtractor {
         model = 'deepseek-v4-flash';
       }
     }
+
+    return {
+      'aiFormat': aiFormat,
+      'apiKey': apiKey,
+      'apiUrl': apiUrl,
+      'model': model,
+    };
+  }
+
+  Future<GemmaExtractionResult> extract(String ocrText) async {
+    final config = await _loadConfig();
+    final aiFormat = config['aiFormat']!;
+    final apiKey = config['apiKey']!;
+    final apiUrl = config['apiUrl']!;
+    final model = config['model']!;
 
     const systemPrompt =
         '你是一个极其严格的入库清单结构化数据提取助手。你必须且仅能输出纯粹的标准 JSON，严禁输出任何解释、文字说明、Markdown 首尾包裹标记（如 ```json）。为了极速生成，若某个属性在文本中未提及或为空，绝对不要输出其对应的键值对（Key-Value）。';
@@ -126,6 +142,129 @@ class GemmaExtractor {
       content = data['choices'][0]['message']['content'].toString().trim();
     }
 
+    return _parseJsonToResult(content);
+  }
+
+  /// 直接读取本地图片，编码为 Base64，调用大模型多模态 Vision API 进行分析提取
+  Future<GemmaExtractionResult> extractFromImage(String imagePath) async {
+    final file = File(imagePath);
+    if (!file.existsSync()) {
+      throw Exception('图片文件不存在: $imagePath');
+    }
+    final bytes = await file.readAsBytes();
+    final base64Image = base64Encode(bytes);
+
+    String mediaType = 'image/jpeg';
+    final lowerPath = imagePath.toLowerCase();
+    if (lowerPath.endsWith('.png')) {
+      mediaType = 'image/png';
+    } else if (lowerPath.endsWith('.webp')) {
+      mediaType = 'image/webp';
+    }
+
+    final config = await _loadConfig();
+    final aiFormat = config['aiFormat']!;
+    final apiKey = config['apiKey']!;
+    final apiUrl = config['apiUrl']!;
+    final model = config['model']!;
+
+    const systemPrompt =
+        '你是一个极其严格的入库清单结构化数据提取助手。你必须且仅能输出纯粹的标准 JSON，严禁输出任何解释、文字说明、Markdown 首尾包裹标记（如 ```json）。为了极速生成，若某个属性在图像中未提及或为空，绝对不要输出其对应的键值对（Key-Value）。';
+    const userPrompt = '请分析该图片中的入库单/快递单信息，完成以下规则：\n'
+        '1. 识别并提取“订单号/订单编号/商家单号”为 `seller_order_number`，“快递单号/运单号/追踪号”提取为 `tracking_number`，“计划单/入库单”提取为 `scheme_number`。\n'
+        '2. 识别商品明细列表，提取为 `items` 列表。每个商品项：产品/商品编号或条码提取为 `product_code`，产品/商品名称（若有规格颜色也一并提取到名称中）提取为 `product_name`，数量提取为整数 `quantity`（默认为 1），采购价提取为数字 `purchase_price`，销售价提取为数字 `sale_price`。\n'
+        '3. 🚨【极速与忽略原则】如果某项信息在图片中未提及、模糊或无法确定，请直接在 JSON 中忽略该键（Key），绝对不要输出它！';
+
+    String content = '';
+
+    if (aiFormat == 'gemini' || aiFormat == 'anthropic') {
+      final response = await http
+          .post(
+            Uri.parse('$apiUrl/v1/messages'),
+            headers: {
+              'Content-Type': 'application/json; charset=utf-8',
+              'x-api-key': apiKey,
+              'anthropic-version': '2023-06-01',
+            },
+            body: jsonEncode({
+              'model': model,
+              'max_tokens': 2048,
+              'system': systemPrompt,
+              'messages': [
+                {
+                  'role': 'user',
+                  'content': [
+                    {
+                      'type': 'image',
+                      'source': {
+                        'type': 'base64',
+                        'media_type': mediaType,
+                        'data': base64Image,
+                      },
+                    },
+                    {
+                      'type': 'text',
+                      'text': userPrompt,
+                    }
+                  ],
+                }
+              ],
+              'temperature': 0.0,
+            }),
+          )
+          .timeout(const Duration(seconds: 45));
+
+      if (response.statusCode != 200) {
+        throw Exception(
+            'Anthropic API请求失败 (HTTP ${response.statusCode}): ${utf8.decode(response.bodyBytes)}');
+      }
+
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+      content = data['content'][0]['text'].toString().trim();
+    } else {
+      final response = await http
+          .post(
+            Uri.parse('$apiUrl/v1/chat/completions'),
+            headers: {
+              'Content-Type': 'application/json; charset=utf-8',
+              'Authorization': 'Bearer $apiKey',
+            },
+            body: jsonEncode({
+              'model': model,
+              'messages': [
+                {'role': 'system', 'content': systemPrompt},
+                {
+                  'role': 'user',
+                  'content': [
+                    {'type': 'text', 'text': userPrompt},
+                    {
+                      'type': 'image_url',
+                      'image_url': {
+                        'url': 'data:$mediaType;base64,$base64Image',
+                      }
+                    }
+                  ]
+                },
+              ],
+              'temperature': 0.0,
+              'response_format': {'type': 'json_object'},
+            }),
+          )
+          .timeout(const Duration(seconds: 45));
+
+      if (response.statusCode != 200) {
+        throw Exception(
+            'API请求失败 (HTTP ${response.statusCode}): ${utf8.decode(response.bodyBytes)}');
+      }
+
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+      content = data['choices'][0]['message']['content'].toString().trim();
+    }
+
+    return _parseJsonToResult(content);
+  }
+
+  GemmaExtractionResult _parseJsonToResult(String content) {
     // 清理可能的 markdown 包裹
     var jsonText = content;
     if (jsonText.startsWith('```')) {
@@ -195,3 +334,4 @@ class GemmaExtractor {
     );
   }
 }
+
