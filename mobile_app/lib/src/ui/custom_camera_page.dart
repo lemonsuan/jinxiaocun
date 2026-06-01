@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -23,6 +24,10 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
   FlashMode _flashMode = FlashMode.off;
   String _statusMessage = '正在初始化相机...';
 
+  // 记录逻辑预览区的宽高，用于物理图片坐标映射裁剪
+  double _logicalWidth = 0.0;
+  double _logicalHeight = 0.0;
+
   @override
   void initState() {
     super.initState();
@@ -41,7 +46,6 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final CameraController? cameraController = _controller;
 
-    // 当 App 失去焦点或进入后台时释放相机，返回时重新初始化
     if (cameraController == null || !cameraController.value.isInitialized) {
       return;
     }
@@ -71,7 +75,6 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
         return;
       }
 
-      // 优先寻找后置摄像头
       final backCamera = _cameras.firstWhere(
         (camera) => camera.lensDirection == CameraLensDirection.back,
         orElse: () => _cameras.first,
@@ -87,11 +90,7 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
       _controller = controller;
 
       await controller.initialize();
-      
-      // 物理锁定快门捕获方向为 portraitUp，保证图片百分之百是竖的
       await controller.lockCaptureOrientation(DeviceOrientation.portraitUp);
-      
-      // 默认关闭闪光灯
       await controller.setFlashMode(_flashMode);
 
       if (mounted) {
@@ -131,6 +130,59 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
 
     try {
       final XFile file = await _controller!.takePicture();
+      
+      // 物理图片裁剪：只保留取景框范围内的图片内容
+      if (_logicalWidth > 0 && _logicalHeight > 0) {
+        final File rawFile = File(file.path);
+        if (rawFile.existsSync()) {
+          final Uint8List bytes = await rawFile.readAsBytes();
+          
+          // 1. 获取物理图片的原始宽高
+          final ui.Codec codec = await ui.instantiateImageCodec(bytes);
+          final ui.FrameInfo frameInfo = await codec.getNextFrame();
+          final ui.Image image = frameInfo.image;
+          
+          final double pWidth = image.width.toDouble();
+          final double pHeight = image.height.toDouble();
+          image.dispose(); // 尽早释放句柄
+
+          // 2. 根据比率计算取景框的逻辑大小和位置
+          final double boxWidth = _logicalWidth * 0.82;
+          final double boxHeight = _logicalHeight * 0.65;
+          final double left = (_logicalWidth - boxWidth) / 2;
+          final double top = (_logicalHeight - boxHeight) / 2;
+
+          // 3. 计算 BoxFit.cover 模式下，物理图片映射至逻辑预览区的 scale 和 offset
+          final double lRatio = _logicalWidth / _logicalHeight;
+          final double pRatio = pWidth / pHeight;
+          double scale;
+          double offsetX = 0;
+          double offsetY = 0;
+
+          if (lRatio > pRatio) {
+            scale = _logicalWidth / pWidth;
+            offsetY = (_logicalHeight - pHeight * scale) / 2;
+          } else {
+            scale = _logicalHeight / pHeight;
+            offsetX = (_logicalWidth - pWidth * scale) / 2;
+          }
+
+          // 4. 将逻辑取景框边界精确映射到物理图片的像素坐标上
+          final double cropLeftPhys = (left - offsetX) / scale;
+          final double cropTopPhys = (top - offsetY) / scale;
+          final double cropWidthPhys = boxWidth / scale;
+          final double cropHeightPhys = boxHeight / scale;
+
+          final int x = cropLeftPhys.round().clamp(0, pWidth.toInt() - 1);
+          final int y = cropTopPhys.round().clamp(0, pHeight.toInt() - 1);
+          final int w = cropWidthPhys.round().clamp(1, pWidth.toInt() - x);
+          final int h = cropHeightPhys.round().clamp(1, pHeight.toInt() - y);
+
+          // 5. 底层裁剪并覆写图片
+          await _performPhysicalCrop(file.path, x, y, w, h);
+        }
+      }
+
       if (mounted) {
         Navigator.of(context).pop(file);
       }
@@ -140,7 +192,7 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
           SnackBar(
             backgroundColor: const Color(0xFF1E293B),
             shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-            content: Text('拍摄失败: $e', style: const TextStyle(color: Colors.white, fontSize: 13)),
+            content: Text('拍摄并裁剪失败: $e', style: const TextStyle(color: Colors.white, fontSize: 13)),
           ),
         );
       }
@@ -153,6 +205,42 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
     }
   }
 
+  // 使用 dart:ui 模块的 Skia 画布在物理层面上对图片进行像素裁剪，杜绝性能溢出
+  Future<void> _performPhysicalCrop(String path, int x, int y, int width, int height) async {
+    try {
+      final File file = File(path);
+      if (!file.existsSync()) return;
+
+      final Uint8List bytes = await file.readAsBytes();
+      final ui.Codec codec = await ui.instantiateImageCodec(bytes);
+      final ui.FrameInfo frameInfo = await codec.getNextFrame();
+      final ui.Image image = frameInfo.image;
+
+      final ui.PictureRecorder recorder = ui.PictureRecorder();
+      final ui.Canvas canvas = ui.Canvas(recorder);
+
+      final Rect src = Rect.fromLTWH(x.toDouble(), y.toDouble(), width.toDouble(), height.toDouble());
+      final Rect dst = Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble());
+      canvas.drawImageRect(image, src, dst, ui.Paint());
+
+      final ui.Picture picture = recorder.endRecording();
+      final ui.Image croppedImage = await picture.toImage(width, height);
+      final ByteData? byteData = await croppedImage.toByteData(format: ui.ImageByteFormat.jpeg);
+
+      if (byteData != null) {
+        await file.writeAsBytes(byteData.buffer.asUint8List(), flush: true);
+      }
+
+      image.dispose();
+      croppedImage.dispose();
+      
+      // 清除该文件的 Flutter 图片缓存，促使 UI 重新从磁盘加载更新后的图片
+      PaintingBinding.instance.imageCache.evict(FileImage(file));
+    } catch (e) {
+      debugPrint('底层物理裁剪异常: $e');
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -160,17 +248,13 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
       body: SafeArea(
         child: Column(
           children: [
-            // 1. Notion 极简白色直角导航栏
             _buildAppBar(),
-            
-            // 2. 沉浸式预览区 + 物理框对齐遮罩
             Expanded(
               child: _isInitialized && _controller != null
                   ? Stack(
                       fit: StackFit.expand,
                       children: [
                         CameraPreview(_controller!),
-                        // 居中的直角定位框 Overlay
                         _buildTargetOverlay(),
                         if (_isTakingPicture)
                           Container(
@@ -191,8 +275,6 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
                       ),
                     ),
             ),
-            
-            // 3. 底部黑色 Notion 拍照控制区
             _buildBottomActionBar(),
           ],
         ),
@@ -238,7 +320,6 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
               letterSpacing: 1.0,
             ),
           ),
-          // 占位
           const SizedBox(width: 48),
         ],
       ),
@@ -248,10 +329,13 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
   Widget _buildTargetOverlay() {
     return LayoutBuilder(
       builder: (context, constraints) {
+        // 在渲染时实时记录最新的预览容器大小，用于拍照时的裁剪映射
+        _logicalWidth = constraints.maxWidth;
+        _logicalHeight = constraints.maxHeight;
+        
         final double width = constraints.maxWidth;
         final double height = constraints.maxHeight;
         
-        // 目标框的大小：宽度的 80%，高度的 60%
         final double boxWidth = width * 0.82;
         final double boxHeight = height * 0.65;
         
@@ -260,7 +344,6 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
 
         return Stack(
           children: [
-            // 半透明遮罩
             ColorFiltered(
               colorFilter: ColorFilter.mode(
                 Colors.black.withOpacity(0.5),
@@ -280,14 +363,13 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
                     height: boxHeight,
                     child: Container(
                       decoration: const BoxDecoration(
-                        color: Colors.black, // 源模式会挖空它
+                        color: Colors.black,
                       ),
                     ),
                   ),
                 ],
               ),
             ),
-            // 四个高对比度直角边框
             Positioned(
               left: left,
               top: top,
@@ -302,7 +384,6 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
                 ),
               ),
             ),
-            // 加粗的直角边角
             Positioned(
               left: left - 2,
               top: top - 2,
@@ -323,7 +404,6 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
               bottom: top - 2,
               child: _buildCorner(top: false, left: false),
             ),
-            // 框内文字引导
             Positioned(
               left: left,
               right: left,
@@ -347,7 +427,7 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
                     ),
                     const SizedBox(height: 6),
                     Text(
-                      '锁定垂直照片，保障高精度解析',
+                      '自动精准裁剪取景框内画面进行识别',
                       style: TextStyle(
                         color: Colors.white.withOpacity(0.5),
                         fontSize: 9,
@@ -407,7 +487,6 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
       child: Row(
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
-          // 左侧闪光灯切换
           GestureDetector(
             onTap: _toggleFlash,
             child: Container(
@@ -423,11 +502,7 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
               ),
             ),
           ),
-          
-          // 中间 Notion 风格直角快门按钮
           _buildShutterButton(),
-
-          // 右侧取消占位/或提示
           GestureDetector(
             onTap: () => Navigator.of(context).pop(),
             child: Container(
