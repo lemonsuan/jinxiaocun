@@ -252,137 +252,140 @@ class _ExpressInboundPageState extends State<ExpressInboundPage> {
             child: Stack(
               children: [
                 Positioned.fill(
-                  child: _isScanningLocked
-                      ? Container(
-                          color: Colors.black.withOpacity(0.9),
-                          alignment: Alignment.center,
-                          child: Column(
-                            mainAxisAlignment: MainAxisAlignment.center,
-                            children: [
-                              const SizedBox(
-                                width: 24,
-                                height: 24,
-                                child: CircularProgressIndicator(
-                                  strokeWidth: 1.8,
-                                  valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
-                                ),
-                              ),
-                              const SizedBox(height: 16),
-                              Text(
-                                '已锁定单号：$_currentTrackingNumber',
-                                style: const TextStyle(
-                                  color: Colors.white,
-                                  fontSize: 12,
-                                  fontFamily: 'monospace',
-                                  fontWeight: FontWeight.bold,
-                                ),
-                                textAlign: TextAlign.center,
-                              ),
-                              const SizedBox(height: 6),
-                              const Text(
-                                '正在跳转到相机页面...',
-                                style: TextStyle(
-                                  color: _notionGreyText,
-                                  fontSize: 10,
-                                ),
-                              ),
-                            ],
-                          ),
-                        )
-                      : MobileScanner(
-                          controller: _controller,
-                          onDetect: (capture) async {
-                            if (_isScanningLocked || _isProcessing) return;
-                            final barcodes = capture.barcodes;
-                            for (final barcode in barcodes) {
-                              final raw = barcode.rawValue;
-                              if (raw != null && raw.isNotEmpty) {
-                                setState(() {
-                                  _currentTrackingNumber = raw;
-                                  _isScanningLocked = true;
-                                  _message = '已识别单号：$raw，正在拉起拍照...';
-                                });
+                  child: MobileScanner(
+                    controller: _controller,
+                    onDetect: (capture) async {
+                      if (_isScanningLocked || _isProcessing) return;
+                      final barcodes = capture.barcodes;
+                      for (final barcode in barcodes) {
+                        final raw = barcode.rawValue;
+                        if (raw != null && raw.isNotEmpty) {
+                          setState(() {
+                            _currentTrackingNumber = raw;
+                            _isScanningLocked = true;
+                            _message = '已识别单号：$raw，正在拉起拍照...';
+                          });
 
-                                // 立即暂停扫码器，腾出摄像头控制权给新相机页面
-                                await _controller.stop();
+                          // 立即暂停扫码器，腾出摄像头控制权给新相机页面
+                          await _controller.stop();
 
-                                if (!mounted) return;
-                                // 跳转到统一的 CustomCameraPage 拍照识别，享受取景框物理图像裁剪
-                                final image = await Navigator.of(context).push<XFile>(
-                                  MaterialPageRoute(
-                                    builder: (context) => const CustomCameraPage(title: '极速模式拍照识别'),
-                                  ),
-                                );
+                          if (!mounted) return;
+                          // 跳转到统一的 CustomCameraPage 拍照识别，享受取景框物理图像裁剪
+                          final image = await Navigator.of(context).push<XFile>(
+                            MaterialPageRoute(
+                              builder: (context) => const CustomCameraPage(title: '极速模式拍照识别'),
+                            ),
+                          );
 
-                                if (image == null) {
-                                  // 用户中途取消了拍摄，重置状态
-                                  if (mounted) {
-                                    setState(() {
-                                      _isScanningLocked = false;
-                                      _currentTrackingNumber = null;
-                                      _message = '已取消拍照，扫码已重启';
-                                    });
-                                  }
-                                  // 给相机硬件转场释放留出足够物理缓冲时间
-                                  await Future.delayed(const Duration(milliseconds: 500));
-                                  await _controller.start();
-                                  break;
-                                }
-
-                                // 拍照成功，进入入库处理与后台异步大模型流程
-                                if (mounted) {
-                                  setState(() {
-                                    _isProcessing = true;
-                                    _message = '正在保存图片并记录入库...';
-                                  });
-                                }
-
-                                try {
-                                  final storedImagePath = await _storeInboundImage(image);
-
-                                  // 本地快速创建待处理单据
-                                  final receipt = await widget.database.confirmInbound(
-                                    trackingNumber: raw,
-                                    items: const [],
-                                    imagePath: storedImagePath,
-                                    ocrStatus: OcrStatus.pending,
-                                  );
-
-                                  // 后台开启异步大模型提取，完全不阻塞当前扫码流水线
-                                  unawaited(_runAsyncOcr(receipt.id, storedImagePath));
-
-                                  // 加载最近入库列表
-                                  await _loadRecentReceipts();
-                                  widget.onRefreshHomeData();
-
-                                  if (mounted) {
-                                    setState(() {
-                                      _message = '快递 $raw 已录入，后台正在分析明细';
-                                      _currentTrackingNumber = null;
-                                      _isScanningLocked = false;
-                                      _isProcessing = false;
-                                    });
-                                  }
-                                } catch (e) {
-                                  if (mounted) {
-                                    setState(() {
-                                      _message = '入库记录失败: $e';
-                                      _currentTrackingNumber = null;
-                                      _isScanningLocked = false;
-                                      _isProcessing = false;
-                                    });
-                                  }
-                                }
-
-                                // 等待页面滑出转场完全结束，相机硬件彻底释放后，再重启扫码
-                                await Future.delayed(const Duration(milliseconds: 500));
-                                await _controller.start();
-                                break;
-                              }
+                          if (image == null) {
+                            // 用户中途取消了拍摄，重置状态
+                            if (mounted) {
+                              setState(() {
+                                _isScanningLocked = false;
+                                _currentTrackingNumber = null;
+                                _message = '已取消拍照，扫码已重启';
+                              });
                             }
-                          },
-                        ),
+                            // 给相机硬件转场释放留出足够物理缓冲时间
+                            await Future.delayed(const Duration(milliseconds: 500));
+                            await _controller.start();
+                            break;
+                          }
+
+                          // 拍照成功，进入入库处理与后台异步大模型流程
+                          if (mounted) {
+                            setState(() {
+                              _isProcessing = true;
+                              _message = '正在保存图片并记录入库...';
+                            });
+                          }
+
+                          try {
+                            final storedImagePath = await _storeInboundImage(image);
+
+                            // 本地快速创建待处理单据
+                            final receipt = await widget.database.confirmInbound(
+                              trackingNumber: raw,
+                              items: const [],
+                              imagePath: storedImagePath,
+                              ocrStatus: OcrStatus.pending,
+                            );
+
+                            // 后台开启异步大模型提取，完全不阻塞当前扫码流水线
+                            unawaited(_runAsyncOcr(receipt.id, storedImagePath));
+
+                            // 加载最近入库列表
+                            await _loadRecentReceipts();
+                            widget.onRefreshHomeData();
+
+                            if (mounted) {
+                              setState(() {
+                                _message = '快递 $raw 已录入，后台正在分析明细';
+                                _currentTrackingNumber = null;
+                                _isScanningLocked = false;
+                                _isProcessing = false;
+                              });
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              setState(() {
+                                _message = '入库记录失败: $e';
+                                _currentTrackingNumber = null;
+                                _isScanningLocked = false;
+                                _isProcessing = false;
+                              });
+                            }
+                          }
+
+                          // 等待页面滑出转场完全结束，相机硬件彻底释放后，再重启扫码
+                          await Future.delayed(const Duration(milliseconds: 500));
+                          await _controller.start();
+                          break;
+                        }
+                      }
+                    },
+                  ),
                 ),
+                // 仅在扫码锁定状态下，在顶部覆上一层黑色的锁定遮罩，不销毁扫码器本身
+                if (_isScanningLocked)
+                  Positioned.fill(
+                    child: Container(
+                      color: Colors.black.withOpacity(0.9),
+                      alignment: Alignment.center,
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const SizedBox(
+                            width: 24,
+                            height: 24,
+                            child: CircularProgressIndicator(
+                              strokeWidth: 1.8,
+                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                            ),
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            '已锁定单号：$_currentTrackingNumber',
+                            style: const TextStyle(
+                              color: Colors.white,
+                              fontSize: 12,
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.bold,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 6),
+                          const Text(
+                            '正在跳转到相机页面...',
+                            style: TextStyle(
+                              color: _notionGreyText,
+                              fontSize: 10,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),
