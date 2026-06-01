@@ -3,8 +3,9 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:camera/camera.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:intl/intl.dart';
 import '../domain/models.dart';
@@ -55,7 +56,11 @@ class _ExpressInboundPageState extends State<ExpressInboundPage> {
     formats: _linearBarcodeFormats,
   );
 
-  final ImagePicker _imagePicker = ImagePicker();
+  // 自定义相机管理变量
+  CameraController? _cameraController;
+  List<CameraDescription> _cameras = [];
+  bool _isCameraInitialized = false;
+  bool _isCameraLoading = false;
 
   // 状态变量
   List<InboundReceipt> _recentReceipts = [];
@@ -68,12 +73,93 @@ class _ExpressInboundPageState extends State<ExpressInboundPage> {
   void initState() {
     super.initState();
     _loadRecentReceipts();
+    _detectAvailableCameras();
   }
 
   @override
   void dispose() {
     unawaited(_controller.dispose());
+    unawaited(_disposeCustomCamera());
     super.dispose();
+  }
+
+  Future<void> _detectAvailableCameras() async {
+    try {
+      _cameras = await availableCameras();
+    } catch (e) {
+      debugPrint('获取可用相机列表失败: $e');
+    }
+  }
+
+  Future<void> _disposeCustomCamera() async {
+    if (_cameraController != null) {
+      await _cameraController!.dispose();
+      _cameraController = null;
+    }
+    _isCameraInitialized = false;
+  }
+
+  // 初始化并独占相机硬件
+  Future<void> _initCustomCamera() async {
+    if (_cameras.isEmpty) {
+      try {
+        _cameras = await availableCameras();
+      } catch (e) {
+        setState(() {
+          _message = '无法获取相机硬件: $e';
+        });
+        return;
+      }
+    }
+
+    if (_cameras.isEmpty) {
+      setState(() {
+        _message = '未检测到可用摄像头';
+      });
+      return;
+    }
+
+    setState(() {
+      _isCameraLoading = true;
+      _message = '正在切换并接管摄像头...';
+    });
+
+    try {
+      // 优先后置摄像头
+      final backCamera = _cameras.firstWhere(
+        (c) => c.lensDirection == CameraLensDirection.back,
+        orElse: () => _cameras.first,
+      );
+
+      final controller = CameraController(
+        backCamera,
+        ResolutionPreset.high,
+        enableAudio: false,
+        imageFormatGroup: ImageFormatGroup.jpeg,
+      );
+
+      _cameraController = controller;
+      await controller.initialize();
+      
+      // 锁定传感器快门为纵向，实现强制垂直图片
+      await controller.lockCaptureOrientation(DeviceOrientation.portraitUp);
+
+      if (mounted) {
+        setState(() {
+          _isCameraInitialized = true;
+          _isCameraLoading = false;
+          _message = '请对准商品清单/入库单，并点击下方拍照';
+        });
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isCameraLoading = false;
+          _isCameraInitialized = false;
+          _message = '相机初始化失败: $e';
+        });
+      }
+    }
   }
 
   /// 从数据库加载最近5条入库记录
@@ -100,43 +186,32 @@ class _ExpressInboundPageState extends State<ExpressInboundPage> {
     return targetPath;
   }
 
-  // 自动调起拍照并执行异步默认入库
-  Future<void> _captureAndInbound() async {
-    if (_currentTrackingNumber == null) return;
+  // 自定义拍照快门并执行一键异步入库
+  Future<void> _takeCustomPhotoAndInbound() async {
+    if (_currentTrackingNumber == null || _cameraController == null || !_isCameraInitialized) return;
 
     setState(() {
       _isProcessing = true;
-      _message = '扫码成功，正在为您自动调起相机...';
+      _message = '快门已触发，正在捕获清单图像...';
     });
 
     try {
-      final image = await _imagePicker.pickImage(
-        source: ImageSource.camera,
-        imageQuality: 80,
-        maxWidth: 1600,
-        maxHeight: 1600,
-      );
-      
-      // 用户取消了拍摄
-      if (image == null) {
-        setState(() {
-          _isProcessing = false;
-          _currentTrackingNumber = null;
-          _isScanningLocked = false;
-          _message = '拍照取消，扫码器已重新激活';
-        });
-        return;
-      }
+      // 1. 调用自定义相机控制器拍摄
+      final image = await _cameraController!.takePicture();
 
       setState(() {
-        _message = '正在保存图片并生成待处理入库单...';
+        _message = '正在进行图片垂直纠偏与格式化...';
       });
 
-      // 1. 克隆图片到内部沙盒目录
+      // 2. 拷贝图片到沙盒并强制进行二次垂直方向校验
       final storedImagePath = await _storeInboundImage(image);
       await _ensureVerticalImage(storedImagePath);
 
-      // 2. 本地数据库以 pending 模式创建待处理单据（商品明细初始化为空）
+      setState(() {
+        _message = '正在写入待处理入库单...';
+      });
+
+      // 3. 在本地数据库中以 pending 状态创建入库单
       final receipt = await widget.database.confirmInbound(
         trackingNumber: _currentTrackingNumber!,
         items: const [],
@@ -144,17 +219,24 @@ class _ExpressInboundPageState extends State<ExpressInboundPage> {
         ocrStatus: OcrStatus.pending,
       );
 
-      // 3. 异步非阻塞启动 PaddleOCR 商品结构化信息提取
+      // 4. 抛出非阻塞 PaddleOCR-VL-1.6 的识别与回写
       unawaited(_runAsyncOcr(receipt.id, storedImagePath));
 
-      // 4. 重置状态 & 刷新列表
+      // 5. 释放相机控制权以让给扫码器
+      await _disposeCustomCamera();
+
+      // 6. 重启扫码摄像头
+      await _controller.start();
+
       final savedNum = _currentTrackingNumber!;
-      setState(() {
-        _message = '快递 $savedNum 入库成功，正在提取明细';
-        _currentTrackingNumber = null;
-        _isScanningLocked = false;
-        _isProcessing = false;
-      });
+      if (mounted) {
+        setState(() {
+          _message = '快递 $savedNum 入库成功，正在提取商品明细';
+          _currentTrackingNumber = null;
+          _isScanningLocked = false;
+          _isProcessing = false;
+        });
+      }
 
       // 从数据库重新加载最近记录
       await _loadRecentReceipts();
@@ -349,39 +431,76 @@ class _ExpressInboundPageState extends State<ExpressInboundPage> {
                 ),
                 const SizedBox(height: 8),
                 Container(
-                  height: 200,
+                  height: 240, // 取景器适当拉高，更符合拍照比例
                   width: double.infinity,
                   decoration: BoxDecoration(
                     border: Border.all(color: Colors.black, width: 1.2),
+                    color: Colors.black,
                   ),
                   child: Stack(
                     children: [
+                      // 1. 独占控制：就绪展示自定义相机预览，否则展示扫码
                       Positioned.fill(
-                        child: MobileScanner(
-                          controller: _controller,
-                          onDetect: (capture) {
-                            if (_isScanningLocked || _isProcessing) return;
-                            final barcodes = capture.barcodes;
-                            for (final barcode in barcodes) {
-                              final raw = barcode.rawValue;
-                              if (raw != null && raw.isNotEmpty) {
-                                setState(() {
-                                  _currentTrackingNumber = raw;
-                                  _isScanningLocked = true;
-                                  _message = '扫码成功，正在为您唤起相机...';
-                                });
-                                _captureAndInbound();
-                                break;
-                              }
-                            }
-                          },
-                        ),
+                        child: _isScanningLocked && _isCameraInitialized && _cameraController != null
+                            ? CameraPreview(_cameraController!)
+                            : MobileScanner(
+                                controller: _controller,
+                                onDetect: (capture) async {
+                                  if (_isScanningLocked || _isProcessing || _isCameraLoading) return;
+                                  final barcodes = capture.barcodes;
+                                  for (final barcode in barcodes) {
+                                    final raw = barcode.rawValue;
+                                    if (raw != null && raw.isNotEmpty) {
+                                      setState(() {
+                                        _currentTrackingNumber = raw;
+                                        _isScanningLocked = true;
+                                      });
+                                      await _controller.stop();
+                                      await _initCustomCamera();
+                                      break;
+                                    }
+                                  }
+                                },
+                              ),
                       ),
-                      // 取景遮罩与锁定提示
-                      if (_isScanningLocked)
+
+                      // 2. 加载相机的 Notion 黑遮罩进度
+                      if (_isCameraLoading)
                         Positioned.fill(
                           child: Container(
-                            color: Colors.black.withOpacity(0.65),
+                            color: Colors.black.withOpacity(0.85),
+                            alignment: Alignment.center,
+                            child: const Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                SizedBox(
+                                  width: 20,
+                                  height: 20,
+                                  child: CircularProgressIndicator(
+                                    strokeWidth: 1.8,
+                                    valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                                  ),
+                                ),
+                                SizedBox(height: 12),
+                                Text(
+                                  '正在开启拍照模式...',
+                                  style: TextStyle(
+                                    color: Colors.white,
+                                    fontSize: 11,
+                                    fontFamily: 'monospace',
+                                    fontWeight: FontWeight.bold,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+
+                      // 3. 锁定但相机因异常未初始化成功时的提示
+                      if (_isScanningLocked && !_isCameraInitialized && !_isCameraLoading)
+                        Positioned.fill(
+                          child: Container(
+                            color: Colors.black.withOpacity(0.85),
                             alignment: Alignment.center,
                             child: Column(
                               mainAxisAlignment: MainAxisAlignment.center,
@@ -389,10 +508,10 @@ class _ExpressInboundPageState extends State<ExpressInboundPage> {
                                 const Icon(Icons.lock_outline, color: Colors.white, size: 24),
                                 const SizedBox(height: 8),
                                 Text(
-                                  '已锁定：${_currentTrackingNumber ?? ''}',
+                                  '已锁定单号：$_currentTrackingNumber',
                                   style: const TextStyle(
                                     color: Colors.white,
-                                    fontSize: 13,
+                                    fontSize: 12,
                                     fontFamily: 'monospace',
                                     fontWeight: FontWeight.bold,
                                   ),
@@ -401,20 +520,15 @@ class _ExpressInboundPageState extends State<ExpressInboundPage> {
                                 const SizedBox(height: 12),
                                 TextButton.icon(
                                   onPressed: _resetCurrentScan,
-                                  icon: const Icon(Icons.refresh, color: Colors.white, size: 14),
+                                  icon: const Icon(Icons.refresh, color: Colors.white, size: 13),
                                   label: const Text(
-                                    '重置',
-                                    style: TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 11,
-                                      fontFamily: 'monospace',
-                                      fontWeight: FontWeight.bold,
-                                    ),
+                                    '重置重新扫码',
+                                    style: TextStyle(color: Colors.white, fontSize: 11, fontFamily: 'monospace'),
                                   ),
                                   style: TextButton.styleFrom(
                                     padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                                     side: const BorderSide(color: Colors.white, width: 0.8),
-                                    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                                    shape: const RoundedRectangleBorder(),
                                   ),
                                 ),
                               ],
@@ -443,10 +557,76 @@ class _ExpressInboundPageState extends State<ExpressInboundPage> {
               ),
             ),
 
+          // 📸 精致直角 Notion 风格拍照快门大按钮
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+            child: SizedBox(
+              width: double.infinity,
+              height: 46,
+              child: OutlinedButton.icon(
+                onPressed: (_isScanningLocked && _isCameraInitialized && !_isProcessing)
+                    ? _takeCustomPhotoAndInbound
+                    : null,
+                icon: const Icon(Icons.camera_alt_outlined, size: 18),
+                label: Text(
+                  _isProcessing
+                      ? '正在处理入库数据...'
+                      : (_isScanningLocked ? '📸 拍照并直接入库' : '请对准快递单扫码'),
+                  style: const TextStyle(
+                    fontFamily: 'monospace',
+                    fontWeight: FontWeight.bold,
+                    fontSize: 13,
+                  ),
+                ),
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: Colors.white,
+                  backgroundColor: (_isScanningLocked && _isCameraInitialized && !_isProcessing)
+                      ? Colors.black
+                      : Colors.grey.shade100,
+                  disabledForegroundColor: Colors.grey.shade400,
+                  disabledBackgroundColor: Colors.grey.shade100,
+                  side: BorderSide(
+                    color: (_isScanningLocked && _isCameraInitialized && !_isProcessing)
+                        ? Colors.black
+                        : Colors.grey.shade300,
+                    width: 1.0,
+                  ),
+                  shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                ),
+              ),
+            ),
+          ),
+
+          // 扫码锁定时提供重置快捷按钮
+          if (_isScanningLocked && _isCameraInitialized && !_isProcessing)
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 2),
+              child: SizedBox(
+                width: double.infinity,
+                height: 36,
+                child: TextButton.icon(
+                  onPressed: _resetCurrentScan,
+                  icon: const Icon(Icons.refresh, color: Colors.red, size: 14),
+                  label: const Text(
+                    '放弃当前单，重置重新扫码',
+                    style: TextStyle(
+                      color: Colors.red,
+                      fontFamily: 'monospace',
+                      fontWeight: FontWeight.bold,
+                      fontSize: 11,
+                    ),
+                  ),
+                  style: TextButton.styleFrom(
+                    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                  ),
+                ),
+              ),
+            ),
+
           // 分隔
           const Padding(
             padding: EdgeInsets.symmetric(horizontal: 16),
-            child: Divider(height: 24, color: _notionBorder),
+            child: Divider(height: 20, color: _notionBorder),
           ),
 
           // 2. 最近入库列表标题
