@@ -184,11 +184,6 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
       }
 
       if (mounted) {
-        if (_controller != null) {
-          await _controller!.dispose();
-          _controller = null;
-          _isInitialized = false;
-        }
         Navigator.of(context).pop(file);
       }
     } catch (e) {
