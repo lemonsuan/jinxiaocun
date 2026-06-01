@@ -5,6 +5,7 @@ import 'package:image_picker/image_picker.dart';
 import '../data/local_inventory_database.dart';
 import '../domain/models.dart';
 import 'scanner_page.dart';
+import 'custom_camera_page.dart';
 
 class PhotoCountPage extends StatefulWidget {
   final LocalInventoryDatabase database;
@@ -28,9 +29,10 @@ class _PhotoCountPageState extends State<PhotoCountPage> {
 
   Future<void> _captureImage() async {
     try {
-      final file = await _imagePicker.pickImage(
-        source: ImageSource.camera,
-        imageQuality: 85,
+      final file = await Navigator.of(context).push<XFile>(
+        MaterialPageRoute(
+          builder: (context) => const CustomCameraPage(title: '拍摄盘点凭证'),
+        ),
       );
       if (file != null) {
         setState(() {

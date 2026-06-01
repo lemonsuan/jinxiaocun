@@ -23,6 +23,7 @@ import 'backup_management_page.dart';
 import 'ai_config_page.dart';
 import 'login_page.dart';
 import 'express_inbound_page.dart';
+import 'custom_camera_page.dart';
 
 
 
@@ -2660,11 +2661,10 @@ class _AppHomeState extends State<AppHome> {
 
   Future<void> _captureAndRecognizeList() async {
     try {
-      final image = await _imagePicker.pickImage(
-        source: ImageSource.camera,
-        imageQuality: 80,
-        maxWidth: 1600,
-        maxHeight: 1600,
+      final image = await Navigator.of(context).push<XFile>(
+        MaterialPageRoute(
+          builder: (context) => const CustomCameraPage(title: '拍照识别商品清单'),
+        ),
       );
       if (image == null) {
         return;
