@@ -147,9 +147,9 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
           image.dispose(); // 尽早释放句柄
 
           // 2. 根据比率计算取景框的逻辑大小和位置
-          final double boxWidth = _logicalWidth * 0.82;
-          final double boxHeight = _logicalHeight * 0.65;
-          final double left = (_logicalWidth - boxWidth) / 2;
+          final double boxWidth = _logicalWidth;
+          final double boxHeight = _logicalHeight * (0.65 / 0.82);
+          final double left = 0.0;
           final double top = (_logicalHeight - boxHeight) / 2;
 
           // 3. 计算 BoxFit.cover 模式下，物理图片映射至逻辑预览区的 scale 和 offset
@@ -336,10 +336,10 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
         final double width = constraints.maxWidth;
         final double height = constraints.maxHeight;
         
-        final double boxWidth = width * 0.82;
-        final double boxHeight = height * 0.65;
+        final double boxWidth = width;
+        final double boxHeight = height * (0.65 / 0.82);
         
-        final double left = (width - boxWidth) / 2;
+        final double left = 0.0;
         final double top = (height - boxHeight) / 2;
 
         return Stack(
