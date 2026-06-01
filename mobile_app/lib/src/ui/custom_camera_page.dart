@@ -225,7 +225,7 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
 
       final ui.Picture picture = recorder.endRecording();
       final ui.Image croppedImage = await picture.toImage(width, height);
-      final ByteData? byteData = await croppedImage.toByteData(format: ui.ImageByteFormat.jpeg);
+      final ByteData? byteData = await croppedImage.toByteData(format: ui.ImageByteFormat.png);
 
       if (byteData != null) {
         await file.writeAsBytes(byteData.buffer.asUint8List(), flush: true);
