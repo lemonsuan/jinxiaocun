@@ -323,6 +323,8 @@ class _ExpressInboundPageState extends State<ExpressInboundPage> {
                                       _message = '已取消拍照，扫码已重启';
                                     });
                                   }
+                                  // 给相机硬件转场释放留出足够物理缓冲时间
+                                  await Future.delayed(const Duration(milliseconds: 350));
                                   await _controller.start();
                                   break;
                                 }
@@ -372,7 +374,8 @@ class _ExpressInboundPageState extends State<ExpressInboundPage> {
                                   }
                                 }
 
-                                // 重启扫码摄像头，等待下一单
+                                // 等待页面滑出转场完全结束，相机硬件彻底释放后，再重启扫码
+                                await Future.delayed(const Duration(milliseconds: 350));
                                 await _controller.start();
                                 break;
                               }
