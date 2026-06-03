@@ -350,7 +350,10 @@ class _AppHomeState extends State<AppHome> {
             ),
             if (_currentInboundImagePath != null) ...[
               const SizedBox(height: 8),
-              _inboundImageTile(_currentInboundImagePath!),
+              _inboundImageTile(
+                _currentInboundImagePath!,
+                trackingNumber: _trackingController.text.trim().isEmpty ? null : _trackingController.text.trim(),
+              ),
             ],
             const SizedBox(height: 12),
             _inboundDraftToolbar(),
@@ -2040,7 +2043,7 @@ class _AppHomeState extends State<AppHome> {
                   File(receipt.imagePath!).existsSync()) ...[
                 const SizedBox(height: 8),
                 GestureDetector(
-                  onTap: () => _showReceiptImage(receipt.imagePath!),
+                  onTap: () => _showReceiptImage(receipt.imagePath!, trackingNumber: receipt.trackingNumber),
                   child: ClipRect(
                     child: Image.file(
                       File(receipt.imagePath!),
@@ -2178,16 +2181,17 @@ class _AppHomeState extends State<AppHome> {
         '${twoDigits(value.hour)}时${twoDigits(value.minute)}分';
   }
 
-  Widget _inboundImageTile(String imagePath) {
+  Widget _inboundImageTile(String imagePath, {String? trackingNumber}) {
     final file = File(imagePath);
     final exists = file.existsSync();
+    final titleText = trackingNumber != null ? '单号: $trackingNumber' : '已保存商品清单图片';
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: _imageThumbnail(file),
-      title: const Text('已保存商品清单图片'),
+      title: Text(titleText),
       subtitle: Text(exists ? p.basename(imagePath) : '图片文件不存在'),
       trailing: exists ? const Icon(Icons.visibility_outlined) : null,
-      onTap: exists ? () => _showReceiptImage(imagePath) : null,
+      onTap: exists ? () => _showReceiptImage(imagePath, trackingNumber: trackingNumber) : null,
     );
   }
 
@@ -2210,7 +2214,7 @@ class _AppHomeState extends State<AppHome> {
     );
   }
 
-  void _showReceiptImage(String imagePath) {
+  void _showReceiptImage(String imagePath, {String? trackingNumber}) {
     final file = File(imagePath);
     if (!file.existsSync()) {
       setState(() {
@@ -2218,6 +2222,7 @@ class _AppHomeState extends State<AppHome> {
       });
       return;
     }
+    final titleText = trackingNumber != null ? '单号: $trackingNumber' : p.basename(imagePath);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         fullscreenDialog: true,
@@ -2227,7 +2232,7 @@ class _AppHomeState extends State<AppHome> {
             appBar: AppBar(
               backgroundColor: Colors.black,
               foregroundColor: Colors.white,
-              title: Text(p.basename(imagePath)),
+              title: Text(titleText),
             ),
             body: LayoutBuilder(
               builder: (context, constraints) {
@@ -2275,7 +2280,7 @@ class _AppHomeState extends State<AppHome> {
         if (order.imagePaths.isNotEmpty)
           Align(
             alignment: Alignment.centerLeft,
-            child: _imagePathWrap(order.imagePaths),
+            child: _imagePathWrap(order.imagePaths, trackingNumber: order.logisticsNumber),
           ),
       ],
     );
@@ -2349,6 +2354,7 @@ class _AppHomeState extends State<AppHome> {
             _outboundImagePaths,
             editable: true,
             onChanged: onChanged,
+            trackingNumber: _outboundLogisticsController.text.trim(),
           ),
         ],
         const SizedBox(height: 8),
@@ -2461,6 +2467,7 @@ class _AppHomeState extends State<AppHome> {
     List<String> imagePaths, {
     bool editable = false,
     VoidCallback? onChanged,
+    String? trackingNumber,
   }) {
     return Wrap(
       spacing: 8,
@@ -2475,7 +2482,7 @@ class _AppHomeState extends State<AppHome> {
                 Positioned.fill(
                   child: InkWell(
                     borderRadius: BorderRadius.circular(6),
-                    onTap: () => _showReceiptImage(imagePath),
+                    onTap: () => _showReceiptImage(imagePath, trackingNumber: trackingNumber),
                     child: _imageThumbnail(File(imagePath)),
                   ),
                 ),
@@ -3720,7 +3727,7 @@ class _ReviewCartPageState extends State<_ReviewCartPage>
     if (input.isEmpty) return;
 
     final numbers = input
-        .split(RegExp(r'[\n,，\s]+'))
+        .split(RegExp(r'[\n,，\s\u3000\r\t]+'))
         .map((s) => s.trim())
         .where((s) => s.isNotEmpty)
         .toSet()
@@ -3730,9 +3737,10 @@ class _ReviewCartPageState extends State<_ReviewCartPage>
     final matchedTrackings = <String>{};
 
     for (final number in numbers) {
-      final lowerNumber = number.toLowerCase();
+      final cleanNumber = number.trim().toLowerCase();
       for (final receipt in widget.allReceipts) {
-        if (receipt.trackingNumber.toLowerCase() == lowerNumber) {
+        final cleanReceiptTracking = receipt.trackingNumber.trim().toLowerCase();
+        if (cleanReceiptTracking == cleanNumber) {
           if (!matchedTrackings.contains(receipt.id)) {
             matched.add(receipt);
             matchedTrackings.add(receipt.id);
@@ -3742,10 +3750,10 @@ class _ReviewCartPageState extends State<_ReviewCartPage>
     }
 
     final foundTrackings = matched
-        .map((r) => r.trackingNumber.toLowerCase())
+        .map((r) => r.trackingNumber.trim().toLowerCase())
         .toSet();
     final unmatched = numbers
-        .where((n) => !foundTrackings.contains(n.toLowerCase()))
+        .where((n) => !foundTrackings.contains(n.trim().toLowerCase()))
         .toList();
 
     setState(() {

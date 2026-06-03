@@ -150,7 +150,7 @@ class _ExpressInboundPageState extends State<ExpressInboundPage> {
   }
 
   // 大图预览照片
-  void _showReceiptImage(String imagePath) {
+  void _showReceiptImage(String imagePath, String trackingNumber) {
     final file = File(imagePath);
     if (!file.existsSync()) {
       setState(() {
@@ -167,7 +167,7 @@ class _ExpressInboundPageState extends State<ExpressInboundPage> {
             appBar: AppBar(
               backgroundColor: Colors.black,
               foregroundColor: Colors.white,
-              title: const Text('商品清单原图预览', style: TextStyle(fontSize: 14)),
+              title: Text('单号: $trackingNumber', style: const TextStyle(fontSize: 14)),
               elevation: 0,
             ),
             body: Center(
@@ -510,7 +510,7 @@ class _ExpressInboundPageState extends State<ExpressInboundPage> {
     final hasImage = receipt.imagePath != null && receipt.imagePath!.isNotEmpty;
 
     return GestureDetector(
-      onTap: hasImage ? () => _showReceiptImage(receipt.imagePath!) : null,
+      onTap: hasImage ? () => _showReceiptImage(receipt.imagePath!, receipt.trackingNumber) : null,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
         decoration: BoxDecoration(
