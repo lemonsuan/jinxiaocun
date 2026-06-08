@@ -17,8 +17,9 @@ import '../ocr/pp_structure_post_processor.dart';
 import '../platform/paddle_ocr_channel.dart';
 import 'scanner_page.dart';
 import 'product_price_page.dart';
+import 'photo_count_page.dart';
 import 'data_management_page.dart';
-import 'ocr_ai_config_page.dart';
+import 'ai_config_page.dart';
 import 'login_page.dart';
 import 'express_inbound_page.dart';
 import 'custom_camera_page.dart';
@@ -464,7 +465,6 @@ class _AppHomeState extends State<AppHome> {
   Widget _historyInboundTab() {
     final receipts = _filteredInboundHistory();
     return _page([
-      const SizedBox(height: 8),
       TextField(
         controller: _historySearchController,
         onChanged: (_) => setState(() {}),
@@ -561,6 +561,8 @@ class _AppHomeState extends State<AppHome> {
   }
 
   Widget _profileTab() {
+    final valueText = _ocrRowMergeTolerance.toStringAsFixed(2);
+
     return _page([
       const SizedBox(height: 8),
 
@@ -628,7 +630,7 @@ class _AppHomeState extends State<AppHome> {
       ),
       const SizedBox(height: 16),
 
-      // 1. 上部直角无圆角白色容器（商品价格管理、识别配置）
+      // 1. 上部直角无圆角白色容器（商品价格管理、OCR 与 AI 配置）
       Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -682,12 +684,12 @@ class _AppHomeState extends State<AppHome> {
                   child: const Icon(Icons.auto_awesome_outlined,
                       color: Colors.black, size: 18),
                 ),
-                title: const Text('OCR 与 AI 识别配置',
+                title: const Text('OCR 与 AI 配置',
                     style: TextStyle(
                         fontSize: 14,
                         fontFamily: 'monospace',
                         fontWeight: FontWeight.bold)),
-                subtitle: const Text('配置本机 OCR 容差、局域网自建服务与云端多模态 AI 提取',
+                subtitle: const Text('配置本机离线与自建 OCR 识别，管理云端大模型接口',
                     style: TextStyle(
                         fontSize: 11,
                         fontFamily: 'monospace',
@@ -695,7 +697,7 @@ class _AppHomeState extends State<AppHome> {
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (context) => OcrAiConfigPage(
+                      builder: (context) => AiConfigPage(
                         database: _database,
                       ),
                     ),
@@ -708,7 +710,7 @@ class _AppHomeState extends State<AppHome> {
       ),
       const SizedBox(height: 16),
 
-      // 2. 下部直角无圆角白色容器（数据与备份管理）
+      // 2. 下部直角无圆角白色容器（OCR 行距滑块、备份管理）
       Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -718,6 +720,64 @@ class _AppHomeState extends State<AppHome> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           child: Column(
             children: [
+              // OCR 行距滑块行
+              Row(
+                children: [
+                  Expanded(
+                    child: ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: Container(
+                        padding: const EdgeInsets.all(8),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          border: Border.all(color: Colors.black, width: 0.8),
+                        ),
+                        child: const Icon(Icons.tune_outlined,
+                            color: Colors.black, size: 18),
+                      ),
+                      title: Text('OCR 行距 $valueText',
+                          style: const TextStyle(
+                              fontSize: 14,
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.bold)),
+                      subtitle: const Text('严格 - 宽松',
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontFamily: 'monospace',
+                              color: Colors.grey)),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  SizedBox(
+                    width: 130,
+                    child: SliderTheme(
+                      data: SliderTheme.of(context).copyWith(
+                        trackHeight: 2,
+                        thumbShape:
+                            const RoundSliderThumbShape(enabledThumbRadius: 5),
+                        overlayShape:
+                            const RoundSliderOverlayShape(overlayRadius: 10),
+                      ),
+                      child: Slider(
+                        min: OcrSettings.minRowMergeTolerance,
+                        max: OcrSettings.maxRowMergeTolerance,
+                        divisions: 8,
+                        activeColor: Colors.black,
+                        inactiveColor: Colors.grey.shade300,
+                        value: _ocrRowMergeTolerance,
+                        onChanged: (value) {
+                          setState(() {
+                            _ocrRowMergeTolerance =
+                                OcrSettings.normalizeRowMergeTolerance(value);
+                          });
+                        },
+                        onChangeEnd: _saveOcrRowMergeTolerance,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              Divider(height: 1, color: Colors.grey.shade200),
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: Container(
@@ -825,7 +885,12 @@ class _AppHomeState extends State<AppHome> {
     ]);
   }
 
-
+  Widget _sectionTitle(String value) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: Text(value, style: Theme.of(context).textTheme.titleLarge),
+    );
+  }
 
   Widget _scanInboundHeader() {
     return Padding(
@@ -2948,7 +3013,28 @@ class _AppHomeState extends State<AppHome> {
     }
   }
 
-
+  Future<void> _saveOcrRowMergeTolerance(double value) async {
+    final normalized = OcrSettings.normalizeRowMergeTolerance(value);
+    setState(() {
+      _ocrRowMergeTolerance = normalized;
+    });
+    try {
+      await _database.saveOcrRowMergeTolerance(normalized);
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _message = 'OCR 行距参数已保存：${normalized.toStringAsFixed(2)}';
+      });
+    } on Object catch (error) {
+      if (!mounted) {
+        return;
+      }
+      setState(() {
+        _message = 'OCR 行距参数保存失败：$error';
+      });
+    }
+  }
 
   Future<void> _startAiInventoryRebuilding() async {
     await Navigator.push(
@@ -3583,7 +3669,6 @@ class _AppHomeState extends State<AppHome> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const SizedBox(height: 8),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: SegmentedButton<int>(

@@ -154,191 +154,64 @@ class AiInboundExtractor {
     return _parseJsonToResult(content);
   }
 
-  /// 根据配置的活跃引擎来进行相应的 OCR 与 AI 提取
+  /// 先通过本地离线/自建 OCR 获取文本，再由配置的大模型进行结构化清洗提取
   Future<AiInboundExtractionResult> extractFromImage(String imagePath) async {
-    final activeEngine = await _database.loadActiveOcrEngine();
+    final ocrMode = await _database.loadOcrMode();
+    String ocrText = '';
 
-    if (activeEngine == 'self_hosted_ocr') {
-      // 1. 局域网自建 OCR
-      final selfHostedUrl = await _database.loadSelfHostedOcrUrl();
-      final ocrText = await _callSelfHostedOcr(imagePath, selfHostedUrl);
-      return extract(ocrText);
-    } else if (activeEngine == 'cloud_ai_ocr') {
-      // 2. 多模态云端 AI OCR
-      return _callCloudAiMultimodal(imagePath);
+    if (ocrMode == 'self_hosted') {
+      final url = await _database.loadSelfHostedOcrUrl();
+      if (url.trim().isEmpty) {
+        throw Exception('自建 OCR 服务地址未配置，请先在[我的 -> OCR与AI配置]中配置。');
+      }
+
+      final file = File(imagePath);
+      if (!await file.exists()) {
+        throw Exception('待识别的图片文件不存在: $imagePath');
+      }
+      final bytes = await file.readAsBytes();
+      final base64String = base64Encode(bytes);
+
+      final uri = Uri.parse(url.trim());
+      final response = await http.post(
+        uri,
+        headers: {'Content-Type': 'application/json; charset=utf-8'},
+        body: jsonEncode({'image': base64String}),
+      ).timeout(const Duration(seconds: 45));
+
+      if (response.statusCode != 200) {
+        throw Exception('自建 OCR 服务请求失败 (HTTP ${response.statusCode}): ${utf8.decode(response.bodyBytes)}');
+      }
+
+      String? extractedText;
+      try {
+        final decoded = jsonDecode(utf8.decode(response.bodyBytes));
+        if (decoded is Map) {
+          extractedText = decoded['markdown']?.toString() ??
+                          decoded['text']?.toString() ??
+                          decoded['result']?.toString() ??
+                          decoded['data']?.toString();
+        } else if (decoded is String) {
+          extractedText = decoded;
+        }
+      } catch (_) {
+        // 解析 JSON 失败，可能返回的直接是纯文本 Markdown，在下方 fallback 捕获
+      }
+
+      extractedText ??= utf8.decode(response.bodyBytes);
+      ocrText = extractedText;
+      if (ocrText.trim().isEmpty) {
+        throw Exception('自建 OCR 服务未返回任何识别文本');
+      }
     } else {
-      // 3. 默认/本机 OCR
-      final tolerance = await _database.loadOcrRowMergeTolerance();
-      final ocrResult = await _paddleOcr.recognizeTable(imagePath, rowMergeTolerance: tolerance);
-      final ocrText = ocrResult.editableText;
+      final ocrResult = await _paddleOcr.recognizeTable(imagePath);
+      ocrText = ocrResult.editableText;
       if (ocrText.trim().isEmpty) {
         throw Exception('本地 OCR 识别失败，未提取到任何文字');
       }
-      return extract(ocrText);
-    }
-  }
-
-  /// 自建 OCR 请求
-  Future<String> _callSelfHostedOcr(String imagePath, String url) async {
-    final file = File(imagePath);
-    if (!await file.exists()) {
-      throw Exception('图片文件不存在: $imagePath');
-    }
-    final bytes = await file.readAsBytes();
-    final base64Image = base64Encode(bytes);
-
-    final response = await http.post(
-      Uri.parse(url),
-      headers: {
-        'Content-Type': 'application/json; charset=utf-8',
-      },
-      body: jsonEncode({
-        'image': base64Image,
-      }),
-    ).timeout(const Duration(seconds: 30));
-
-    if (response.statusCode != 200) {
-      throw Exception('自建 OCR 服务响应异常 (HTTP ${response.statusCode}): ${response.body}');
     }
 
-    final data = jsonDecode(utf8.decode(response.bodyBytes));
-    String ocrText = '';
-    if (data is Map<String, dynamic>) {
-      if (data.containsKey('result')) {
-        ocrText = data['result']?.toString() ?? '';
-      } else if (data.containsKey('text')) {
-        ocrText = data['text']?.toString() ?? '';
-      } else if (data.containsKey('markdown')) {
-        ocrText = data['markdown']?.toString() ?? '';
-      } else if (data.containsKey('content')) {
-        ocrText = data['content']?.toString() ?? '';
-      } else {
-        throw Exception('无法解析自建 OCR 返回格式，未包含 result/text/markdown/content 字段');
-      }
-    } else {
-      ocrText = response.body;
-    }
-
-    if (ocrText.trim().isEmpty) {
-      throw Exception('自建 OCR 未能从图片中识别出任何文本内容');
-    }
-    return ocrText;
-  }
-
-  /// 云端多模态大模型直接提取
-  Future<AiInboundExtractionResult> _callCloudAiMultimodal(String imagePath) async {
-    final file = File(imagePath);
-    if (!await file.exists()) {
-      throw Exception('图片文件不存在: $imagePath');
-    }
-    final bytes = await file.readAsBytes();
-    final base64Image = base64Encode(bytes);
-
-    final config = await _loadConfig();
-    final aiFormat = config['aiFormat']!;
-    final apiKey = config['apiKey']!;
-    final apiUrl = config['apiUrl']!;
-    final model = config['model']!;
-
-    const systemPrompt =
-        '你是一个极其严格的入库清单结构化数据提取助手。你必须且仅能输出纯粹的标准 JSON，严禁输出任何解释、文字说明、Markdown 首尾包裹标记（如 ```json）。为了极速生成，若某个属性在图片中未提及或为空，绝对不要输出其对应的键值对（Key-Value）。';
-    const userPrompt = '请仔细分析图片中的入库清单，并从中提取入库清单信息。规则如下：\n'
-        '1. 识别“订单号/订单编号”并提取为 `seller_order_number`，“快递单号/运单号”提取为 `tracking_number`，“计划单/入库单”提取为 `scheme_number`。\n'
-        '2. 商品明细保存为 `items` 列表。每个商品项：产品/商品编号提取为 `product_code`，产品/商品名称提取为 `product_name`，数量提取为整数 `quantity`（默认为 1），采购价提取为数字 `purchase_price`，销售价提取为数字 `sale_price`。\n'
-        '3. 🚨【极速原则】如果某项信息在图片中未提及或无法确定，请直接在 JSON 中忽略该键（Key），绝对不要输出它！';
-
-    String content = '';
-
-    if (aiFormat == 'gemini' || aiFormat == 'anthropic') {
-      final requestUrl = _normalizeUrl(apiUrl, 'messages');
-      final response = await http
-          .post(
-            Uri.parse(requestUrl),
-            headers: {
-              'Content-Type': 'application/json; charset=utf-8',
-              'x-api-key': apiKey,
-              'anthropic-version': '2023-06-01',
-            },
-            body: jsonEncode({
-              'model': model,
-              'max_tokens': 2048,
-              'system': systemPrompt,
-              'messages': [
-                {
-                  'role': 'user',
-                  'content': [
-                    {
-                      'type': 'image',
-                      'source': {
-                        'type': 'base64',
-                        'media_type': 'image/jpeg',
-                        'data': base64Image,
-                      }
-                    },
-                    {
-                      'type': 'text',
-                      'text': userPrompt,
-                    }
-                  ],
-                }
-              ],
-              'temperature': 0.0,
-            }),
-          )
-          .timeout(const Duration(seconds: 30));
-
-      if (response.statusCode != 200) {
-        throw Exception(
-            'Anthropic多模态API请求失败 (HTTP ${response.statusCode}): ${utf8.decode(response.bodyBytes)}');
-      }
-
-      final data = jsonDecode(utf8.decode(response.bodyBytes));
-      content = data['content'][0]['text'].toString().trim();
-    } else {
-      final requestUrl = _normalizeUrl(apiUrl, 'chat/completions');
-      final response = await http
-          .post(
-            Uri.parse(requestUrl),
-            headers: {
-              'Content-Type': 'application/json; charset=utf-8',
-              'Authorization': 'Bearer $apiKey',
-            },
-            body: jsonEncode({
-              'model': model,
-              'messages': [
-                {'role': 'system', 'content': systemPrompt},
-                {
-                  'role': 'user',
-                  'content': [
-                    {
-                      'type': 'text',
-                      'text': userPrompt,
-                    },
-                    {
-                      'type': 'image_url',
-                      'image_url': {
-                        'url': 'data:image/jpeg;base64,$base64Image',
-                      }
-                    }
-                  ],
-                },
-              ],
-              'temperature': 0.0,
-              'response_format': {'type': 'json_object'},
-            }),
-          )
-          .timeout(const Duration(seconds: 30));
-
-      if (response.statusCode != 200) {
-        throw Exception(
-            'OpenAI多模态API请求失败 (HTTP ${response.statusCode}): ${utf8.decode(response.bodyBytes)}');
-      }
-
-      final data = jsonDecode(utf8.decode(response.bodyBytes));
-      content = data['choices'][0]['message']['content'].toString().trim();
-    }
-
-    return _parseJsonToResult(content);
+    return extract(ocrText);
   }
 
   AiInboundExtractionResult _parseJsonToResult(String content) {

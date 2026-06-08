@@ -9,6 +9,10 @@ class MockDatabase extends LocalInventoryDatabase {
   Future<String> loadGeminiApiUrl() async => 'https://example.com';
   @override
   Future<String> loadGeminiModel() async => 'gemini-1.5-flash';
+  @override
+  Future<String> loadOcrMode() async => 'local';
+  @override
+  Future<String> loadSelfHostedOcrUrl() async => '';
 }
 
 void main() {
