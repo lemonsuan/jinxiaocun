@@ -335,3 +335,44 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 11: 优化入库单重新识别与AI库房重整逻辑
+
+**Date**: 2026-06-08
+**Task**: 优化入库单重新识别与AI库房重整逻辑
+**Branch**: `master`
+
+### Summary
+
+优化历史入库单覆盖与库房重整流程，改用高效的局部库存差异冲销，代替缓慢的全局库存台账重算；重构 AI 提取机制为「本地离线 OCR + 云端大模型结构化清洗」，合并提取类为通用的 AiInboundExtractor，并清除所有 AI 默认的硬编码配置；在 UI 上增设商品明细点击弹窗与已压缩标签。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `7e65e0e` | (see git log) |
+| `d2da7d4` | (see git log) |
+| `7ac2094` | (see git log) |
+| `b234e38` | (see git log) |
+| `7ba67cb` | (see git log) |
+| `8f50de9` | (see git log) |
+| `13eeae6` | (see git log) |
+| `551c83e` | (see git log) |
+| `46b11d6` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
