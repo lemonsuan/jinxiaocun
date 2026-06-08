@@ -1,8 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import '../data/local_inventory_database.dart';
 import '../domain/models.dart';
-import 'paddle_ocr_vl_client.dart';
 
 class GemmaExtractionResult {
   GemmaExtractionResult({
@@ -22,7 +22,6 @@ class GemmaExtractor {
   GemmaExtractor(this._database);
 
   final LocalInventoryDatabase _database;
-  final PaddleOcrVlClient _ocrVlClient = PaddleOcrVlClient();
 
   String _normalizeUrl(String baseUrl, String endpoint) {
     var url = baseUrl.trim();
@@ -162,13 +161,118 @@ class GemmaExtractor {
     return _parseJsonToResult(content);
   }
 
-  /// 直接调用云端 PaddleOCR-VL-1.6 提取图片 Markdown 格式，然后再由大模型结构化清洗提取商品明细
+  /// 使用 AI 智能提取配置里的大模型直接分析图片（多模态请求）
   Future<GemmaExtractionResult> extractFromImage(String imagePath) async {
-    // 1. 调用 PaddleOCR-VL-1.6 获取高精度表格 Markdown
-    final markdown = await _ocrVlClient.recognizeImageToMarkdown(imagePath);
+    final file = File(imagePath);
+    if (!file.existsSync()) {
+      throw Exception('待识别的图片不存在: $imagePath');
+    }
+    final bytes = await file.readAsBytes();
+    final base64Image = base64Encode(bytes);
 
-    // 2. 将 Markdown 送给原有的文本大模型清洗得到结构化明细
-    return extract(markdown);
+    final config = await _loadConfig();
+    final aiFormat = config['aiFormat']!;
+    final apiKey = config['apiKey']!;
+    final apiUrl = config['apiUrl']!;
+    final model = config['model']!;
+
+    const systemPrompt =
+        '你是一个极其严格的入库清单结构化数据提取助手。你必须且仅能输出纯粹的标准 JSON，严禁输出任何解释、文字说明、Markdown 首尾包裹标记（如 ```json）。为了极速生成，若某个属性在文本或图片中未提及或为空，绝对不要输出其对应的键值对（Key-Value）。';
+    
+    const userPrompt = '请仔细分析图片中的商品入库单，提取信息并严格返回 JSON 格式。规则如下：\n'
+        '1. 识别“订单号/订单编号”并提取为 `seller_order_number`，“快递单号/运单号”提取为 `tracking_number`，“计划单/入库单”提取为 `scheme_number`。\n'
+        '2. 商品明细保存为 `items` 列表。每个商品项：产品/商品编号提取为 `product_code`，产品/商品名称提取为 `product_name`，数量提取为整数 `quantity`（默认为 1），采购价提取为数字 `purchase_price`，销售价提取为数字 `sale_price`。\n'
+        '3. 🚨【极速原则】如果某项信息未在图片中提及或无法确定，请直接在 JSON 中忽略该键（Key），绝对不要输出它！';
+
+    String content = '';
+
+    if (aiFormat == 'gemini' || aiFormat == 'anthropic') {
+      final requestUrl = _normalizeUrl(apiUrl, 'messages');
+      final response = await http
+          .post(
+            Uri.parse(requestUrl),
+            headers: {
+              'Content-Type': 'application/json; charset=utf-8',
+              'x-api-key': apiKey,
+              'anthropic-version': '2023-06-01',
+            },
+            body: jsonEncode({
+              'model': model,
+              'max_tokens': 2048,
+              'system': systemPrompt,
+              'messages': [
+                {
+                  'role': 'user',
+                  'content': [
+                    {
+                      'type': 'image',
+                      'source': {
+                        'type': 'base64',
+                        'media_type': 'image/jpeg',
+                        'data': base64Image,
+                      }
+                    },
+                    {
+                      'type': 'text',
+                      'text': userPrompt,
+                    }
+                  ],
+                }
+              ],
+              'temperature': 0.0,
+            }),
+          )
+          .timeout(const Duration(seconds: 40));
+
+      if (response.statusCode != 200) {
+        throw Exception(
+            'Anthropic API多模态请求失败 (HTTP ${response.statusCode}): ${utf8.decode(response.bodyBytes)}');
+      }
+
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+      content = data['content'][0]['text'].toString().trim();
+    } else {
+      final requestUrl = _normalizeUrl(apiUrl, 'chat/completions');
+      final response = await http
+          .post(
+            Uri.parse(requestUrl),
+            headers: {
+              'Content-Type': 'application/json; charset=utf-8',
+              'Authorization': 'Bearer $apiKey',
+            },
+            body: jsonEncode({
+              'model': model,
+              'messages': [
+                {'role': 'system', 'content': systemPrompt},
+                {
+                  'role': 'user',
+                  'content': [
+                    {'type': 'text', 'text': userPrompt},
+                    {
+                      'type': 'image_url',
+                      'image_url': {
+                        'url': 'data:image/jpeg;base64,$base64Image',
+                      }
+                    }
+                  ]
+                },
+              ],
+              'temperature': 0.0,
+              'response_format': {'type': 'json_object'},
+            }),
+          )
+          .timeout(const Duration(seconds: 40));
+
+      if (response.statusCode != 200) {
+        throw Exception(
+            'API多模态请求失败 (HTTP ${response.statusCode}): ${utf8.decode(response.bodyBytes)}');
+      }
+
+      final data = jsonDecode(utf8.decode(response.bodyBytes));
+      content = data['choices'][0]['message']['content'].toString().trim();
+    }
+
+    return _parseJsonToResult(content);
   }
 
   GemmaExtractionResult _parseJsonToResult(String content) {
