@@ -39,43 +39,33 @@ class GemmaExtractor {
 
   Future<Map<String, String>> _loadConfig() async {
     final aiFormat = await _database.loadAiApiFormat();
-    var apiKey = await _database.loadGeminiApiKey();
+    final apiKey = await _database.loadGeminiApiKey();
     var apiUrl = await _database.loadGeminiApiUrl();
-    var model = await _database.loadGeminiModel();
+    final model = await _database.loadGeminiModel();
 
-    if (apiKey.isEmpty) {
-      if (aiFormat == 'gemini' || aiFormat == 'anthropic') {
-        apiKey = '';
-      } else {
-        apiKey = 'sk-7530d0e7a047446591a992ea3c13c9d2';
-      }
+    if (apiKey.trim().isEmpty) {
+      throw Exception('未检测到 AI API Key，请先在 [系统设置 -> AI 智能提取配置] 中配置。');
     }
 
-    if (apiUrl.isEmpty) {
-      if (aiFormat == 'gemini' || aiFormat == 'anthropic') {
-        apiUrl = 'https://api.anthropic.com';
-      } else {
-        apiUrl = 'https://api.deepseek.com';
-      }
+    if (apiUrl.trim().isEmpty) {
+      throw Exception('未检测到 AI API 接口地址，请先在 [系统设置 -> AI 智能提取配置] 中配置。');
     }
+
     // 确保没有尾随斜杠
+    apiUrl = apiUrl.trim();
     if (apiUrl.endsWith('/')) {
       apiUrl = apiUrl.substring(0, apiUrl.length - 1);
     }
 
-    if (model.isEmpty) {
-      if (aiFormat == 'gemini' || aiFormat == 'anthropic') {
-        model = 'claude-3-5-sonnet-20241022';
-      } else {
-        model = 'deepseek-v4-flash';
-      }
+    if (model.trim().isEmpty) {
+      throw Exception('未检测到 AI 模型名称，请先在 [系统设置 -> AI 智能提取配置] 中配置。');
     }
 
     return {
       'aiFormat': aiFormat,
-      'apiKey': apiKey,
+      'apiKey': apiKey.trim(),
       'apiUrl': apiUrl,
-      'model': model,
+      'model': model.trim(),
     };
   }
 
