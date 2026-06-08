@@ -4,8 +4,8 @@ import '../data/local_inventory_database.dart';
 import '../domain/models.dart';
 import '../platform/paddle_ocr_channel.dart';
 
-class GemmaExtractionResult {
-  GemmaExtractionResult({
+class AiInboundExtractionResult {
+  AiInboundExtractionResult({
     this.trackingNumber,
     this.sellerOrderNumber,
     this.schemeNumber,
@@ -18,8 +18,9 @@ class GemmaExtractionResult {
   final List<InboundDraftItem> items;
 }
 
-class GemmaExtractor {
-  GemmaExtractor(this._database);
+/// 通用 AI 提取服务类（先调用本地离线 OCR，再使用配置的云端大模型提取）
+class AiInboundExtractor {
+  AiInboundExtractor(this._database);
 
   final LocalInventoryDatabase _database;
   final PaddleOcrChannel _paddleOcr = PaddleOcrChannel();
@@ -70,7 +71,7 @@ class GemmaExtractor {
     };
   }
 
-  Future<GemmaExtractionResult> extract(String ocrText) async {
+  Future<AiInboundExtractionResult> extract(String ocrText) async {
     final config = await _loadConfig();
     final aiFormat = config['aiFormat']!;
     final apiKey = config['apiKey']!;
@@ -153,7 +154,7 @@ class GemmaExtractor {
   }
 
   /// 先通过本地离线 OCR 获取文本，再由配置的大模型进行结构化清洗提取
-  Future<GemmaExtractionResult> extractFromImage(String imagePath) async {
+  Future<AiInboundExtractionResult> extractFromImage(String imagePath) async {
     final ocrResult = await _paddleOcr.recognizeTable(imagePath);
     final ocrText = ocrResult.editableText;
     if (ocrText.trim().isEmpty) {
@@ -162,7 +163,7 @@ class GemmaExtractor {
     return extract(ocrText);
   }
 
-  GemmaExtractionResult _parseJsonToResult(String content) {
+  AiInboundExtractionResult _parseJsonToResult(String content) {
     // 清理可能的 markdown 包裹
     var jsonText = content;
     if (jsonText.startsWith('```')) {
@@ -224,7 +225,7 @@ class GemmaExtractor {
       );
     }
 
-    return GemmaExtractionResult(
+    return AiInboundExtractionResult(
       trackingNumber: parsed['tracking_number']?.toString(),
       sellerOrderNumber: parsed['seller_order_number']?.toString(),
       schemeNumber: parsed['scheme_number']?.toString(),

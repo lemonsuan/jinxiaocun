@@ -12,7 +12,7 @@ import '../application/inventory_service.dart';
 import '../data/local_inventory_database.dart';
 import '../domain/models.dart';
 import '../domain/ocr_settings.dart';
-import '../ocr/gemma_extractor.dart';
+import '../ocr/ai_inbound_extractor.dart';
 import '../ocr/pp_structure_post_processor.dart';
 import '../platform/paddle_ocr_channel.dart';
 import 'scanner_page.dart';
@@ -61,7 +61,7 @@ class _AppHomeState extends State<AppHome> {
   static const Color _notionBorder = Color(0xFFEDEDEB);
 
   final LocalInventoryDatabase _database = LocalInventoryDatabase();
-  late final GemmaExtractor _gemmaExtractor = GemmaExtractor(_database);
+  late final AiInboundExtractor _aiInboundExtractor = AiInboundExtractor(_database);
   final PpStructurePostProcessor _postProcessor = PpStructurePostProcessor();
   final PaddleOcrChannel _paddleOcr = PaddleOcrChannel();
   final ImagePicker _imagePicker = ImagePicker();
@@ -1723,7 +1723,7 @@ class _AppHomeState extends State<AppHome> {
                                         // 2. 根据识别方式调用相应接口
                                         List<InboundDraftItem> items = [];
                                         if (reRecognizeMethod == 'ai') {
-                                          final result = await _gemmaExtractor
+                                          final result = await _aiInboundExtractor
                                               .extractFromImage(path);
                                           items = result.items;
                                         } else {
@@ -3546,7 +3546,7 @@ class _AppHomeState extends State<AppHome> {
                                     setDialogState(() => isExtracting = true);
                                     try {
                                       final result =
-                                          await _gemmaExtractor.extract(text);
+                                          await _aiInboundExtractor.extract(text);
                                       if (!dialogContext.mounted) return;
                                       setState(() {
                                         if (result.trackingNumber != null &&

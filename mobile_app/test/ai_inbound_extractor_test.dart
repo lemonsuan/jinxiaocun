@@ -1,6 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inventory_mobile_app/src/data/local_inventory_database.dart';
-import 'package:inventory_mobile_app/src/ocr/gemma_extractor.dart';
+import 'package:inventory_mobile_app/src/ocr/ai_inbound_extractor.dart';
 
 class MockDatabase extends LocalInventoryDatabase {
   @override
@@ -12,9 +12,9 @@ class MockDatabase extends LocalInventoryDatabase {
 }
 
 void main() {
-  test('GemmaExtractor exists and can be initialized', () {
+  test('AiInboundExtractor exists and can be initialized', () {
     final database = MockDatabase();
-    final extractor = GemmaExtractor(database);
+    final extractor = AiInboundExtractor(database);
     expect(extractor, isNotNull);
   });
 }

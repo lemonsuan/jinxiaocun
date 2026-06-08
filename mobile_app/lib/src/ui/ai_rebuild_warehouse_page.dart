@@ -2,7 +2,7 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import '../data/local_inventory_database.dart';
 import '../domain/models.dart';
-import '../ocr/gemma_extractor.dart';
+import '../ocr/ai_inbound_extractor.dart';
 
 class AiRebuildWarehousePage extends StatefulWidget {
   final LocalInventoryDatabase database;
@@ -17,7 +17,7 @@ class AiRebuildWarehousePage extends StatefulWidget {
 }
 
 class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
-  late final GemmaExtractor _gemmaExtractor = GemmaExtractor(widget.database);
+  late final AiInboundExtractor _aiInboundExtractor = AiInboundExtractor(widget.database);
 
   List<InboundReceipt> _receipts = [];
   bool _isLoading = true;
@@ -75,7 +75,7 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
     });
 
     try {
-      final result = await _gemmaExtractor.extractFromImage(receipt.imagePath!);
+      final result = await _aiInboundExtractor.extractFromImage(receipt.imagePath!);
       await widget.database.overwriteInboundItems(
         receiptId: receipt.id,
         items: result.items,
@@ -145,7 +145,7 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
       });
 
       try {
-        final result = await _gemmaExtractor.extractFromImage(receipt.imagePath!);
+        final result = await _aiInboundExtractor.extractFromImage(receipt.imagePath!);
         await widget.database.overwriteInboundItems(
           receiptId: receipt.id,
           items: result.items,
