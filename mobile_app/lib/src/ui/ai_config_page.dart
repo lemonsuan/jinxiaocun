@@ -49,6 +49,7 @@ class _AiConfigPageState extends State<AiConfigPage> {
   String _selectedFormat = 'openai'; // 'openai' 或 'gemini'
   List<String> _models = [];
   bool _isLoadingModels = false;
+  bool _isTestingConnection = false;
   bool _isSaving = false;
 
   @override
@@ -198,6 +199,149 @@ class _AiConfigPageState extends State<AiConfigPage> {
       if (mounted) {
         setState(() {
           _isLoadingModels = false;
+        });
+      }
+    }
+  }
+
+  Future<void> _testConnection() async {
+    final format = _selectedFormat;
+    final url = _urlController.text.trim();
+    final key = _keyController.text.trim();
+    final model = _modelController.text.trim();
+
+    if (key.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先输入 API Key')),
+      );
+      return;
+    }
+    if (url.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请输入接口地址 (API URL)')),
+      );
+      return;
+    }
+    if (model.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请输入或选择识别模型名称')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isTestingConnection = true;
+    });
+
+    try {
+      var requestUrl = url;
+      if (requestUrl.endsWith('/')) {
+        requestUrl = requestUrl.substring(0, requestUrl.length - 1);
+      }
+
+      if (format == 'openai') {
+        final response = await http.post(
+          Uri.parse('$requestUrl/v1/chat/completions'),
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            'Authorization': 'Bearer $key',
+          },
+          body: jsonEncode({
+            'model': model,
+            'messages': [
+              {'role': 'user', 'content': 'Say hello in 3 words.'},
+            ],
+            'max_tokens': 10,
+          }),
+        ).timeout(const Duration(seconds: 10));
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(utf8.decode(response.bodyBytes));
+          final text = data['choices'][0]['message']['content'].toString().trim();
+          if (mounted) {
+            showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                title: const Text('测试连接成功', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                content: Text('模型响应: "$text"'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('好的', style: TextStyle(color: Color(0xFF1E293B))),
+                  ),
+                ],
+              ),
+            );
+          }
+        } else {
+          throw Exception('HTTP ${response.statusCode}: ${response.body}');
+        }
+      } else {
+        // anthropic
+        final response = await http.post(
+          Uri.parse('$requestUrl/v1/messages'),
+          headers: {
+            'Content-Type': 'application/json; charset=utf-8',
+            'x-api-key': key,
+            'anthropic-version': '2023-06-01',
+          },
+          body: jsonEncode({
+            'model': model,
+            'max_tokens': 10,
+            'messages': [
+              {
+                'role': 'user',
+                'content': 'Say hello in 3 words.',
+              }
+            ],
+          }),
+        ).timeout(const Duration(seconds: 10));
+
+        if (response.statusCode == 200) {
+          final data = jsonDecode(utf8.decode(response.bodyBytes));
+          final text = data['content'][0]['text'].toString().trim();
+          if (mounted) {
+            showDialog(
+              context: context,
+              builder: (ctx) => AlertDialog(
+                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                title: const Text('测试连接成功', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+                content: Text('模型响应: "$text"'),
+                actions: [
+                  TextButton(
+                    onPressed: () => Navigator.of(ctx).pop(),
+                    child: const Text('好的', style: TextStyle(color: Color(0xFF1E293B))),
+                  ),
+                ],
+              ),
+            );
+          }
+        } else {
+          throw Exception('HTTP ${response.statusCode}: ${response.body}');
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+            title: const Text('测试连接失败', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.red)),
+            content: Text(e.toString()),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('确定', style: TextStyle(color: Color(0xFF1E293B))),
+              ),
+            ],
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isTestingConnection = false;
         });
       }
     }
@@ -441,11 +585,10 @@ class _AiConfigPageState extends State<AiConfigPage> {
                         Row(
                           children: [
                             Expanded(
-                              child: _isLoadingModels
+                              child: _isTestingConnection
                                   ? const Center(
                                       child: Padding(
-                                        padding:
-                                            EdgeInsets.symmetric(vertical: 8),
+                                        padding: EdgeInsets.symmetric(vertical: 8),
                                         child: CircularProgressIndicator(
                                           strokeWidth: 2,
                                           color: Color(0xFF1E293B),
@@ -454,8 +597,40 @@ class _AiConfigPageState extends State<AiConfigPage> {
                                     )
                                   : OutlinedButton.icon(
                                       style: OutlinedButton.styleFrom(
-                                        foregroundColor:
-                                            const Color(0xFF1E293B),
+                                        foregroundColor: const Color(0xFF1E293B),
+                                        side: const BorderSide(
+                                            color: Color(0xFFE2E8F0),
+                                            width: 0.8),
+                                        shape: const RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.zero),
+                                        padding: const EdgeInsets.symmetric(
+                                            vertical: 12),
+                                        textStyle: const TextStyle(
+                                          fontWeight: FontWeight.w500,
+                                          fontSize: 12,
+                                          letterSpacing: 1.0,
+                                        ),
+                                      ),
+                                      onPressed: _testConnection,
+                                      icon: const Icon(Icons.bolt_outlined, size: 14),
+                                      label: const Text('测试接口连接'),
+                                    ),
+                            ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: _isLoadingModels
+                                  ? const Center(
+                                      child: Padding(
+                                        padding: EdgeInsets.symmetric(vertical: 8),
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 2,
+                                          color: Color(0xFF1E293B),
+                                        ),
+                                      ),
+                                    )
+                                  : OutlinedButton.icon(
+                                      style: OutlinedButton.styleFrom(
+                                        foregroundColor: const Color(0xFF1E293B),
                                         side: const BorderSide(
                                             color: Color(0xFFE2E8F0),
                                             width: 0.8),
@@ -470,8 +645,7 @@ class _AiConfigPageState extends State<AiConfigPage> {
                                         ),
                                       ),
                                       onPressed: _fetchModels,
-                                      icon: const Icon(Icons.sync_outlined,
-                                          size: 14),
+                                      icon: const Icon(Icons.sync_outlined, size: 14),
                                       label: const Text('加载云端模型'),
                                     ),
                             ),
