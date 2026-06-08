@@ -24,6 +24,20 @@ class GemmaExtractor {
   final LocalInventoryDatabase _database;
   final PaddleOcrVlClient _ocrVlClient = PaddleOcrVlClient();
 
+  String _normalizeUrl(String baseUrl, String endpoint) {
+    var url = baseUrl.trim();
+    while (url.endsWith('/')) {
+      url = url.substring(0, url.length - 1);
+    }
+    final hasVersion = RegExp(r'/v\d+(beta|alpha)?$').hasMatch(url) ||
+        RegExp(r'/v\d+(beta|alpha)?/').hasMatch(url);
+    if (hasVersion) {
+      return '$url/$endpoint';
+    } else {
+      return '$url/v1/$endpoint';
+    }
+  }
+
   Future<Map<String, String>> _loadConfig() async {
     final aiFormat = await _database.loadAiApiFormat();
     var apiKey = await _database.loadGeminiApiKey();
@@ -84,9 +98,10 @@ class GemmaExtractor {
     String content = '';
 
     if (aiFormat == 'gemini' || aiFormat == 'anthropic') {
+      final requestUrl = _normalizeUrl(apiUrl, 'messages');
       final response = await http
           .post(
-            Uri.parse('$apiUrl/v1/messages'),
+            Uri.parse(requestUrl),
             headers: {
               'Content-Type': 'application/json; charset=utf-8',
               'x-api-key': apiKey,
@@ -115,9 +130,10 @@ class GemmaExtractor {
       final data = jsonDecode(utf8.decode(response.bodyBytes));
       content = data['content'][0]['text'].toString().trim();
     } else {
+      final requestUrl = _normalizeUrl(apiUrl, 'chat/completions');
       final response = await http
           .post(
-            Uri.parse('$apiUrl/v1/chat/completions'),
+            Uri.parse(requestUrl),
             headers: {
               'Content-Type': 'application/json; charset=utf-8',
               'Authorization': 'Bearer $apiKey',

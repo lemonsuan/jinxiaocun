@@ -87,6 +87,20 @@ class _AiConfigPageState extends State<AiConfigPage> {
     });
   }
 
+  String _normalizeUrl(String baseUrl, String endpoint) {
+    var url = baseUrl.trim();
+    while (url.endsWith('/')) {
+      url = url.substring(0, url.length - 1);
+    }
+    final hasVersion = RegExp(r'/v\d+(beta|alpha)?$').hasMatch(url) ||
+        RegExp(r'/v\d+(beta|alpha)?/').hasMatch(url);
+    if (hasVersion) {
+      return '$url/$endpoint';
+    } else {
+      return '$url/v1/$endpoint';
+    }
+  }
+
   Future<void> _fetchModels() async {
     final format = _selectedFormat;
     final url = _urlController.text.trim();
@@ -108,12 +122,9 @@ class _AiConfigPageState extends State<AiConfigPage> {
         if (url.isEmpty) {
           throw Exception('请输入接口地址 (API URL)');
         }
-        var requestUrl = url;
-        if (requestUrl.endsWith('/')) {
-          requestUrl = requestUrl.substring(0, requestUrl.length - 1);
-        }
+        final requestUrl = _normalizeUrl(url, 'models');
         final response = await http.get(
-          Uri.parse('$requestUrl/v1/models'),
+          Uri.parse(requestUrl),
           headers: {
             'Authorization': 'Bearer $key',
           },
@@ -150,12 +161,9 @@ class _AiConfigPageState extends State<AiConfigPage> {
         if (url.isEmpty) {
           throw Exception('请输入接口地址 (API URL)');
         }
-        var requestUrl = url;
-        if (requestUrl.endsWith('/')) {
-          requestUrl = requestUrl.substring(0, requestUrl.length - 1);
-        }
+        final requestUrl = _normalizeUrl(url, 'models');
         final response = await http.get(
-          Uri.parse('$requestUrl/v1/models'),
+          Uri.parse(requestUrl),
           headers: {
             'x-api-key': key,
             'anthropic-version': '2023-06-01',
@@ -235,14 +243,10 @@ class _AiConfigPageState extends State<AiConfigPage> {
     });
 
     try {
-      var requestUrl = url;
-      if (requestUrl.endsWith('/')) {
-        requestUrl = requestUrl.substring(0, requestUrl.length - 1);
-      }
-
       if (format == 'openai') {
+        final requestUrl = _normalizeUrl(url, 'chat/completions');
         final response = await http.post(
-          Uri.parse('$requestUrl/v1/chat/completions'),
+          Uri.parse(requestUrl),
           headers: {
             'Content-Type': 'application/json; charset=utf-8',
             'Authorization': 'Bearer $key',
@@ -280,8 +284,9 @@ class _AiConfigPageState extends State<AiConfigPage> {
         }
       } else {
         // anthropic
+        final requestUrl = _normalizeUrl(url, 'messages');
         final response = await http.post(
-          Uri.parse('$requestUrl/v1/messages'),
+          Uri.parse(requestUrl),
           headers: {
             'Content-Type': 'application/json; charset=utf-8',
             'x-api-key': key,
