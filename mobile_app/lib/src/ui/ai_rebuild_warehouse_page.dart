@@ -76,6 +76,7 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
 
     try {
       final result = await _aiInboundExtractor.extractFromImage(receipt.imagePath!);
+      if (!mounted) return;
       await widget.database.overwriteInboundItems(
         receiptId: receipt.id,
         items: result.items,
@@ -92,6 +93,7 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
         );
       }
     } catch (e) {
+      if (!mounted) return;
       await widget.database.overwriteInboundItems(
         receiptId: receipt.id,
         items: const [],
@@ -103,12 +105,14 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
         );
       }
     } finally {
-      setState(() {
-        _isProcessing = false;
-        _currentlyProcessingId = null;
-        _statusMessage = '';
-      });
-      _loadReceipts(); // 重新加载状态
+      if (mounted) {
+        setState(() {
+          _isProcessing = false;
+          _currentlyProcessingId = null;
+          _statusMessage = '';
+        });
+        _loadReceipts(); // 重新加载状态
+      }
     }
   }
 
@@ -137,6 +141,7 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
     });
 
     for (int i = 0; i < targets.length; i++) {
+      if (!mounted) break;
       final receipt = targets[i];
       setState(() {
         _currentIndex = i;
@@ -146,6 +151,7 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
 
       try {
         final result = await _aiInboundExtractor.extractFromImage(receipt.imagePath!);
+        if (!mounted) break;
         await widget.database.overwriteInboundItems(
           receiptId: receipt.id,
           items: result.items,
@@ -153,17 +159,28 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
           schemeNumber: result.schemeNumber,
           ocrStatus: OcrStatus.confirmed,
         );
-        _successCount++;
+        if (mounted) {
+          setState(() {
+            _successCount++;
+          });
+        }
       } catch (e) {
-        _failCount++;
+        if (!mounted) break;
         await widget.database.overwriteInboundItems(
           receiptId: receipt.id,
           items: const [],
           ocrStatus: OcrStatus.failed,
         );
+        if (mounted) {
+          setState(() {
+            _failCount++;
+          });
+        }
         debugPrint('AI 图片重整单据 ${receipt.id} 异常: $e');
       }
     }
+
+    if (!mounted) return;
 
     // 局部更新已在循环内完成，直接完成状态提示
     setState(() {
@@ -173,10 +190,12 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
 
     await Future.delayed(const Duration(seconds: 1));
 
-    setState(() {
-      _isProcessing = false;
-    });
-    _loadReceipts();
+    if (mounted) {
+      setState(() {
+        _isProcessing = false;
+      });
+      _loadReceipts();
+    }
   }
 
   String _getOcrStatusLabel(OcrStatus status) {

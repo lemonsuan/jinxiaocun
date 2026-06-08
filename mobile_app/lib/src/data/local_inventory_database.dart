@@ -1,7 +1,6 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -1343,7 +1342,8 @@ class LocalInventoryDatabase {
       int ledgerIndex = 0;
 
       // 2. 遍历所有入库单明细并重写
-      final receipts = await txn.query('inbound_receipts', orderBy: 'created_at ASC');
+      final receipts =
+          await txn.query('inbound_receipts', orderBy: 'created_at ASC');
       for (final receipt in receipts) {
         final receiptId = receipt['id']! as String;
         final createdAtStr = receipt['created_at']! as String;
@@ -1378,7 +1378,8 @@ class LocalInventoryDatabase {
       }
 
       // 3. 遍历所有出库单明细并重写
-      final orders = await txn.query('outbound_orders', orderBy: 'created_at ASC');
+      final orders =
+          await txn.query('outbound_orders', orderBy: 'created_at ASC');
       for (final order in orders) {
         final orderId = order['id']! as String;
         final createdAtStr = order['created_at']! as String;
@@ -1462,11 +1463,13 @@ class LocalInventoryDatabase {
     });
   }
 
-  Future<void> compressOldInboundImages({bool force = false, void Function(int current, int total)? onProgress}) async {
+  Future<void> compressOldInboundImages(
+      {bool force = false,
+      void Function(int current, int total)? onProgress}) async {
     try {
       final now = DateTime.now();
       final sevenDaysAgo = now.subtract(const Duration(days: 7));
-      
+
       final rows = await _db.query(
         'inbound_receipts',
         columns: ['id', 'image_path'],
@@ -1500,7 +1503,7 @@ class LocalInventoryDatabase {
           final ext = path.extension(imagePath);
           final dir = path.dirname(imagePath);
           final baseName = path.basenameWithoutExtension(imagePath);
-          
+
           // 如果强制重新压缩并且已经是带 _compressed 后缀的文件，则直接覆盖原文件，不重复加后缀
           final newPath = baseName.contains('_compressed')
               ? imagePath
@@ -1525,7 +1528,8 @@ class LocalInventoryDatabase {
     } catch (_) {}
   }
 
-  Future<void> _compressImageScale(String inputPath, String outputPath, {int maxDimension = 1000}) async {
+  Future<void> _compressImageScale(String inputPath, String outputPath,
+      {int maxDimension = 1000}) async {
     final bytes = await File(inputPath).readAsBytes();
     final img.Image? image = img.decodeImage(bytes);
     if (image == null) return;
@@ -1619,4 +1623,3 @@ class LocalInventoryDatabase {
     });
   }
 }
-
