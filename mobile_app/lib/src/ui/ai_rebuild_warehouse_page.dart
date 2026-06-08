@@ -84,12 +84,11 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
         ocrStatus: OcrStatus.confirmed,
       );
 
-      // 重算全局库存和台账
-      await widget.database.rebuildInventoryStockAndLedger();
+      // 局部事务已在内部完成库存冲销与重算，无需全局重算
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('该图片重新分析完成，已重构对应台账！')),
+          const SnackBar(content: Text('该图片重新分析完成，已局部更新对应库存与台账！')),
         );
       }
     } catch (e) {
@@ -166,27 +165,18 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
       }
     }
 
-    // 全局重算
+    // 局部更新已在循环内完成，直接完成状态提示
     setState(() {
       _currentlyProcessingId = null;
-      _statusMessage = '正在进行全局库存与台账对账重算...';
+      _statusMessage = '重整成功！已局部更新对应库存与台账。';
     });
 
-    try {
-      await widget.database.rebuildInventoryStockAndLedger();
-      setState(() {
-        _statusMessage = '重整成功！已重新计算所有库存与台账记录。';
-      });
-    } catch (e) {
-      setState(() {
-        _statusMessage = '重整结束，但全局对账重算失败: $e';
-      });
-    } finally {
-      setState(() {
-        _isProcessing = false;
-      });
-      _loadReceipts();
-    }
+    await Future.delayed(const Duration(seconds: 1));
+
+    setState(() {
+      _isProcessing = false;
+    });
+    _loadReceipts();
   }
 
   String _getOcrStatusLabel(OcrStatus status) {

@@ -1931,7 +1931,6 @@ class _AppHomeState extends State<AppHome> {
                                           items: newDraftItems,
                                           ocrStatus: OcrStatus.confirmed,
                                         );
-                                        await _database.rebuildInventoryStockAndLedger();
                                         if (dialogContext.mounted) {
                                           Navigator.pop(dialogContext);
                                           ScaffoldMessenger.of(context)

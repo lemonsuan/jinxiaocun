@@ -1219,7 +1219,7 @@ class LocalInventoryDatabase {
     );
   }
 
-  /// 使用 AI 识别后的新明细覆盖指定入库单
+  /// 使用 AI 识别后的新明细覆盖指定入库单，直接扣减旧明细库存并追加新明细库存与流水
   Future<void> overwriteInboundItems({
     required String receiptId,
     required List<InboundDraftItem> items,
@@ -1229,14 +1229,50 @@ class LocalInventoryDatabase {
   }) async {
     final now = DateTime.now();
     await _db.transaction((txn) async {
-      // 1. 删除旧的明细
-      await txn.delete(
+      // 1. 获取原入库单的创建时间，用于台账流水的生成
+      final receiptRows = await txn.query(
+        'inbound_receipts',
+        columns: ['created_at'],
+        where: 'id = ?',
+        whereArgs: [receiptId],
+        limit: 1,
+      );
+      final createdAt = receiptRows.isNotEmpty
+          ? DateTime.parse(receiptRows.first['created_at']! as String)
+          : now;
+
+      // 2. 查出旧的明细数据
+      final oldItems = await txn.query(
         'inbound_items',
         where: 'receipt_id = ?',
         whereArgs: [receiptId],
       );
 
-      // 2. 更新主表状态及相关单号
+      final affectedCodes = <String>{};
+
+      // 3. 从库存中减去旧明细的识别数量
+      for (final oldItem in oldItems) {
+        final code = oldItem['product_code']! as String;
+        final name = oldItem['product_name']! as String;
+        final qty = oldItem['quantity']! as int;
+        affectedCodes.add(code);
+
+        await _increaseStockRaw(txn, code, name, -qty);
+      }
+
+      // 4. 清除旧明细和旧台账
+      await txn.delete(
+        'inbound_items',
+        where: 'receipt_id = ?',
+        whereArgs: [receiptId],
+      );
+      await txn.delete(
+        'stock_ledger',
+        where: 'source_id = ? AND reason = ?',
+        whereArgs: [receiptId, LedgerReason.inbound.name],
+      );
+
+      // 5. 更新主表状态及相关单号
       final updateValues = <String, Object?>{
         'ocr_status': ocrStatus.name,
       };
@@ -1253,11 +1289,13 @@ class LocalInventoryDatabase {
         whereArgs: [receiptId],
       );
 
-      // 3. 写入新的明细
+      // 6. 写入新的明细，并追加库存与新台账流水
+      int ledgerIndex = 0;
       for (var index = 0; index < items.length; index += 1) {
         final item = items[index];
         final code = _productCodeFor(item.productCode, item.productName);
-        await _upsertProduct(txn, code, item.productName, now);
+        affectedCodes.add(code);
+        await _upsertProduct(txn, code, item.productName, createdAt);
 
         await txn.insert('inbound_items', {
           'id': '$receiptId-item-$index',
@@ -1268,6 +1306,29 @@ class LocalInventoryDatabase {
           'purchase_price': item.purchasePrice,
           'sale_price': item.salePrice,
         });
+
+        // 累加新库存
+        await _increaseStockRaw(txn, code, item.productName, item.quantity);
+
+        // 插入新台账
+        await _insertLedgerRaw(
+          txn,
+          productCode: code,
+          productName: item.productName,
+          delta: item.quantity,
+          reason: LedgerReason.inbound.name,
+          sourceId: receiptId,
+          createdAt: createdAt,
+          index: ledgerIndex++,
+        );
+      }
+
+      // 7. 安全检验：受影响商品的结余库存不能小于 0
+      for (final code in affectedCodes) {
+        final currentStock = await _stockFor(txn, code);
+        if (currentStock < 0) {
+          throw InventoryException('无法覆写：冲销后商品 (编码: $code) 的库存不足 (结余小于0)。');
+        }
       }
     });
   }
