@@ -6,6 +6,7 @@ import 'dart:ui' as ui;
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
 import 'package:sqflite/sqflite.dart';
+import 'package:image/image.dart' as img;
 
 import '../application/inventory_service.dart';
 import '../domain/models.dart';
@@ -1400,7 +1401,7 @@ class LocalInventoryDatabase {
     });
   }
 
-  Future<void> compressOldInboundImages({void Function(int current, int total)? onProgress}) async {
+  Future<void> compressOldInboundImages({bool force = false, void Function(int current, int total)? onProgress}) async {
     try {
       final now = DateTime.now();
       final sevenDaysAgo = now.subtract(const Duration(days: 7));
@@ -1425,7 +1426,7 @@ class LocalInventoryDatabase {
 
         onProgress?.call(i + 1, total);
 
-        if (imagePath.contains('_compressed')) {
+        if (!force && imagePath.contains('_compressed')) {
           continue;
         }
 
@@ -1438,11 +1439,16 @@ class LocalInventoryDatabase {
           final ext = path.extension(imagePath);
           final dir = path.dirname(imagePath);
           final baseName = path.basenameWithoutExtension(imagePath);
-          final newPath = path.join(dir, '${baseName}_compressed$ext');
+          
+          // 如果强制重新压缩并且已经是带 _compressed 后缀的文件，则直接覆盖原文件，不重复加后缀
+          final newPath = baseName.contains('_compressed')
+              ? imagePath
+              : path.join(dir, '${baseName}_compressed$ext');
 
           await _compressImageScale(imagePath, newPath);
 
-          if (File(newPath).existsSync()) {
+          // 如果是生成了新的压缩图片文件，则更新数据库，并物理删除原大图
+          if (newPath != imagePath && File(newPath).existsSync()) {
             await _db.update(
               'inbound_receipts',
               {'image_path': newPath},
@@ -1458,50 +1464,22 @@ class LocalInventoryDatabase {
     } catch (_) {}
   }
 
-  Future<void> _compressImageScale(String inputPath, String outputPath, {double maxDimension = 1000}) async {
+  Future<void> _compressImageScale(String inputPath, String outputPath, {int maxDimension = 1000}) async {
     final bytes = await File(inputPath).readAsBytes();
-    final ui.Codec codec = await ui.instantiateImageCodec(bytes);
-    final ui.FrameInfo frameInfo = await codec.getNextFrame();
-    final ui.Image image = frameInfo.image;
+    final img.Image? image = img.decodeImage(bytes);
+    if (image == null) return;
 
-    double width = image.width.toDouble();
-    double height = image.height.toDouble();
-
-    if (width > maxDimension || height > maxDimension) {
-      if (width > height) {
-        height = (height * maxDimension) / width;
-        width = maxDimension;
+    img.Image resized = image;
+    if (image.width > maxDimension || image.height > maxDimension) {
+      if (image.width > image.height) {
+        resized = img.copyResize(image, width: maxDimension);
       } else {
-        width = (width * maxDimension) / height;
-        height = maxDimension;
+        resized = img.copyResize(image, height: maxDimension);
       }
-    } else {
-      await File(outputPath).writeAsBytes(bytes, flush: true);
-      image.dispose();
-      return;
     }
 
-    final ui.PictureRecorder recorder = ui.PictureRecorder();
-    final ui.Canvas canvas = ui.Canvas(recorder);
-    final paint = ui.Paint()..filterQuality = ui.FilterQuality.medium;
-
-    canvas.drawImageRect(
-      image,
-      ui.Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
-      ui.Rect.fromLTWH(0, 0, width, height),
-      paint,
-    );
-
-    final ui.Picture picture = recorder.endRecording();
-    final ui.Image scaledImage = await picture.toImage(width.round(), height.round());
-    final ByteData? byteData = await scaledImage.toByteData(format: ui.ImageByteFormat.png);
-
-    if (byteData != null) {
-      await File(outputPath).writeAsBytes(byteData.buffer.asUint8List(), flush: true);
-    }
-
-    image.dispose();
-    scaledImage.dispose();
+    final Uint8List jpgBytes = img.encodeJpg(resized, quality: 70);
+    await File(outputPath).writeAsBytes(jpgBytes, flush: true);
   }
 
   Future<void> clearSettledTextData() async {

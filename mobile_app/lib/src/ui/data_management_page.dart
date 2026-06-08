@@ -42,7 +42,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
     _loadBackupList();
   }
 
-  Future<void> _startCompression() async {
+  Future<void> _startCompression({bool force = false}) async {
     setState(() {
       _isCompressing = true;
       _isLoading = true;
@@ -52,6 +52,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
 
     try {
       await widget.database.compressOldInboundImages(
+        force: force,
         onProgress: (current, total) {
           if (!mounted) return;
           setState(() {
@@ -837,20 +838,38 @@ class _DataManagementPageState extends State<DataManagementPage> {
               style: const TextStyle(fontSize: 11, color: Color(0xFF1E293B), fontFamily: 'monospace'),
             ),
           ] else
-            SizedBox(
-              width: double.infinity,
-              child: OutlinedButton.icon(
-                style: OutlinedButton.styleFrom(
-                  foregroundColor: const Color(0xFF1E293B),
-                  side: const BorderSide(color: Color(0xFFE2E8F0), width: 0.8),
-                  shape: const RoundedRectangleBorder(
-                      borderRadius: BorderRadius.zero),
-                  padding: const EdgeInsets.symmetric(vertical: 12),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: const Color(0xFF1E293B),
+                      side: const BorderSide(color: Color(0xFFE2E8F0), width: 0.8),
+                      shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.zero),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    onPressed: _isLoading ? null : () => _startCompression(force: false),
+                    icon: const Icon(Icons.compress, size: 16),
+                    label: const Text('开始增量压缩', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  ),
                 ),
-                onPressed: _isLoading ? null : _startCompression,
-                icon: const Icon(Icons.compress, size: 16),
-                label: const Text('压缩超过7天历史图片', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
-              ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: OutlinedButton.icon(
+                    style: OutlinedButton.styleFrom(
+                      foregroundColor: Colors.red,
+                      side: const BorderSide(color: Colors.red, width: 0.8),
+                      shape: const RoundedRectangleBorder(
+                          borderRadius: BorderRadius.zero),
+                      padding: const EdgeInsets.symmetric(vertical: 12),
+                    ),
+                    onPressed: _isLoading ? null : () => _startCompression(force: true),
+                    icon: const Icon(Icons.refresh, size: 16),
+                    label: const Text('强制全部重压', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                  ),
+                ),
+              ],
             ),
         ],
       ),
