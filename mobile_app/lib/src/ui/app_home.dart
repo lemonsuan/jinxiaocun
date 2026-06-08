@@ -1499,6 +1499,7 @@ class _AppHomeState extends State<AppHome> {
         int quarterTurns = 0;
         bool isLoading = false;
         List<InboundDraftItem> newDraftItems = [];
+        String reRecognizeMethod = 'ocr';
 
         return StatefulBuilder(
           builder: (dialogContext, setDialogState) {
@@ -1587,6 +1588,77 @@ class _AppHomeState extends State<AppHome> {
                         ),
                       ),
                       const SizedBox(height: 16),
+                      // 识别方式选择
+                      const Text(
+                        '识别方式',
+                        style: TextStyle(
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                          color: Color(0xFF64748B),
+                          fontFamily: 'monospace',
+                        ),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: ChoiceChip(
+                              label: const Center(
+                                child: Text(
+                                  '本地 OCR 识别',
+                                  style: TextStyle(fontSize: 12),
+                                ),
+                              ),
+                              selected: reRecognizeMethod == 'ocr',
+                              shape: const RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.zero),
+                              selectedColor: const Color(0xFF1E293B),
+                              backgroundColor: const Color(0xFFF1F5F9),
+                              labelStyle: TextStyle(
+                                color: reRecognizeMethod == 'ocr'
+                                    ? Colors.white
+                                    : const Color(0xFF475569),
+                              ),
+                              onSelected: (selected) {
+                                if (selected) {
+                                  setDialogState(() {
+                                    reRecognizeMethod = 'ocr';
+                                  });
+                                }
+                              },
+                            ),
+                          ),
+                          const SizedBox(width: 12),
+                          Expanded(
+                            child: ChoiceChip(
+                              label: const Center(
+                                child: Text(
+                                  'AI 视觉识别',
+                                  style: TextStyle(fontSize: 12),
+                                ),
+                              ),
+                              selected: reRecognizeMethod == 'ai',
+                              shape: const RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.zero),
+                              selectedColor: const Color(0xFF1E293B),
+                              backgroundColor: const Color(0xFFF1F5F9),
+                              labelStyle: TextStyle(
+                                color: reRecognizeMethod == 'ai'
+                                    ? Colors.white
+                                    : const Color(0xFF475569),
+                              ),
+                              onSelected: (selected) {
+                                if (selected) {
+                                  setDialogState(() {
+                                    reRecognizeMethod = 'ai';
+                                  });
+                                }
+                              },
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
                       // 底部按钮 Row
                       Row(
                         children: [
@@ -1612,10 +1684,10 @@ class _AppHomeState extends State<AppHome> {
                               icon: const Icon(Icons.rotate_right,
                                   size: 16, color: Colors.black),
                               label: const Text(
-                                '旋转90°',
-                                style: TextStyle(
-                                    fontFamily: 'monospace',
-                                    fontWeight: FontWeight.normal),
+                                  '旋转90°',
+                                  style: TextStyle(
+                                      fontFamily: 'monospace',
+                                      fontWeight: FontWeight.normal),
                               ),
                             ),
                           ),
@@ -1648,21 +1720,37 @@ class _AppHomeState extends State<AppHome> {
                                           });
                                         }
 
-                                        // 2. 调用本地 OCR
-                                        final ocrResult = await _paddleOcr
-                                            .recognizeTable(path,
-                                                rowMergeTolerance:
-                                                    _ocrRowMergeTolerance);
-                                        final rows = ocrResult.rows;
-                                        final ocrText = ocrResult.editableText;
+                                        // 2. 根据识别方式调用相应接口
+                                        List<InboundDraftItem> items = [];
+                                        if (reRecognizeMethod == 'ai') {
+                                          final result = await _gemmaExtractor
+                                              .extractFromImage(path);
+                                          items = result.items;
+                                        } else {
+                                          final ocrResult = await _paddleOcr
+                                              .recognizeTable(path,
+                                                  rowMergeTolerance:
+                                                      _ocrRowMergeTolerance);
+                                          final rows = ocrResult.rows;
+                                          final ocrText = ocrResult.editableText;
 
-                                        // 使用本地处理器提取商品，优先以表格结构提取，其次退化为纯文本提取
-                                        var items =
-                                            _postProcessor.processRows(rows);
-                                        if (items.isEmpty &&
-                                            ocrText.isNotEmpty) {
-                                          items = _postProcessor
-                                              .processPlainText(ocrText);
+                                          // 使用本地处理器提取商品
+                                          var processedItems =
+                                              _postProcessor.processRows(rows);
+                                          if (processedItems.isEmpty &&
+                                              ocrText.isNotEmpty) {
+                                            processedItems = _postProcessor
+                                                .processPlainText(ocrText);
+                                          }
+                                          items = processedItems
+                                              .map((e) => InboundDraftItem(
+                                                    productName: e.productName,
+                                                    quantity: e.quantity,
+                                                    productCode: e.productCode,
+                                                    purchasePrice: e.purchasePrice,
+                                                    salePrice: e.salePrice,
+                                                  ))
+                                              .toList();
                                         }
 
                                         newDraftItems = items
@@ -1673,7 +1761,9 @@ class _AppHomeState extends State<AppHome> {
                                                   purchasePrice:
                                                       item.purchasePrice,
                                                   salePrice: item.salePrice,
-                                                  sourceText: '重新识别提取',
+                                                  sourceText: reRecognizeMethod == 'ai'
+                                                      ? 'AI重新识别提取'
+                                                      : 'OCR重新识别提取',
                                                 ))
                                             .toList();
 
