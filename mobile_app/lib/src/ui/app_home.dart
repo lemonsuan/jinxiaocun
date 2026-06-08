@@ -1891,11 +1891,13 @@ class _AppHomeState extends State<AppHome> {
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 12),
                               ),
-                              onPressed: () {
-                                setDialogState(() {
-                                  currentStep = 1;
-                                });
-                              },
+                              onPressed: isLoading
+                                  ? null
+                                  : () {
+                                      setDialogState(() {
+                                        currentStep = 1;
+                                      });
+                                    },
                               child: const Text(
                                 '重新旋转',
                                 style: TextStyle(
@@ -1917,9 +1919,12 @@ class _AppHomeState extends State<AppHome> {
                                 padding:
                                     const EdgeInsets.symmetric(vertical: 12),
                               ),
-                              onPressed: newDraftItems.isEmpty
+                              onPressed: newDraftItems.isEmpty || isLoading
                                   ? null
                                   : () async {
+                                      setDialogState(() {
+                                        isLoading = true;
+                                      });
                                       try {
                                         await _database.overwriteInboundItems(
                                           receiptId: receipt.id,
@@ -1938,6 +1943,9 @@ class _AppHomeState extends State<AppHome> {
                                           _expandedReceiptId = null;
                                         });
                                       } catch (e) {
+                                        setDialogState(() {
+                                          isLoading = false;
+                                        });
                                         if (dialogContext.mounted) {
                                           ScaffoldMessenger.of(dialogContext)
                                               .showSnackBar(SnackBar(
@@ -1945,12 +1953,21 @@ class _AppHomeState extends State<AppHome> {
                                         }
                                       }
                                     },
-                              child: const Text(
-                                '确认覆写清单',
-                                style: TextStyle(
-                                    fontFamily: 'monospace',
-                                    fontWeight: FontWeight.bold),
-                              ),
+                              child: isLoading
+                                  ? const SizedBox(
+                                      width: 16,
+                                      height: 16,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 1.5,
+                                        color: Colors.white,
+                                      ),
+                                    )
+                                  : const Text(
+                                      '确认覆写清单',
+                                      style: TextStyle(
+                                          fontFamily: 'monospace',
+                                          fontWeight: FontWeight.bold),
+                                    ),
                             ),
                           ),
                         ],
