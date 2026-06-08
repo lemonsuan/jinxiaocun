@@ -3864,17 +3864,40 @@ class _ReviewCartPageState extends State<_ReviewCartPage>
   bool _hasSearched = false;
 
   @override
+  void initState() {
+    super.initState();
+    _trackingInputController.addListener(_onInputChanged);
+  }
+
+  void _onInputChanged() {
+    setState(() {});
+  }
+
+  @override
   void dispose() {
     _tabController.dispose();
+    _trackingInputController.removeListener(_onInputChanged);
     _trackingInputController.dispose();
     super.dispose();
   }
 
   void _searchByTrackingNumbers() {
-    final input = _trackingInputController.text.trim();
-    if (input.isEmpty) return;
+    final input = _trackingInputController.text;
+    if (input.trim().isEmpty) return;
 
-    final numbers = input
+    final cleanedLines = input
+        .split('\n')
+        .map((line) => line.trim())
+        .join('\n');
+
+    if (cleanedLines != input) {
+      _trackingInputController.value = TextEditingValue(
+        text: cleanedLines,
+        selection: TextSelection.collapsed(offset: cleanedLines.length),
+      );
+    }
+
+    final numbers = cleanedLines
         .split(RegExp(r'[\n,，\s\u3000\r\t]+'))
         .map((s) => s.trim())
         .where((s) => s.isNotEmpty)
@@ -4045,6 +4068,19 @@ class _ReviewCartPageState extends State<_ReviewCartPage>
                       fontFamily: 'monospace',
                       fontSize: 13,
                     ),
+                    suffixIcon: _trackingInputController.text.isNotEmpty
+                        ? IconButton(
+                            icon: const Icon(Icons.cancel, color: _notionGreyText, size: 18),
+                            onPressed: () {
+                              _trackingInputController.clear();
+                              setState(() {
+                                _matchedReceipts = [];
+                                _unmatchedNumbers = [];
+                                _hasSearched = false;
+                              });
+                            },
+                          )
+                        : null,
                     border: const OutlineInputBorder(
                       borderRadius: BorderRadius.zero,
                       borderSide: BorderSide(color: _notionBorder),
