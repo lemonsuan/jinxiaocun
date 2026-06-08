@@ -50,6 +50,8 @@ class LocalInventoryDatabase {
   static const String _authTokenKey = 'auth_token';
   static const String _activeShopIdKey = 'active_shop_id';
   static const String _activeShopNameKey = 'active_shop_name';
+  static const String _selfHostedOcrUrlKey = 'self_hosted_ocr_url';
+  static const String _activeOcrEngineKey = 'active_ocr_engine';
 
   Database? _database;
 
@@ -355,6 +357,58 @@ class LocalInventoryDatabase {
       'app_settings',
       {
         'key': _aiApiFormatKey,
+        'value': value,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<String> loadSelfHostedOcrUrl() async {
+    final rows = await _db.query(
+      'app_settings',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: [_selfHostedOcrUrlKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return 'http://192.168.1.100:8080/layout-parsing';
+    }
+    return rows.single['value']! as String;
+  }
+
+  Future<void> saveSelfHostedOcrUrl(String value) async {
+    await _db.insert(
+      'app_settings',
+      {
+        'key': _selfHostedOcrUrlKey,
+        'value': value,
+        'updated_at': DateTime.now().toIso8601String(),
+      },
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
+  }
+
+  Future<String> loadActiveOcrEngine() async {
+    final rows = await _db.query(
+      'app_settings',
+      columns: ['value'],
+      where: 'key = ?',
+      whereArgs: [_activeOcrEngineKey],
+      limit: 1,
+    );
+    if (rows.isEmpty) {
+      return 'local_ocr';
+    }
+    return rows.single['value']! as String;
+  }
+
+  Future<void> saveActiveOcrEngine(String value) async {
+    await _db.insert(
+      'app_settings',
+      {
+        'key': _activeOcrEngineKey,
         'value': value,
         'updated_at': DateTime.now().toIso8601String(),
       },

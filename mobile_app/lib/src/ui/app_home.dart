@@ -17,9 +17,8 @@ import '../ocr/pp_structure_post_processor.dart';
 import '../platform/paddle_ocr_channel.dart';
 import 'scanner_page.dart';
 import 'product_price_page.dart';
-import 'photo_count_page.dart';
 import 'data_management_page.dart';
-import 'ai_config_page.dart';
+import 'ocr_ai_config_page.dart';
 import 'login_page.dart';
 import 'express_inbound_page.dart';
 import 'custom_camera_page.dart';
@@ -465,7 +464,7 @@ class _AppHomeState extends State<AppHome> {
   Widget _historyInboundTab() {
     final receipts = _filteredInboundHistory();
     return _page([
-      _sectionTitle('历史入库'),
+      const SizedBox(height: 8),
       TextField(
         controller: _historySearchController,
         onChanged: (_) => setState(() {}),
@@ -562,10 +561,7 @@ class _AppHomeState extends State<AppHome> {
   }
 
   Widget _profileTab() {
-    final valueText = _ocrRowMergeTolerance.toStringAsFixed(2);
-
     return _page([
-      _sectionTitle('个人中心'),
       const SizedBox(height: 8),
 
       // 当前店铺及工作区卡片 (Notion 极简直角风)
@@ -632,7 +628,7 @@ class _AppHomeState extends State<AppHome> {
       ),
       const SizedBox(height: 16),
 
-      // 1. 上部直角无圆角白色容器（拍照计数、商品价格管理）
+      // 1. 上部直角无圆角白色容器（商品价格管理、识别配置）
       Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -642,39 +638,6 @@ class _AppHomeState extends State<AppHome> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           child: Column(
             children: [
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    border: Border.all(color: Colors.black, width: 0.8),
-                  ),
-                  child: const Icon(Icons.center_focus_weak,
-                      color: Colors.black, size: 18),
-                ),
-                title: const Text('拍照计数',
-                    style: TextStyle(
-                        fontSize: 14,
-                        fontFamily: 'monospace',
-                        fontWeight: FontWeight.bold)),
-                subtitle: const Text('端侧离线自动识别与标记计数',
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontFamily: 'monospace',
-                        color: Colors.grey)),
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => PhotoCountPage(
-                        database: _database,
-                        onInventoryUpdated: _refreshData,
-                      ),
-                    ),
-                  );
-                },
-              ),
-              Divider(height: 1, color: Colors.grey.shade200),
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: Container(
@@ -719,12 +682,12 @@ class _AppHomeState extends State<AppHome> {
                   child: const Icon(Icons.auto_awesome_outlined,
                       color: Colors.black, size: 18),
                 ),
-                title: const Text('AI 智能提取配置',
+                title: const Text('OCR 与 AI 识别配置',
                     style: TextStyle(
                         fontSize: 14,
                         fontFamily: 'monospace',
                         fontWeight: FontWeight.bold)),
-                subtitle: const Text('配置 OpenAI/Gemini 双格式并动态选择大模型',
+                subtitle: const Text('配置本机 OCR 容差、局域网自建服务与云端多模态 AI 提取',
                     style: TextStyle(
                         fontSize: 11,
                         fontFamily: 'monospace',
@@ -732,7 +695,7 @@ class _AppHomeState extends State<AppHome> {
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (context) => AiConfigPage(
+                      builder: (context) => OcrAiConfigPage(
                         database: _database,
                       ),
                     ),
@@ -745,7 +708,7 @@ class _AppHomeState extends State<AppHome> {
       ),
       const SizedBox(height: 16),
 
-      // 2. 下部直角无圆角白色容器（OCR 行距滑块、备份管理）
+      // 2. 下部直角无圆角白色容器（数据与备份管理）
       Container(
         decoration: BoxDecoration(
           color: Colors.white,
@@ -755,64 +718,6 @@ class _AppHomeState extends State<AppHome> {
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
           child: Column(
             children: [
-              // OCR 行距滑块行
-              Row(
-                children: [
-                  Expanded(
-                    child: ListTile(
-                      contentPadding: EdgeInsets.zero,
-                      leading: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: Colors.white,
-                          border: Border.all(color: Colors.black, width: 0.8),
-                        ),
-                        child: const Icon(Icons.tune_outlined,
-                            color: Colors.black, size: 18),
-                      ),
-                      title: Text('OCR 行距 $valueText',
-                          style: const TextStyle(
-                              fontSize: 14,
-                              fontFamily: 'monospace',
-                              fontWeight: FontWeight.bold)),
-                      subtitle: const Text('严格 - 宽松',
-                          style: TextStyle(
-                              fontSize: 11,
-                              fontFamily: 'monospace',
-                              color: Colors.grey)),
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  SizedBox(
-                    width: 130,
-                    child: SliderTheme(
-                      data: SliderTheme.of(context).copyWith(
-                        trackHeight: 2,
-                        thumbShape:
-                            const RoundSliderThumbShape(enabledThumbRadius: 5),
-                        overlayShape:
-                            const RoundSliderOverlayShape(overlayRadius: 10),
-                      ),
-                      child: Slider(
-                        min: OcrSettings.minRowMergeTolerance,
-                        max: OcrSettings.maxRowMergeTolerance,
-                        divisions: 8,
-                        activeColor: Colors.black,
-                        inactiveColor: Colors.grey.shade300,
-                        value: _ocrRowMergeTolerance,
-                        onChanged: (value) {
-                          setState(() {
-                            _ocrRowMergeTolerance =
-                                OcrSettings.normalizeRowMergeTolerance(value);
-                          });
-                        },
-                        onChangeEnd: _saveOcrRowMergeTolerance,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-              Divider(height: 1, color: Colors.grey.shade200),
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: Container(
@@ -920,12 +825,7 @@ class _AppHomeState extends State<AppHome> {
     ]);
   }
 
-  Widget _sectionTitle(String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(value, style: Theme.of(context).textTheme.titleLarge),
-    );
-  }
+
 
   Widget _scanInboundHeader() {
     return Padding(
@@ -3048,28 +2948,7 @@ class _AppHomeState extends State<AppHome> {
     }
   }
 
-  Future<void> _saveOcrRowMergeTolerance(double value) async {
-    final normalized = OcrSettings.normalizeRowMergeTolerance(value);
-    setState(() {
-      _ocrRowMergeTolerance = normalized;
-    });
-    try {
-      await _database.saveOcrRowMergeTolerance(normalized);
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _message = 'OCR 行距参数已保存：${normalized.toStringAsFixed(2)}';
-      });
-    } on Object catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _message = 'OCR 行距参数保存失败：$error';
-      });
-    }
-  }
+
 
   Future<void> _startAiInventoryRebuilding() async {
     await Navigator.push(
@@ -3704,17 +3583,7 @@ class _AppHomeState extends State<AppHome> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Padding(
-          padding:
-              const EdgeInsets.only(left: 16, right: 16, top: 8, bottom: 4),
-          child: Text(
-            '库存管理',
-            style: Theme.of(context).textTheme.titleLarge?.copyWith(
-                  fontWeight: FontWeight.bold,
-                  fontFamily: 'monospace',
-                ),
-          ),
-        ),
+        const SizedBox(height: 8),
         Padding(
           padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
           child: SegmentedButton<int>(

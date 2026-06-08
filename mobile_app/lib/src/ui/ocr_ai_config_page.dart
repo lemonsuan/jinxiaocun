@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../data/local_inventory_database.dart';
+import '../domain/ocr_settings.dart';
 
 class ApiPreset {
   final String name;
@@ -29,24 +30,34 @@ const List<ApiPreset> _anthropicPresets = [
   ApiPreset(name: 'Anthropic 官方', url: 'https://api.anthropic.com', defaultModel: 'claude-3-5-sonnet-20241022'),
 ];
 
-class AiConfigPage extends StatefulWidget {
+class OcrAiConfigPage extends StatefulWidget {
   final LocalInventoryDatabase database;
 
-  const AiConfigPage({
+  const OcrAiConfigPage({
     super.key,
     required this.database,
   });
 
   @override
-  State<AiConfigPage> createState() => _AiConfigPageState();
+  State<OcrAiConfigPage> createState() => _OcrAiConfigPageState();
 }
 
-class _AiConfigPageState extends State<AiConfigPage> {
+class _OcrAiConfigPageState extends State<OcrAiConfigPage> {
+  // 1. 活跃引擎
+  String _activeEngine = 'local_ocr'; // 'local_ocr', 'self_hosted_ocr', 'cloud_ai_ocr'
+
+  // 2. 本机 OCR 行距
+  double _ocrRowMergeTolerance = OcrSettings.defaultRowMergeTolerance;
+
+  // 3. 自建 OCR
+  final TextEditingController _selfHostedUrlController = TextEditingController();
+  bool _isTestingSelfHosted = false;
+
+  // 4. 云端 AI
   final TextEditingController _urlController = TextEditingController();
   final TextEditingController _keyController = TextEditingController();
   final TextEditingController _modelController = TextEditingController();
-
-  String _selectedFormat = 'openai'; // 'openai' 或 'gemini'
+  String _selectedFormat = 'openai'; // 'openai' 或 'gemini' (anthropic)
   List<String> _models = [];
   bool _isLoadingModels = false;
   bool _isTestingConnection = false;
@@ -61,6 +72,7 @@ class _AiConfigPageState extends State<AiConfigPage> {
 
   @override
   void dispose() {
+    _selfHostedUrlController.dispose();
     _urlController.dispose();
     _keyController.dispose();
     _modelController.dispose();
@@ -68,12 +80,20 @@ class _AiConfigPageState extends State<AiConfigPage> {
   }
 
   Future<void> _loadConfig() async {
+    final engine = await widget.database.loadActiveOcrEngine();
+    final tolerance = await widget.database.loadOcrRowMergeTolerance();
+    final selfHostedUrl = await widget.database.loadSelfHostedOcrUrl();
+
     final format = await widget.database.loadAiApiFormat();
     final url = await widget.database.loadGeminiApiUrl();
     final key = await widget.database.loadGeminiApiKey();
     final model = await widget.database.loadGeminiModel();
 
     setState(() {
+      _activeEngine = engine;
+      _ocrRowMergeTolerance = OcrSettings.normalizeRowMergeTolerance(tolerance);
+      _selfHostedUrlController.text = selfHostedUrl;
+
       _selectedFormat = format == 'gemini' ? 'anthropic' : format;
       _urlController.text = url;
       _keyController.text = key;
@@ -98,6 +118,76 @@ class _AiConfigPageState extends State<AiConfigPage> {
       return '$url/$endpoint';
     } else {
       return '$url/v1/$endpoint';
+    }
+  }
+
+  Future<void> _testSelfHostedOcr() async {
+    final url = _selfHostedUrlController.text.trim();
+    if (url.isEmpty) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请先输入自建 OCR 服务接口地址')),
+      );
+      return;
+    }
+
+    setState(() {
+      _isTestingSelfHosted = true;
+    });
+
+    try {
+      final response = await http.post(
+        Uri.parse(url),
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+        },
+        body: jsonEncode({
+          'image': 'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNkYAAAAAYAAjCB0C8AAAAASUVORK5CYII='
+        }),
+      ).timeout(const Duration(seconds: 8));
+
+      if (response.statusCode == 200 || response.statusCode == 400) {
+        if (mounted) {
+          showDialog(
+            context: context,
+            builder: (ctx) => AlertDialog(
+              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+              title: const Text('连接测试成功', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold)),
+              content: Text('自建 OCR 服务端口响应正常！(HTTP 状态码: ${response.statusCode})'),
+              actions: [
+                TextButton(
+                  onPressed: () => Navigator.of(ctx).pop(),
+                  child: const Text('确定', style: TextStyle(color: Color(0xFF1E293B))),
+                ),
+              ],
+            ),
+          );
+        }
+      } else {
+        throw Exception('HTTP ${response.statusCode}: ${response.body}');
+      }
+    } catch (e) {
+      if (mounted) {
+        showDialog(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+            title: const Text('连接测试失败', style: TextStyle(fontSize: 15, fontWeight: FontWeight.bold, color: Colors.red)),
+            content: Text('无法连接至该自建 OCR 服务，请确认 IP 端口在同一个局域网下。\n报错详情: $e'),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.of(ctx).pop(),
+                child: const Text('确定', style: TextStyle(color: Color(0xFF1E293B))),
+              ),
+            ],
+          ),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isTestingSelfHosted = false;
+        });
+      }
     }
   }
 
@@ -157,7 +247,6 @@ class _AiConfigPageState extends State<AiConfigPage> {
           throw Exception('HTTP ${response.statusCode}: ${response.body}');
         }
       } else {
-        // anthropic 格式
         if (url.isEmpty) {
           throw Exception('请输入接口地址 (API URL)');
         }
@@ -283,7 +372,6 @@ class _AiConfigPageState extends State<AiConfigPage> {
           throw Exception('HTTP ${response.statusCode}: ${response.body}');
         }
       } else {
-        // anthropic
         final requestUrl = _normalizeUrl(url, 'messages');
         final response = await http.post(
           Uri.parse(requestUrl),
@@ -356,10 +444,17 @@ class _AiConfigPageState extends State<AiConfigPage> {
   Future<void> _saveConfig() async {
     setState(() => _isSaving = true);
     try {
+      final selfHostedUrl = _selfHostedUrlController.text.trim();
       final url = _urlController.text.trim();
       final key = _keyController.text.trim();
       final model = _modelController.text.trim();
 
+      // 1. 保存引擎和本机 OCR、自建 OCR 核心参数
+      await widget.database.saveActiveOcrEngine(_activeEngine);
+      await widget.database.saveOcrRowMergeTolerance(_ocrRowMergeTolerance);
+      await widget.database.saveSelfHostedOcrUrl(selfHostedUrl);
+
+      // 2. 保存云端大模型提取参数
       await widget.database.saveAiApiFormat(_selectedFormat);
       await widget.database.saveGeminiApiUrl(url);
       await widget.database.saveGeminiApiKey(key);
@@ -367,7 +462,7 @@ class _AiConfigPageState extends State<AiConfigPage> {
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('AI 提取配置保存成功！')),
+          const SnackBar(content: Text('识别引擎配置保存成功！')),
         );
         Navigator.of(context).pop();
       }
@@ -386,11 +481,13 @@ class _AiConfigPageState extends State<AiConfigPage> {
 
   @override
   Widget build(BuildContext context) {
+    final valueText = _ocrRowMergeTolerance.toStringAsFixed(2);
+
     return Scaffold(
-      backgroundColor: const Color(0xFFFCFCFC), // 极简纯净微偏灰色背景
+      backgroundColor: const Color(0xFFFCFCFC), // Notion 偏白灰底色
       appBar: AppBar(
         title: const Text(
-          'AI 提取配置',
+          'OCR 与 AI 识别配置',
           style: TextStyle(
             fontWeight: FontWeight.w400,
             fontSize: 16,
@@ -411,9 +508,9 @@ class _AiConfigPageState extends State<AiConfigPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // 1. AI 协议格式切换
+                  // 1. 识别引擎切换
                   const Text(
-                    '大模型协议格式',
+                    '当前默认识别引擎',
                     style: TextStyle(
                       fontSize: 12,
                       fontWeight: FontWeight.w600,
@@ -431,66 +528,148 @@ class _AiConfigPageState extends State<AiConfigPage> {
                             borderRadius: BorderRadius.zero),
                         side: const BorderSide(
                             color: Color(0xFFE2E8F0), width: 0.8),
+                        selectedBackgroundColor: Colors.black,
+                        selectedForegroundColor: Colors.white,
                       ),
                       segments: const [
                         ButtonSegment<String>(
-                          value: 'openai',
-                          label: Text(
-                            'OpenAI 兼容协议',
-                            style: TextStyle(fontSize: 12, letterSpacing: 0.5),
-                          ),
-                          icon: Icon(Icons.api_outlined, size: 14),
+                          value: 'local_ocr',
+                          label: Text('本机 OCR', style: TextStyle(fontSize: 11)),
+                          icon: Icon(Icons.phone_android_outlined, size: 14),
                         ),
                         ButtonSegment<String>(
-                          value: 'anthropic',
-                          label: Text(
-                            'Anthropic 原生协议',
-                            style: TextStyle(fontSize: 12, letterSpacing: 0.5),
-                          ),
-                          icon: Icon(Icons.auto_awesome_outlined, size: 14),
+                          value: 'self_hosted_ocr',
+                          label: Text('自建 OCR', style: TextStyle(fontSize: 11)),
+                          icon: Icon(Icons.lan_outlined, size: 14),
+                        ),
+                        ButtonSegment<String>(
+                          value: 'cloud_ai_ocr',
+                          label: Text('云端 AI OCR', style: TextStyle(fontSize: 11)),
+                          icon: Icon(Icons.cloud_outlined, size: 14),
                         ),
                       ],
-                      selected: {_selectedFormat},
+                      selected: {_activeEngine},
                       onSelectionChanged: (val) {
                         setState(() {
-                          _selectedFormat = val.first;
-                          _models.clear(); // 清空旧模型列表
-                          if (_selectedFormat == 'anthropic') {
-                            _urlController.text = 'https://api.anthropic.com';
-                            _modelController.text =
-                                'claude-3-5-sonnet-20241022';
-                          } else {
-                            _urlController.text = 'https://api.deepseek.com';
-                            _modelController.text = 'deepseek-chat';
-                          }
+                          _activeEngine = val.first;
                         });
                       },
                     ),
                   ),
-                  const SizedBox(height: 32),
+                  const SizedBox(height: 24),
 
-                  // 2. 参数设置区域
-                  Container(
-                    decoration: BoxDecoration(
-                      color: Colors.white,
-                      border: Border.all(
-                        color: const Color(0xFFE2E8F0),
-                        width: 0.8,
+                  // 2. 根据选定的识别引擎显示专有卡片
+                  if (_activeEngine == 'local_ocr') ...[
+                    const Text(
+                      '本机 OCR 配置',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 1.0,
+                        color: Color(0xFF64748B),
                       ),
                     ),
-                    padding: const EdgeInsets.all(20),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        if (_selectedFormat == 'openai' ||
-                            _selectedFormat == 'anthropic') ...[
+                    const SizedBox(height: 8),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        border: Border.all(color: const Color(0xFFE2E8F0), width: 0.8),
+                      ),
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '当前模式: 本地离线表格识别后，发送给云端大模型进行信息规范化提取。',
+                            style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                          ),
+                          const SizedBox(height: 16),
+                          Row(
+                            children: [
+                              Expanded(
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      'OCR 识别行距容差: $valueText',
+                                      style: const TextStyle(
+                                          fontSize: 13,
+                                          fontWeight: FontWeight.bold,
+                                          color: Color(0xFF1E293B)),
+                                    ),
+                                    const SizedBox(height: 4),
+                                    const Text('控制行行归纳合并的阈值，值越小行越紧凑。',
+                                        style: TextStyle(
+                                            fontSize: 11, color: Colors.grey)),
+                                  ],
+                                ),
+                              ),
+                              const SizedBox(width: 8),
+                              SizedBox(
+                                width: 120,
+                                child: SliderTheme(
+                                  data: SliderTheme.of(context).copyWith(
+                                    trackHeight: 2,
+                                    thumbShape: const RoundSliderThumbShape(
+                                        enabledThumbRadius: 6),
+                                    overlayShape: const RoundSliderOverlayShape(
+                                        overlayRadius: 10),
+                                  ),
+                                  child: Slider(
+                                    min: OcrSettings.minRowMergeTolerance,
+                                    max: OcrSettings.maxRowMergeTolerance,
+                                    divisions: 8,
+                                    activeColor: Colors.black,
+                                    inactiveColor: Colors.grey.shade300,
+                                    value: _ocrRowMergeTolerance,
+                                    onChanged: (value) {
+                                      setState(() {
+                                        _ocrRowMergeTolerance =
+                                            OcrSettings.normalizeRowMergeTolerance(
+                                                value);
+                                      });
+                                    },
+                                  ),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ] else if (_activeEngine == 'self_hosted_ocr') ...[
+                    const Text(
+                      '自建 OCR 配置 (PaddleOCR-VL-1.6)',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 1.0,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        border: Border.all(color: const Color(0xFFE2E8F0), width: 0.8),
+                      ),
+                      padding: const EdgeInsets.all(20),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text(
+                            '当前模式: 将图片发送至局域网部署的 PaddleOCR-VL-1.6 大模型服务获取排版文本，再送入云端大模型提取。',
+                            style: TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                          ),
+                          const SizedBox(height: 16),
                           TextFormField(
-                            controller: _urlController,
+                            controller: _selfHostedUrlController,
                             decoration: const InputDecoration(
-                              labelText: '接口地址 (API URL)',
+                              labelText: '自建 OCR 接口 URL 地址',
                               labelStyle: TextStyle(
                                   color: Color(0xFF94A3B8), fontSize: 13),
-                              hintText: '请输入 API 接口地址',
+                              hintText: 'http://<WiFi下的电脑IP>:8080/layout-parsing',
                               hintStyle: TextStyle(
                                   color: Color(0xFFCBD5E1), fontSize: 13),
                               border: UnderlineInputBorder(
@@ -508,58 +687,214 @@ class _AiConfigPageState extends State<AiConfigPage> {
                               isDense: true,
                             ),
                             style: const TextStyle(
-                                fontSize: 14, color: Color(0xFF1E293B)),
+                                fontSize: 13, color: Color(0xFF1E293B)),
                           ),
-                          const SizedBox(height: 8),
-                          Wrap(
-                            spacing: 6,
-                            runSpacing: 6,
-                            children: (_selectedFormat == 'anthropic'
-                                    ? _anthropicPresets
-                                    : _openaiPresets)
-                                .map((preset) {
-                              final isSelected =
-                                  _urlController.text.trim() == preset.url;
-                              return GestureDetector(
-                                onTap: () {
-                                  setState(() {
-                                    _urlController.text = preset.url;
-                                    _modelController.text = preset.defaultModel;
-                                    _models.clear();
-                                  });
-                                },
-                                child: Container(
-                                  padding: const EdgeInsets.symmetric(
-                                      horizontal: 8, vertical: 4),
-                                  decoration: BoxDecoration(
+                          const SizedBox(height: 16),
+                          SizedBox(
+                            width: double.infinity,
+                            child: _isTestingSelfHosted
+                                ? const Center(
+                                    child: SizedBox(
+                                      width: 20,
+                                      height: 20,
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: Colors.black,
+                                      ),
+                                    ),
+                                  )
+                                : OutlinedButton.icon(
+                                    style: OutlinedButton.styleFrom(
+                                      foregroundColor: Colors.black,
+                                      side: const BorderSide(
+                                          color: Color(0xFFE2E8F0), width: 0.8),
+                                      shape: const RoundedRectangleBorder(
+                                          borderRadius: BorderRadius.zero),
+                                      padding: const EdgeInsets.symmetric(
+                                          vertical: 12),
+                                    ),
+                                    onPressed: _testSelfHostedOcr,
+                                    icon: const Icon(Icons.bolt_outlined, size: 14),
+                                    label: const Text('测试自建 OCR 服务连接 (WiFi 下)',
+                                        style: TextStyle(fontSize: 12)),
+                                  ),
+                          ),
+                        ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ] else if (_activeEngine == 'cloud_ai_ocr') ...[
+                    const Text(
+                      '云端 AI OCR 说明',
+                      style: TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 1.0,
+                        color: Color(0xFF64748B),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    Container(
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        border: Border.all(color: const Color(0xFFE2E8F0), width: 0.8),
+                      ),
+                      padding: const EdgeInsets.all(20),
+                      child: const Text(
+                        '当前模式: 依靠多模态大模型的视觉理解能力，直接读取图片内容提取商品清单 JSON（大模型需支持图片多模态输入，如 gpt-4o 或 gemini-1.5-flash）。',
+                        style: TextStyle(fontSize: 11, color: Color(0xFF64748B), height: 1.5),
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                  ],
+
+                  // 3. 通用底层云端 AI 配置
+                  const Text(
+                    '底层云端 AI 提取配置 (所有引擎均需要大模型支持)',
+                    style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      letterSpacing: 1.0,
+                      color: Color(0xFF64748B),
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  Container(
+                    decoration: BoxDecoration(
+                      color: Colors.white,
+                      border: Border.all(
+                        color: const Color(0xFFE2E8F0),
+                        width: 0.8,
+                      ),
+                    ),
+                    padding: const EdgeInsets.all(20),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '协议格式',
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w600,
+                              color: Color(0xFF64748B)),
+                        ),
+                        const SizedBox(height: 8),
+                        SizedBox(
+                          width: double.infinity,
+                          child: SegmentedButton<String>(
+                            showSelectedIcon: false,
+                            style: SegmentedButton.styleFrom(
+                              shape: const RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.zero),
+                              side: const BorderSide(
+                                  color: Color(0xFFE2E8F0), width: 0.8),
+                            ),
+                            segments: const [
+                              ButtonSegment<String>(
+                                value: 'openai',
+                                label: Text(
+                                  'OpenAI 兼容协议',
+                                  style: TextStyle(fontSize: 11),
+                                ),
+                                icon: Icon(Icons.api_outlined, size: 14),
+                              ),
+                              ButtonSegment<String>(
+                                value: 'anthropic',
+                                label: Text(
+                                  'Anthropic 协议',
+                                  style: TextStyle(fontSize: 11),
+                                ),
+                                icon: Icon(Icons.auto_awesome_outlined, size: 14),
+                              ),
+                            ],
+                            selected: {_selectedFormat},
+                            onSelectionChanged: (val) {
+                              setState(() {
+                                _selectedFormat = val.first;
+                                _models.clear();
+                                if (_selectedFormat == 'anthropic') {
+                                  _urlController.text = 'https://api.anthropic.com';
+                                  _modelController.text =
+                                      'claude-3-5-sonnet-20241022';
+                                } else {
+                                  _urlController.text = 'https://api.deepseek.com';
+                                  _modelController.text = 'deepseek-chat';
+                                }
+                              });
+                            },
+                          ),
+                        ),
+                        const SizedBox(height: 20),
+                        TextFormField(
+                          controller: _urlController,
+                          decoration: const InputDecoration(
+                            labelText: '接口地址 (API URL)',
+                            labelStyle: TextStyle(
+                                color: Color(0xFF94A3B8), fontSize: 13),
+                            hintText: '请输入 API 接口地址',
+                            border: UnderlineInputBorder(
+                              borderSide: BorderSide(
+                                  color: Color(0xFFE2E8F0), width: 0.8),
+                            ),
+                            enabledBorder: UnderlineInputBorder(
+                              borderSide: BorderSide(
+                                  color: Color(0xFFE2E8F0), width: 0.8),
+                            ),
+                            focusedBorder: UnderlineInputBorder(
+                              borderSide: BorderSide(
+                                  color: Color(0xFF1E293B), width: 1.2),
+                            ),
+                            isDense: true,
+                          ),
+                          style: const TextStyle(
+                              fontSize: 13, color: Color(0xFF1E293B)),
+                        ),
+                        const SizedBox(height: 8),
+                        Wrap(
+                          spacing: 6,
+                          runSpacing: 6,
+                          children: (_selectedFormat == 'anthropic'
+                                  ? _anthropicPresets
+                                  : _openaiPresets)
+                              .map((preset) {
+                            final isSelected =
+                                _urlController.text.trim() == preset.url;
+                            return GestureDetector(
+                              onTap: () {
+                                setState(() {
+                                  _urlController.text = preset.url;
+                                  _modelController.text = preset.defaultModel;
+                                  _models.clear();
+                                });
+                              },
+                              child: Container(
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 8, vertical: 4),
+                                decoration: BoxDecoration(
+                                  color: isSelected
+                                      ? const Color(0xFF1E293B)
+                                      : const Color(0xFFF1F5F9),
+                                  border: Border.all(
                                     color: isSelected
                                         ? const Color(0xFF1E293B)
-                                        : const Color(0xFFF1F5F9),
-                                    border: Border.all(
-                                      color: isSelected
-                                          ? const Color(0xFF1E293B)
-                                          : const Color(0xFFE2E8F0),
-                                      width: 0.8,
-                                    ),
-                                  ),
-                                  child: Text(
-                                    preset.name,
-                                    style: TextStyle(
-                                      fontSize: 11,
-                                      color: isSelected
-                                          ? Colors.white
-                                          : const Color(0xFF475569),
-                                      fontWeight: isSelected
-                                          ? FontWeight.w500
-                                          : FontWeight.normal,
-                                    ),
+                                        : const Color(0xFFE2E8F0),
+                                    width: 0.8,
                                   ),
                                 ),
-                              );
-                            }).toList(),
-                          ),
-                          const SizedBox(height: 24),
-                        ],
+                                child: Text(
+                                  preset.name,
+                                  style: TextStyle(
+                                    fontSize: 10,
+                                    color: isSelected
+                                        ? Colors.white
+                                        : const Color(0xFF475569),
+                                  ),
+                                ),
+                              ),
+                            );
+                          }).toList(),
+                        ),
+                        const SizedBox(height: 20),
                         TextFormField(
                           controller: _keyController,
                           obscureText: _obscureApiKey,
@@ -568,8 +903,6 @@ class _AiConfigPageState extends State<AiConfigPage> {
                             labelStyle: const TextStyle(
                                 color: Color(0xFF94A3B8), fontSize: 13),
                             hintText: '请输入您的 API Key',
-                            hintStyle: const TextStyle(
-                                color: Color(0xFFCBD5E1), fontSize: 13),
                             border: const UnderlineInputBorder(
                               borderSide: BorderSide(
                                   color: Color(0xFFE2E8F0), width: 0.8),
@@ -599,79 +932,73 @@ class _AiConfigPageState extends State<AiConfigPage> {
                             ),
                           ),
                           style: const TextStyle(
-                              fontSize: 14, color: Color(0xFF1E293B)),
+                              fontSize: 13, color: Color(0xFF1E293B)),
                         ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 20),
                         Row(
                           children: [
                             Expanded(
                               child: _isTestingConnection
                                   ? const Center(
-                                      child: Padding(
-                                        padding: EdgeInsets.symmetric(vertical: 8),
+                                      child: SizedBox(
+                                        width: 16,
+                                        height: 16,
                                         child: CircularProgressIndicator(
                                           strokeWidth: 2,
-                                          color: Color(0xFF1E293B),
+                                          color: Colors.black,
                                         ),
                                       ),
                                     )
                                   : OutlinedButton.icon(
                                       style: OutlinedButton.styleFrom(
-                                        foregroundColor: const Color(0xFF1E293B),
+                                        foregroundColor: Colors.black,
                                         side: const BorderSide(
                                             color: Color(0xFFE2E8F0),
                                             width: 0.8),
                                         shape: const RoundedRectangleBorder(
                                             borderRadius: BorderRadius.zero),
                                         padding: const EdgeInsets.symmetric(
-                                            vertical: 12),
-                                        textStyle: const TextStyle(
-                                          fontWeight: FontWeight.w500,
-                                          fontSize: 12,
-                                          letterSpacing: 1.0,
-                                        ),
+                                            vertical: 10),
                                       ),
                                       onPressed: _testConnection,
                                       icon: const Icon(Icons.bolt_outlined, size: 14),
-                                      label: const Text('测试接口连接'),
+                                      label: const Text('测试 AI 连接',
+                                          style: TextStyle(fontSize: 11)),
                                     ),
                             ),
                             const SizedBox(width: 12),
                             Expanded(
                               child: _isLoadingModels
                                   ? const Center(
-                                      child: Padding(
-                                        padding: EdgeInsets.symmetric(vertical: 8),
+                                      child: SizedBox(
+                                        width: 16,
+                                        height: 16,
                                         child: CircularProgressIndicator(
                                           strokeWidth: 2,
-                                          color: Color(0xFF1E293B),
+                                          color: Colors.black,
                                         ),
                                       ),
                                     )
                                   : OutlinedButton.icon(
                                       style: OutlinedButton.styleFrom(
-                                        foregroundColor: const Color(0xFF1E293B),
+                                        foregroundColor: Colors.black,
                                         side: const BorderSide(
                                             color: Color(0xFFE2E8F0),
                                             width: 0.8),
                                         shape: const RoundedRectangleBorder(
                                             borderRadius: BorderRadius.zero),
                                         padding: const EdgeInsets.symmetric(
-                                            vertical: 12),
-                                        textStyle: const TextStyle(
-                                          fontWeight: FontWeight.w500,
-                                          fontSize: 12,
-                                          letterSpacing: 1.0,
-                                        ),
+                                            vertical: 10),
                                       ),
                                       onPressed: _fetchModels,
                                       icon: const Icon(Icons.sync_outlined, size: 14),
-                                      label: const Text('加载云端模型'),
+                                      label: const Text('加载云端模型',
+                                          style: TextStyle(fontSize: 11)),
                                     ),
                             ),
                           ],
                         ),
-                        const SizedBox(height: 24),
+                        const SizedBox(height: 20),
                         if (_models.isNotEmpty) ...[
                           DropdownButtonFormField<String>(
                             initialValue:
@@ -698,7 +1025,7 @@ class _AiConfigPageState extends State<AiConfigPage> {
                                 child: Text(
                                   m,
                                   style: const TextStyle(
-                                      fontSize: 13, color: Color(0xFF1E293B)),
+                                      fontSize: 12, color: Color(0xFF1E293B)),
                                 ),
                               );
                             }).toList(),
@@ -710,7 +1037,7 @@ class _AiConfigPageState extends State<AiConfigPage> {
                               }
                             },
                           ),
-                          const SizedBox(height: 24),
+                          const SizedBox(height: 20),
                         ],
                         TextFormField(
                           controller: _modelController,
@@ -719,8 +1046,6 @@ class _AiConfigPageState extends State<AiConfigPage> {
                             labelStyle: TextStyle(
                                 color: Color(0xFF94A3B8), fontSize: 13),
                             hintText: '例如: deepseek-chat 或 gemini-1.5-flash',
-                            hintStyle: TextStyle(
-                                color: Color(0xFFCBD5E1), fontSize: 13),
                             border: UnderlineInputBorder(
                               borderSide: BorderSide(
                                   color: Color(0xFFE2E8F0), width: 0.8),
@@ -736,7 +1061,7 @@ class _AiConfigPageState extends State<AiConfigPage> {
                             isDense: true,
                           ),
                           style: const TextStyle(
-                              fontSize: 14, color: Color(0xFF1E293B)),
+                              fontSize: 13, color: Color(0xFF1E293B)),
                         ),
                       ],
                     ),
@@ -746,7 +1071,7 @@ class _AiConfigPageState extends State<AiConfigPage> {
             ),
           ),
 
-          // 3. 底栏保存
+          // 4. 底栏保存
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
             decoration: const BoxDecoration(
@@ -764,7 +1089,7 @@ class _AiConfigPageState extends State<AiConfigPage> {
                 height: 48,
                 child: FilledButton(
                   style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF1E293B),
+                    backgroundColor: Colors.black,
                     foregroundColor: Colors.white,
                     shape: const RoundedRectangleBorder(
                         borderRadius: BorderRadius.zero),
@@ -781,7 +1106,7 @@ class _AiConfigPageState extends State<AiConfigPage> {
                           ),
                         )
                       : const Text(
-                          '保存配置',
+                          '保存引擎配置',
                           style: TextStyle(
                             fontSize: 13,
                             fontWeight: FontWeight.w600,
