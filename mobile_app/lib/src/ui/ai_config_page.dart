@@ -21,6 +21,7 @@ const List<ApiPreset> _openaiPresets = [
   ApiPreset(name: 'Gemini (兼容)', url: 'https://generativelanguage.googleapis.com/v1beta', defaultModel: 'gemini-1.5-flash'),
   ApiPreset(name: 'Kimi', url: 'https://api.moonshot.cn', defaultModel: 'moonshot-v1-8k'),
   ApiPreset(name: '通义千问', url: 'https://dashscope.aliyuncs.com/compatible-mode', defaultModel: 'qwen-turbo'),
+  ApiPreset(name: 'MiniMax', url: 'https://api.minimax.io/v1', defaultModel: 'abab6.5s-chat'),
 ];
 
 const List<ApiPreset> _anthropicPresets = [
