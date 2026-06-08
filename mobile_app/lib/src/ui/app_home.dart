@@ -2928,11 +2928,6 @@ class _AppHomeState extends State<AppHome> {
         _ocrRowMergeTolerance = ocrRowMergeTolerance;
         _isReady = true;
       });
-      unawaited(_database.compressOldInboundImages().then((_) {
-        if (mounted) {
-          _refreshData();
-        }
-      }));
     } on Object catch (error) {
       if (!mounted) {
         return;

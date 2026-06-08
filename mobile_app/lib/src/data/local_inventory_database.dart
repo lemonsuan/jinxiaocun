@@ -1400,7 +1400,7 @@ class LocalInventoryDatabase {
     });
   }
 
-  Future<void> compressOldInboundImages() async {
+  Future<void> compressOldInboundImages({void Function(int current, int total)? onProgress}) async {
     try {
       final now = DateTime.now();
       final sevenDaysAgo = now.subtract(const Duration(days: 7));
@@ -1412,9 +1412,18 @@ class LocalInventoryDatabase {
         whereArgs: [sevenDaysAgo.toIso8601String(), ''],
       );
 
-      for (final row in rows) {
+      final total = rows.length;
+      if (total == 0) {
+        onProgress?.call(0, 0);
+        return;
+      }
+
+      for (int i = 0; i < total; i++) {
+        final row = rows[i];
         final receiptId = row['id'] as String;
         final imagePath = row['image_path'] as String;
+
+        onProgress?.call(i + 1, total);
 
         if (imagePath.contains('_compressed')) {
           continue;

@@ -31,10 +31,64 @@ class _DataManagementPageState extends State<DataManagementPage> {
   bool _clearTextSelected = false;
   bool _clearImagesSelected = false;
 
+  // 图片压缩状态
+  bool _isCompressing = false;
+  double _compressionProgress = 0.0;
+  String _compressionMessage = '';
+
   @override
   void initState() {
     super.initState();
     _loadBackupList();
+  }
+
+  Future<void> _startCompression() async {
+    setState(() {
+      _isCompressing = true;
+      _isLoading = true;
+      _compressionProgress = 0.0;
+      _compressionMessage = '正在检测7天前的历史大图...';
+    });
+
+    try {
+      await widget.database.compressOldInboundImages(
+        onProgress: (current, total) {
+          if (!mounted) return;
+          setState(() {
+            if (total == 0) {
+              _compressionProgress = 1.0;
+              _compressionMessage = '没有检测到任何符合条件的可压缩图片';
+            } else {
+              _compressionProgress = current / total;
+              _compressionMessage = '正在压缩: $current / $total 张图片 (${(_compressionProgress * 100).toStringAsFixed(0)}%)';
+            }
+          });
+        },
+      );
+
+      await Future.delayed(const Duration(milliseconds: 1000));
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('历史图片压缩处理完成！')),
+        );
+        setState(() {
+          _isCompressing = false;
+          _isLoading = false;
+        });
+        widget.onDatabaseRestored?.call();
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('图片压缩失败: $e')),
+        );
+        setState(() {
+          _isCompressing = false;
+          _isLoading = false;
+        });
+      }
+    }
   }
 
   Future<Directory> _getBackupDir() async {
@@ -439,7 +493,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
           const SizedBox(width: 8),
         ],
       ),
-      body: _isLoading
+      body: (_isLoading && !_isCompressing)
           ? const Center(
               child: CircularProgressIndicator(
                 strokeWidth: 2,
@@ -453,11 +507,15 @@ class _DataManagementPageState extends State<DataManagementPage> {
                 _actionCard(colorScheme),
                 const SizedBox(height: 24),
 
-                // 2. 清理已结算数据卡片
+                // 2. 压缩历史大图卡片
+                _imageCompressionCard(),
+                const SizedBox(height: 24),
+
+                // 3. 清理已结算数据卡片
                 _clearSettledCard(),
                 const SizedBox(height: 24),
 
-                // 3. 备份历史标头
+                // 4. 备份历史标头
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: Text(
@@ -473,7 +531,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
                 const Divider(height: 1, color: Color(0xFFF1F5F9)),
                 const SizedBox(height: 12),
 
-                // 4. 备份历史列表
+                // 5. 备份历史列表
                 if (_backupFiles.isEmpty)
                   const Padding(
                     padding: EdgeInsets.symmetric(vertical: 48),
@@ -519,7 +577,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
                       child: ListTile(
                         contentPadding:
                             const EdgeInsets.symmetric(vertical: 12),
-                        onLongPress: () async {
+                        onLongPress: _isLoading ? null : () async {
                           if (await file.exists()) {
                             await Share.shareXFiles(
                               [XFile(file.path)],
@@ -565,7 +623,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
                                 minimumSize: Size.zero,
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
-                              onPressed: () => _restoreFromLocalFile(file),
+                              onPressed: _isLoading ? null : () => _restoreFromLocalFile(file),
                               child: const Text(
                                 '还原',
                                 style: TextStyle(
@@ -582,7 +640,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
                                 color: Color(0xFF94A3B8),
                                 size: 18,
                               ),
-                              onPressed: () => _deleteBackupFile(file),
+                              onPressed: _isLoading ? null : () => _deleteBackupFile(file),
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
                               splashRadius: 16,
@@ -623,7 +681,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
                   letterSpacing: 1.5,
                 ),
               ),
-              onPressed: _exportBackup,
+              onPressed: _isLoading ? null : _exportBackup,
               child: const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -650,7 +708,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
                   letterSpacing: 1.5,
                 ),
               ),
-              onPressed: _importExternalBackup,
+              onPressed: _isLoading ? null : _importExternalBackup,
               child: const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -692,11 +750,13 @@ class _DataManagementPageState extends State<DataManagementPage> {
             title: const Text('已结算文本数据', style: TextStyle(fontSize: 12)),
             subtitle: const Text('物理清除已勾选结算的入库明细及流水，释放数据库', style: TextStyle(fontSize: 10)),
             value: _clearTextSelected,
-            onChanged: (val) {
-              setState(() {
-                _clearTextSelected = val ?? false;
-              });
-            },
+            onChanged: _isLoading
+                ? null
+                : (val) {
+                    setState(() {
+                      _clearTextSelected = val ?? false;
+                    });
+                  },
             controlAffinity: ListTileControlAffinity.leading,
             contentPadding: EdgeInsets.zero,
             activeColor: Colors.black,
@@ -705,11 +765,13 @@ class _DataManagementPageState extends State<DataManagementPage> {
             title: const Text('已结算物理图片', style: TextStyle(fontSize: 12)),
             subtitle: const Text('物理删除已结算单据对应的拍照文件，释放手机存储', style: TextStyle(fontSize: 10)),
             value: _clearImagesSelected,
-            onChanged: (val) {
-              setState(() {
-                _clearImagesSelected = val ?? false;
-              });
-            },
+            onChanged: _isLoading
+                ? null
+                : (val) {
+                    setState(() {
+                      _clearImagesSelected = val ?? false;
+                    });
+                  },
             controlAffinity: ListTileControlAffinity.leading,
             contentPadding: EdgeInsets.zero,
             activeColor: Colors.black,
@@ -720,16 +782,76 @@ class _DataManagementPageState extends State<DataManagementPage> {
             child: OutlinedButton.icon(
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.red,
-                side: const BorderSide(color: Colors.red, width: 0.8),
+                side: BorderSide(color: _isLoading ? Colors.grey : Colors.red, width: 0.8),
                 shape: const RoundedRectangleBorder(
                     borderRadius: BorderRadius.zero),
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),
-              onPressed: _showClearConfirmationDialog,
+              onPressed: _isLoading ? null : _showClearConfirmationDialog,
               icon: const Icon(Icons.delete_forever, size: 16),
               label: const Text('一键清空所选数据', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _imageCompressionCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(
+          color: const Color(0xFFE2E8F0),
+          width: 0.8,
+        ),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '💾 历史图片压缩 (释放空间)',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1E293B),
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            '将创建时间超过 7 天的历史入库单拍照进行尺寸缩小（宽/高最大 1000 像素），能腾出 90% 以上的图片占用存储，且不影响字迹阅读。已经压缩过的图片不会重复处理。',
+            style: TextStyle(fontSize: 10, color: Color(0xFF64748B), height: 1.4),
+          ),
+          const SizedBox(height: 12),
+          if (_isCompressing) ...[
+            LinearProgressIndicator(
+              value: _compressionProgress,
+              backgroundColor: const Color(0xFFE2E8F0),
+              color: Colors.black,
+              minHeight: 4,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _compressionMessage,
+              style: const TextStyle(fontSize: 11, color: Color(0xFF1E293B), fontFamily: 'monospace'),
+            ),
+          ] else
+            SizedBox(
+              width: double.infinity,
+              child: OutlinedButton.icon(
+                style: OutlinedButton.styleFrom(
+                  foregroundColor: const Color(0xFF1E293B),
+                  side: const BorderSide(color: Color(0xFFE2E8F0), width: 0.8),
+                  shape: const RoundedRectangleBorder(
+                      borderRadius: BorderRadius.zero),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
+                ),
+                onPressed: _isLoading ? null : _startCompression,
+                icon: const Icon(Icons.compress, size: 16),
+                label: const Text('压缩超过7天历史图片', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              ),
+            ),
         ],
       ),
     );
