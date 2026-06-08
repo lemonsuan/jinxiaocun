@@ -9,23 +9,27 @@ import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import '../data/local_inventory_database.dart';
 
-class BackupManagementPage extends StatefulWidget {
+class DataManagementPage extends StatefulWidget {
   final LocalInventoryDatabase database;
   final VoidCallback? onDatabaseRestored;
 
-  const BackupManagementPage({
+  const DataManagementPage({
     super.key,
     required this.database,
     this.onDatabaseRestored,
   });
 
   @override
-  State<BackupManagementPage> createState() => _BackupManagementPageState();
+  State<DataManagementPage> createState() => _DataManagementPageState();
 }
 
-class _BackupManagementPageState extends State<BackupManagementPage> {
+class _DataManagementPageState extends State<DataManagementPage> {
   bool _isLoading = false;
   List<FileSystemEntity> _backupFiles = [];
+
+  // 清理数据复选框状态
+  bool _clearTextSelected = false;
+  bool _clearImagesSelected = false;
 
   @override
   void initState() {
@@ -47,7 +51,6 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
     try {
       final dir = await _getBackupDir();
       final list = dir.listSync();
-      // 只筛选 json 备份文件并按最后修改时间排序
       list.retainWhere(
           (entity) => entity is File && entity.path.endsWith('.json'));
       list.sort((a, b) {
@@ -76,7 +79,6 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
       final file = File(p.join(dir.path, fileName));
       await file.writeAsBytes(bytes, flush: true);
 
-      // 如果是 Android 平台，直接写到系统公共 Downloads 文件夹
       bool exportedToDownloads = false;
       if (Platform.isAndroid) {
         try {
@@ -171,20 +173,20 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
     }
   }
 
-  // 恢复确认弹窗
   void _showRestoreConfirmationDialog(Uint8List bytes, String fileName) {
     final colorScheme = Theme.of(context).colorScheme;
     final messenger = ScaffoldMessenger.of(context);
 
     showDialog(
       context: context,
-      barrierDismissible: false, // 强制安全操作
+      barrierDismissible: false,
       builder: (dialogContext) {
         return PopScope(
-          canPop: false, // 禁用返回键退出
+          canPop: false,
           child: BackdropFilter(
             filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
             child: AlertDialog(
+              shape: const RoundedRectangleBorder(),
               backgroundColor: colorScheme.surface.withOpacity(0.9),
               title: Row(
                 children: [
@@ -224,11 +226,12 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                 ),
                 FilledButton(
                   style: FilledButton.styleFrom(
-                    backgroundColor: colorScheme.error,
+                    backgroundColor: Colors.black,
                     foregroundColor: Colors.white,
+                    shape: const RoundedRectangleBorder(),
                   ),
                   onPressed: () async {
-                    Navigator.pop(dialogContext); // 关弹窗
+                    Navigator.pop(dialogContext);
 
                     setState(() => _isLoading = true);
                     try {
@@ -262,6 +265,132 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
     );
   }
 
+  void _showClearConfirmationDialog() {
+    if (!_clearTextSelected && !_clearImagesSelected) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('请至少勾选一项要清理的数据类型')),
+      );
+      return;
+    }
+
+    final colorScheme = Theme.of(context).colorScheme;
+    final messenger = ScaffoldMessenger.of(context);
+
+    final List<String> targetDescriptions = [];
+    if (_clearTextSelected) {
+      targetDescriptions.add('已结算的文本数据 (包含入库单、商品明细、库存和流水记录)');
+    }
+    if (_clearImagesSelected) {
+      targetDescriptions.add('已结算单据关联的物理图片文件');
+    }
+
+    showDialog(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogContext) {
+        return PopScope(
+          canPop: false,
+          child: BackdropFilter(
+            filter: ImageFilter.blur(sigmaX: 12, sigmaY: 12),
+            child: AlertDialog(
+              shape: const RoundedRectangleBorder(),
+              backgroundColor: colorScheme.surface.withOpacity(0.9),
+              title: Row(
+                children: [
+                  Icon(Icons.warning_amber_rounded, color: colorScheme.error),
+                  const SizedBox(width: 8),
+                  const Text('清除确认',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                ],
+              ),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text(
+                    '⚠️ 警告：此操作不可逆！',
+                    style: TextStyle(
+                        fontWeight: FontWeight.bold, color: Colors.redAccent),
+                  ),
+                  const SizedBox(height: 12),
+                  const Text('您将要永久清空以下勾选的数据：', style: TextStyle(fontSize: 13)),
+                  const SizedBox(height: 8),
+                  ...targetDescriptions.map((desc) => Padding(
+                        padding: const EdgeInsets.only(bottom: 6, left: 4),
+                        child: Text('• $desc',
+                            style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.w600,
+                                color: Colors.black87)),
+                      )),
+                  const SizedBox(height: 12),
+                  Text('确定要继续清除这些数据吗？',
+                      style: TextStyle(
+                          color: colorScheme.outline,
+                          fontSize: 13,
+                          height: 1.4)),
+                ],
+              ),
+              actions: [
+                TextButton(
+                  onPressed: () {
+                    Navigator.pop(dialogContext);
+                  },
+                  child: const Text('取消', style: TextStyle(color: Colors.black)),
+                ),
+                FilledButton(
+                  style: FilledButton.styleFrom(
+                    backgroundColor: Colors.red,
+                    foregroundColor: Colors.white,
+                    shape: const RoundedRectangleBorder(),
+                  ),
+                  onPressed: () async {
+                    Navigator.pop(dialogContext);
+
+                    setState(() => _isLoading = true);
+                    try {
+                      if (_clearTextSelected) {
+                        await widget.database.clearSettledTextData();
+                      }
+                      if (_clearImagesSelected && !_clearTextSelected) {
+                        // 如果同时勾选了文本，文本清理函数里已经自动物理删除图片了。
+                        // 如果仅勾选了图片清理，则调用独立的图片清理
+                        await widget.database.clearSettledImagesData();
+                      }
+
+                      if (mounted) {
+                        messenger.showSnackBar(
+                          const SnackBar(content: Text('所选的已结算数据清除成功！')),
+                        );
+                        setState(() {
+                          _clearTextSelected = false;
+                          _clearImagesSelected = false;
+                        });
+                        widget.onDatabaseRestored?.call(); // 触发上层刷新
+                      }
+                    } catch (e) {
+                      if (mounted) {
+                        messenger.showSnackBar(
+                          SnackBar(content: Text('清除失败: $e')),
+                        );
+                      }
+                    } finally {
+                      setState(() => _isLoading = false);
+                    }
+                  },
+                  child: const Text(
+                    '确认一键清除',
+                    style: TextStyle(fontWeight: FontWeight.bold),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
   String _formatFileSize(int bytes) {
     if (bytes < 1024) return '$bytes B';
     if (bytes < 1024 * 1024) return '${(bytes / 1024).toStringAsFixed(1)} KB';
@@ -278,10 +407,10 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
     final colorScheme = Theme.of(context).colorScheme;
 
     return Scaffold(
-      backgroundColor: const Color(0xFFFCFCFC), // 极简纯净微偏灰色背景
+      backgroundColor: const Color(0xFFFCFCFC),
       appBar: AppBar(
         title: const Text(
-          '备份管理',
+          '数据管理',
           style: TextStyle(
             fontWeight: FontWeight.w400,
             fontSize: 16,
@@ -320,11 +449,15 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
           : ListView(
               padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
               children: [
-                // 1. 极简风格导出/导入操作卡片
+                // 1. 导出/导入操作卡片
                 _actionCard(colorScheme),
-                const SizedBox(height: 36),
+                const SizedBox(height: 24),
 
-                // 2. 备份历史标头
+                // 2. 清理已结算数据卡片
+                _clearSettledCard(),
+                const SizedBox(height: 24),
+
+                // 3. 备份历史标头
                 Padding(
                   padding: const EdgeInsets.only(bottom: 12),
                   child: Text(
@@ -340,10 +473,10 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                 const Divider(height: 1, color: Color(0xFFF1F5F9)),
                 const SizedBox(height: 12),
 
-                // 3. 备份历史列表
+                // 4. 备份历史列表
                 if (_backupFiles.isEmpty)
                   const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 64),
+                    padding: EdgeInsets.symmetric(vertical: 48),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
@@ -354,7 +487,7 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                         ),
                         SizedBox(height: 16),
                         Text(
-                          '暂无本地备份记录\n点击上方“导出备份”创建首个备份点',
+                          '暂无本地备份记录\n点击上方“导出备份”创建还原点',
                           textAlign: TextAlign.center,
                           style: TextStyle(
                             color: Color(0xFF94A3B8),
@@ -464,7 +597,6 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
     );
   }
 
-  // 极简主义家族式导出/导入操作区域
   Widget _actionCard(ColorScheme colorScheme) {
     return Container(
       decoration: BoxDecoration(
@@ -527,6 +659,75 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                   Text('导入备份'),
                 ],
               ),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _clearSettledCard() {
+    return Container(
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(
+          color: const Color(0xFFE2E8F0),
+          width: 0.8,
+        ),
+      ),
+      padding: const EdgeInsets.all(16),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '🧹 清理已结算数据 (可多选)',
+            style: TextStyle(
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1E293B),
+            ),
+          ),
+          const SizedBox(height: 12),
+          CheckboxListTile(
+            title: const Text('已结算文本数据', style: TextStyle(fontSize: 12)),
+            subtitle: const Text('物理清除已勾选结算的入库明细及流水，释放数据库', style: TextStyle(fontSize: 10)),
+            value: _clearTextSelected,
+            onChanged: (val) {
+              setState(() {
+                _clearTextSelected = val ?? false;
+              });
+            },
+            controlAffinity: ListTileControlAffinity.leading,
+            contentPadding: EdgeInsets.zero,
+            activeColor: Colors.black,
+          ),
+          CheckboxListTile(
+            title: const Text('已结算物理图片', style: TextStyle(fontSize: 12)),
+            subtitle: const Text('物理删除已结算单据对应的拍照文件，释放手机存储', style: TextStyle(fontSize: 10)),
+            value: _clearImagesSelected,
+            onChanged: (val) {
+              setState(() {
+                _clearImagesSelected = val ?? false;
+              });
+            },
+            controlAffinity: ListTileControlAffinity.leading,
+            contentPadding: EdgeInsets.zero,
+            activeColor: Colors.black,
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              style: OutlinedButton.styleFrom(
+                foregroundColor: Colors.red,
+                side: const BorderSide(color: Colors.red, width: 0.8),
+                shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero),
+                padding: const EdgeInsets.symmetric(vertical: 12),
+              ),
+              onPressed: _showClearConfirmationDialog,
+              icon: const Icon(Icons.delete_forever, size: 16),
+              label: const Text('一键清空所选数据', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
             ),
           ),
         ],

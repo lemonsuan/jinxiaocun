@@ -18,7 +18,7 @@ import '../platform/paddle_ocr_channel.dart';
 import 'scanner_page.dart';
 import 'product_price_page.dart';
 import 'photo_count_page.dart';
-import 'backup_management_page.dart';
+import 'data_management_page.dart';
 import 'ai_config_page.dart';
 import 'login_page.dart';
 import 'express_inbound_page.dart';
@@ -823,12 +823,12 @@ class _AppHomeState extends State<AppHome> {
                   child: const Icon(Icons.cloud_upload_outlined,
                       color: Colors.black, size: 18),
                 ),
-                title: const Text('备份管理',
+                title: const Text('数据管理',
                     style: TextStyle(
                         fontSize: 14,
                         fontFamily: 'monospace',
                         fontWeight: FontWeight.bold)),
-                subtitle: const Text('本地备份数据历史、导入/导出与还原',
+                subtitle: const Text('本地备份与还原，已结算数据与图片清理',
                     style: TextStyle(
                         fontSize: 11,
                         fontFamily: 'monospace',
@@ -836,7 +836,7 @@ class _AppHomeState extends State<AppHome> {
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
-                      builder: (context) => BackupManagementPage(
+                      builder: (context) => DataManagementPage(
                         database: _database,
                         onDatabaseRestored: _refreshData,
                       ),
@@ -2928,6 +2928,11 @@ class _AppHomeState extends State<AppHome> {
         _ocrRowMergeTolerance = ocrRowMergeTolerance;
         _isReady = true;
       });
+      unawaited(_database.compressOldInboundImages().then((_) {
+        if (mounted) {
+          _refreshData();
+        }
+      }));
     } on Object catch (error) {
       if (!mounted) {
         return;

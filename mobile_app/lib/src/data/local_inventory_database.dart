@@ -1,6 +1,7 @@
 import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
@@ -1396,6 +1397,177 @@ class LocalInventoryDatabase {
       'reason': reason,
       'source_id': sourceId,
       'created_at': createdAt.toIso8601String(),
+    });
+  }
+
+  Future<void> compressOldInboundImages() async {
+    try {
+      final now = DateTime.now();
+      final sevenDaysAgo = now.subtract(const Duration(days: 7));
+      
+      final rows = await _db.query(
+        'inbound_receipts',
+        columns: ['id', 'image_path'],
+        where: 'created_at < ? AND image_path IS NOT NULL AND image_path != ?',
+        whereArgs: [sevenDaysAgo.toIso8601String(), ''],
+      );
+
+      for (final row in rows) {
+        final receiptId = row['id'] as String;
+        final imagePath = row['image_path'] as String;
+
+        if (imagePath.contains('_compressed')) {
+          continue;
+        }
+
+        final originalFile = File(imagePath);
+        if (!originalFile.existsSync()) {
+          continue;
+        }
+
+        try {
+          final ext = path.extension(imagePath);
+          final dir = path.dirname(imagePath);
+          final baseName = path.basenameWithoutExtension(imagePath);
+          final newPath = path.join(dir, '${baseName}_compressed$ext');
+
+          await _compressImageScale(imagePath, newPath);
+
+          if (File(newPath).existsSync()) {
+            await _db.update(
+              'inbound_receipts',
+              {'image_path': newPath},
+              where: 'id = ?',
+              whereArgs: [receiptId],
+            );
+            await originalFile.delete();
+          }
+        } catch (_) {
+          continue;
+        }
+      }
+    } catch (_) {}
+  }
+
+  Future<void> _compressImageScale(String inputPath, String outputPath, {double maxDimension = 1000}) async {
+    final bytes = await File(inputPath).readAsBytes();
+    final ui.Codec codec = await ui.instantiateImageCodec(bytes);
+    final ui.FrameInfo frameInfo = await codec.getNextFrame();
+    final ui.Image image = frameInfo.image;
+
+    double width = image.width.toDouble();
+    double height = image.height.toDouble();
+
+    if (width > maxDimension || height > maxDimension) {
+      if (width > height) {
+        height = (height * maxDimension) / width;
+        width = maxDimension;
+      } else {
+        width = (width * maxDimension) / height;
+        height = maxDimension;
+      }
+    } else {
+      await File(outputPath).writeAsBytes(bytes, flush: true);
+      image.dispose();
+      return;
+    }
+
+    final ui.PictureRecorder recorder = ui.PictureRecorder();
+    final ui.Canvas canvas = ui.Canvas(recorder);
+    final paint = ui.Paint()..filterQuality = ui.FilterQuality.medium;
+
+    canvas.drawImageRect(
+      image,
+      ui.Rect.fromLTWH(0, 0, image.width.toDouble(), image.height.toDouble()),
+      ui.Rect.fromLTWH(0, 0, width, height),
+      paint,
+    );
+
+    final ui.Picture picture = recorder.endRecording();
+    final ui.Image scaledImage = await picture.toImage(width.round(), height.round());
+    final ByteData? byteData = await scaledImage.toByteData(format: ui.ImageByteFormat.png);
+
+    if (byteData != null) {
+      await File(outputPath).writeAsBytes(byteData.buffer.asUint8List(), flush: true);
+    }
+
+    image.dispose();
+    scaledImage.dispose();
+  }
+
+  Future<void> clearSettledTextData() async {
+    await _db.transaction((txn) async {
+      final rows = await txn.query(
+        'inbound_receipts',
+        columns: ['id', 'image_path'],
+        where: 'is_settled = ?',
+        whereArgs: [1],
+      );
+
+      final ids = rows.map((r) => r['id'] as String).toList();
+      if (ids.isEmpty) return;
+
+      for (final row in rows) {
+        final imagePath = row['image_path'] as String?;
+        if (imagePath != null && imagePath.isNotEmpty) {
+          final file = File(imagePath);
+          if (file.existsSync()) {
+            await file.delete();
+          }
+        }
+      }
+
+      for (final receiptId in ids) {
+        await txn.delete(
+          'inbound_items',
+          where: 'receipt_id = ?',
+          whereArgs: [receiptId],
+        );
+        await txn.delete(
+          'stock_ledger',
+          where: 'source_id = ? AND reason = ?',
+          whereArgs: [receiptId, LedgerReason.inbound.name],
+        );
+        await txn.delete(
+          'ocr_results',
+          where: 'receipt_id = ?',
+          whereArgs: [receiptId],
+        );
+      }
+
+      await txn.delete(
+        'inbound_receipts',
+        where: 'is_settled = ?',
+        whereArgs: [1],
+      );
+    });
+  }
+
+  Future<void> clearSettledImagesData() async {
+    await _db.transaction((txn) async {
+      final rows = await txn.query(
+        'inbound_receipts',
+        columns: ['id', 'image_path'],
+        where: 'is_settled = ? AND image_path IS NOT NULL AND image_path != ?',
+        whereArgs: [1, ''],
+      );
+
+      if (rows.isEmpty) return;
+
+      for (final row in rows) {
+        final id = row['id'] as String;
+        final imagePath = row['image_path'] as String;
+        final file = File(imagePath);
+        if (file.existsSync()) {
+          await file.delete();
+        }
+        await txn.update(
+          'inbound_receipts',
+          {'image_path': null},
+          where: 'id = ?',
+          whereArgs: [id],
+        );
+      }
     });
   }
 }
