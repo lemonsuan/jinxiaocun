@@ -3,6 +3,30 @@ import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
 import '../data/local_inventory_database.dart';
 
+class ApiPreset {
+  final String name;
+  final String url;
+  final String defaultModel;
+
+  const ApiPreset({
+    required this.name,
+    required this.url,
+    required this.defaultModel,
+  });
+}
+
+const List<ApiPreset> _openaiPresets = [
+  ApiPreset(name: 'DeepSeek', url: 'https://api.deepseek.com', defaultModel: 'deepseek-chat'),
+  ApiPreset(name: 'OpenAI 官方', url: 'https://api.openai.com', defaultModel: 'gpt-4o-mini'),
+  ApiPreset(name: 'Gemini (兼容)', url: 'https://generativelanguage.googleapis.com/v1beta', defaultModel: 'gemini-1.5-flash'),
+  ApiPreset(name: 'Kimi', url: 'https://api.moonshot.cn', defaultModel: 'moonshot-v1-8k'),
+  ApiPreset(name: '通义千问', url: 'https://dashscope.aliyuncs.com/compatible-mode', defaultModel: 'qwen-turbo'),
+];
+
+const List<ApiPreset> _anthropicPresets = [
+  ApiPreset(name: 'Anthropic 官方', url: 'https://api.anthropic.com', defaultModel: 'claude-3-5-sonnet-20241022'),
+];
+
 class AiConfigPage extends StatefulWidget {
   final LocalInventoryDatabase database;
 
@@ -54,7 +78,7 @@ class _AiConfigPageState extends State<AiConfigPage> {
       } else {
         _modelController.text = _selectedFormat == 'anthropic'
             ? 'claude-3-5-sonnet-20241022'
-            : 'deepseek-v4-flash';
+            : 'deepseek-chat';
       }
     });
   }
@@ -285,7 +309,7 @@ class _AiConfigPageState extends State<AiConfigPage> {
                                 'claude-3-5-sonnet-20241022';
                           } else {
                             _urlController.text = 'https://api.deepseek.com';
-                            _modelController.text = 'deepseek-v4-flash';
+                            _modelController.text = 'deepseek-chat';
                           }
                         });
                       },
@@ -333,6 +357,54 @@ class _AiConfigPageState extends State<AiConfigPage> {
                             ),
                             style: const TextStyle(
                                 fontSize: 14, color: Color(0xFF1E293B)),
+                          ),
+                          const SizedBox(height: 8),
+                          Wrap(
+                            spacing: 6,
+                            runSpacing: 6,
+                            children: (_selectedFormat == 'anthropic'
+                                    ? _anthropicPresets
+                                    : _openaiPresets)
+                                .map((preset) {
+                              final isSelected =
+                                  _urlController.text.trim() == preset.url;
+                              return GestureDetector(
+                                onTap: () {
+                                  setState(() {
+                                    _urlController.text = preset.url;
+                                    _modelController.text = preset.defaultModel;
+                                    _models.clear();
+                                  });
+                                },
+                                child: Container(
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 8, vertical: 4),
+                                  decoration: BoxDecoration(
+                                    color: isSelected
+                                        ? const Color(0xFF1E293B)
+                                        : const Color(0xFFF1F5F9),
+                                    border: Border.all(
+                                      color: isSelected
+                                          ? const Color(0xFF1E293B)
+                                          : const Color(0xFFE2E8F0),
+                                      width: 0.8,
+                                    ),
+                                  ),
+                                  child: Text(
+                                    preset.name,
+                                    style: TextStyle(
+                                      fontSize: 11,
+                                      color: isSelected
+                                          ? Colors.white
+                                          : const Color(0xFF475569),
+                                      fontWeight: isSelected
+                                          ? FontWeight.w500
+                                          : FontWeight.normal,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            }).toList(),
                           ),
                           const SizedBox(height: 24),
                         ],
