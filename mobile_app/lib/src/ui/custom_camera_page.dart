@@ -16,7 +16,8 @@ class CustomCameraPage extends StatefulWidget {
   State<CustomCameraPage> createState() => _CustomCameraPageState();
 }
 
-class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBindingObserver {
+class _CustomCameraPageState extends State<CustomCameraPage>
+    with WidgetsBindingObserver {
   CameraController? _controller;
   List<CameraDescription> _cameras = [];
   bool _isInitialized = false;
@@ -110,7 +111,8 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
   Future<void> _toggleFlash() async {
     if (_controller == null || !_isInitialized) return;
 
-    final nextMode = _flashMode == FlashMode.off ? FlashMode.torch : FlashMode.off;
+    final nextMode =
+        _flashMode == FlashMode.off ? FlashMode.torch : FlashMode.off;
     try {
       await _controller!.setFlashMode(nextMode);
       setState(() {
@@ -130,18 +132,18 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
 
     try {
       final XFile file = await _controller!.takePicture();
-      
+
       // 物理图片裁剪：只保留取景框范围内的图片内容
       if (_logicalWidth > 0 && _logicalHeight > 0) {
         final File rawFile = File(file.path);
         if (rawFile.existsSync()) {
           final Uint8List bytes = await rawFile.readAsBytes();
-          
+
           // 1. 获取物理图片的原始宽高
           final ui.Codec codec = await ui.instantiateImageCodec(bytes);
           final ui.FrameInfo frameInfo = await codec.getNextFrame();
           final ui.Image image = frameInfo.image;
-          
+
           final double pWidth = image.width.toDouble();
           final double pHeight = image.height.toDouble();
           image.dispose(); // 尽早释放句柄
@@ -149,7 +151,7 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
           // 2. 根据比率计算取景框的逻辑大小和位置
           final double boxWidth = _logicalWidth;
           final double boxHeight = _logicalHeight * (0.65 / 0.82);
-          final double left = 0.0;
+          const double left = 0.0;
           final double top = (_logicalHeight - boxHeight) / 2;
 
           // 3. 计算 BoxFit.cover 模式下，物理图片映射至逻辑预览区的 scale 和 offset
@@ -191,8 +193,10 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             backgroundColor: const Color(0xFF1E293B),
-            shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-            content: Text('拍摄并裁剪失败: $e', style: const TextStyle(color: Colors.white, fontSize: 13)),
+            shape:
+                const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+            content: Text('拍摄并裁剪失败: $e',
+                style: const TextStyle(color: Colors.white, fontSize: 13)),
           ),
         );
       }
@@ -206,7 +210,8 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
   }
 
   // 使用 dart:ui 模块的 Skia 画布在物理层面上对图片进行像素裁剪，杜绝性能溢出
-  Future<void> _performPhysicalCrop(String path, int x, int y, int width, int height) async {
+  Future<void> _performPhysicalCrop(
+      String path, int x, int y, int width, int height) async {
     try {
       final File file = File(path);
       if (!file.existsSync()) return;
@@ -219,13 +224,15 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
       final ui.PictureRecorder recorder = ui.PictureRecorder();
       final ui.Canvas canvas = ui.Canvas(recorder);
 
-      final Rect src = Rect.fromLTWH(x.toDouble(), y.toDouble(), width.toDouble(), height.toDouble());
+      final Rect src = Rect.fromLTWH(
+          x.toDouble(), y.toDouble(), width.toDouble(), height.toDouble());
       final Rect dst = Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble());
       canvas.drawImageRect(image, src, dst, ui.Paint());
 
       final ui.Picture picture = recorder.endRecording();
       final ui.Image croppedImage = await picture.toImage(width, height);
-      final ByteData? byteData = await croppedImage.toByteData(format: ui.ImageByteFormat.png);
+      final ByteData? byteData =
+          await croppedImage.toByteData(format: ui.ImageByteFormat.png);
 
       if (byteData != null) {
         await file.writeAsBytes(byteData.buffer.asUint8List(), flush: true);
@@ -233,7 +240,7 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
 
       image.dispose();
       croppedImage.dispose();
-      
+
       // 清除该文件的 Flutter 图片缓存，促使 UI 重新从磁盘加载更新后的图片
       PaintingBinding.instance.imageCache.evict(FileImage(file));
     } catch (e) {
@@ -271,7 +278,10 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
                   : Center(
                       child: Text(
                         _statusMessage,
-                        style: const TextStyle(color: Color(0xFF94A3B8), fontSize: 13, letterSpacing: 0.5),
+                        style: const TextStyle(
+                            color: Color(0xFF94A3B8),
+                            fontSize: 13,
+                            letterSpacing: 0.5),
                       ),
                     ),
             ),
@@ -332,14 +342,14 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
         // 在渲染时实时记录最新的预览容器大小，用于拍照时的裁剪映射
         _logicalWidth = constraints.maxWidth;
         _logicalHeight = constraints.maxHeight;
-        
+
         final double width = constraints.maxWidth;
         final double height = constraints.maxHeight;
-        
+
         final double boxWidth = width;
         final double boxHeight = height * (0.65 / 0.82);
-        
-        final double left = 0.0;
+
+        const double left = 0.0;
         final double top = (height - boxHeight) / 2;
 
         return Stack(
@@ -413,7 +423,8 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 12, vertical: 6),
                       color: Colors.black.withOpacity(0.6),
                       child: const Text(
                         '请将清单/单据放入框内',
@@ -496,8 +507,11 @@ class _CustomCameraPageState extends State<CustomCameraPage> with WidgetsBinding
                 border: Border.all(color: const Color(0xFF1E293B), width: 0.8),
               ),
               child: Icon(
-                _flashMode == FlashMode.torch ? Icons.flash_on_outlined : Icons.flash_off_outlined,
-                color: _flashMode == FlashMode.torch ? Colors.amber : Colors.white,
+                _flashMode == FlashMode.torch
+                    ? Icons.flash_on_outlined
+                    : Icons.flash_off_outlined,
+                color:
+                    _flashMode == FlashMode.torch ? Colors.amber : Colors.white,
                 size: 20,
               ),
             ),

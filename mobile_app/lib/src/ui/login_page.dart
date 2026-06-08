@@ -25,7 +25,8 @@ class _LoginPageState extends State<LoginPage> {
   final TextEditingController _usernameController = TextEditingController();
   final TextEditingController _passwordController = TextEditingController();
   final TextEditingController _newShopNameController = TextEditingController();
-  final TextEditingController _confirmPasswordController = TextEditingController();
+  final TextEditingController _confirmPasswordController =
+      TextEditingController();
   final TextEditingController _phoneController = TextEditingController();
 
   bool _isSignUp = false; // 是否为注册模式
@@ -118,11 +119,13 @@ class _LoginPageState extends State<LoginPage> {
         requestBody['phone'] = _phoneController.text.trim();
       }
 
-      final response = await http.post(
-        Uri.parse('$baseUrl$endpoint'),
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(requestBody),
-      ).timeout(const Duration(seconds: 12));
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl$endpoint'),
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(requestBody),
+          )
+          .timeout(const Duration(seconds: 12));
 
       final body = jsonDecode(utf8.decode(response.bodyBytes));
 
@@ -197,14 +200,16 @@ class _LoginPageState extends State<LoginPage> {
       final baseUrl = _serverUrlController.text.trim();
       final token = _tempToken!;
 
-      final response = await http.post(
-        Uri.parse('$baseUrl/api/shops/create'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
-        body: jsonEncode({'name': shopName}),
-      ).timeout(const Duration(seconds: 10));
+      final response = await http
+          .post(
+            Uri.parse('$baseUrl/api/shops/create'),
+            headers: {
+              'Authorization': 'Bearer $token',
+              'Content-Type': 'application/json',
+            },
+            body: jsonEncode({'name': shopName}),
+          )
+          .timeout(const Duration(seconds: 10));
 
       final body = jsonDecode(utf8.decode(response.bodyBytes));
 
@@ -250,7 +255,8 @@ class _LoginPageState extends State<LoginPage> {
   }
 
   // 固定的本地默认店铺 ID 常量，用于合并离线版本与云端店铺的底层租户架构，消除双版本复杂性
-  static const String _defaultLocalShopId = '00000000-0000-0000-0000-000000000000';
+  static const String _defaultLocalShopId =
+      '00000000-0000-0000-0000-000000000000';
 
   Future<void> _enterOfflineMode() async {
     // 免密进入离线模式：自动激活“默认本地店铺 ID”，实现全数据流统一归档
@@ -281,7 +287,9 @@ class _LoginPageState extends State<LoginPage> {
               constraints: const BoxConstraints(maxWidth: 400),
               child: AnimatedSwitcher(
                 duration: const Duration(milliseconds: 250),
-                child: _showShopSelector ? _buildShopSelectorView() : _buildAuthView(),
+                child: _showShopSelector
+                    ? _buildShopSelectorView()
+                    : _buildAuthView(),
               ),
             ),
           ),
@@ -325,7 +333,8 @@ class _LoginPageState extends State<LoginPage> {
             ),
             child: Text(
               _errorMessage!,
-              style: const TextStyle(color: Colors.redAccent, fontSize: 12, height: 1.4),
+              style: const TextStyle(
+                  color: Colors.redAccent, fontSize: 12, height: 1.4),
             ),
           ),
           const SizedBox(height: 16),
@@ -343,14 +352,18 @@ class _LoginPageState extends State<LoginPage> {
             children: [
               // 服务器地址
               const Text('服务器 API 基地址',
-                  style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: _notionGreyText)),
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                      color: _notionGreyText)),
               const SizedBox(height: 4),
               TextField(
                 controller: _serverUrlController,
                 decoration: const InputDecoration(
                   hintText: 'http://10.0.2.2:8000',
                   border: OutlineInputBorder(borderRadius: BorderRadius.zero),
-                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                   isDense: true,
                 ),
                 style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
@@ -359,14 +372,18 @@ class _LoginPageState extends State<LoginPage> {
 
               // 用户名
               const Text('用户名',
-                  style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: _notionGreyText)),
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                      color: _notionGreyText)),
               const SizedBox(height: 4),
               TextField(
                 controller: _usernameController,
                 decoration: const InputDecoration(
                   hintText: '输入您的账号',
                   border: OutlineInputBorder(borderRadius: BorderRadius.zero),
-                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                   isDense: true,
                 ),
                 style: const TextStyle(fontSize: 13),
@@ -375,7 +392,10 @@ class _LoginPageState extends State<LoginPage> {
 
               // 密码
               const Text('密码',
-                  style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: _notionGreyText)),
+                  style: TextStyle(
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                      color: _notionGreyText)),
               const SizedBox(height: 4),
               TextField(
                 controller: _passwordController,
@@ -383,7 +403,8 @@ class _LoginPageState extends State<LoginPage> {
                 decoration: const InputDecoration(
                   hintText: '输入账户密码',
                   border: OutlineInputBorder(borderRadius: BorderRadius.zero),
-                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                   isDense: true,
                 ),
                 style: const TextStyle(fontSize: 13),
@@ -393,7 +414,10 @@ class _LoginPageState extends State<LoginPage> {
               if (_isSignUp) ...[
                 // 确认密码
                 const Text('确认密码',
-                    style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: _notionGreyText)),
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        color: _notionGreyText)),
                 const SizedBox(height: 4),
                 TextField(
                   controller: _confirmPasswordController,
@@ -401,7 +425,8 @@ class _LoginPageState extends State<LoginPage> {
                   decoration: const InputDecoration(
                     hintText: '再次输入密码以确认',
                     border: OutlineInputBorder(borderRadius: BorderRadius.zero),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                     isDense: true,
                   ),
                   style: const TextStyle(fontSize: 13),
@@ -410,7 +435,10 @@ class _LoginPageState extends State<LoginPage> {
 
                 // 手机号
                 const Text('手机号',
-                    style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: _notionGreyText)),
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        color: _notionGreyText)),
                 const SizedBox(height: 4),
                 TextField(
                   controller: _phoneController,
@@ -418,7 +446,8 @@ class _LoginPageState extends State<LoginPage> {
                   decoration: const InputDecoration(
                     hintText: '输入您的手机号',
                     border: OutlineInputBorder(borderRadius: BorderRadius.zero),
-                    contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                    contentPadding:
+                        EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                     isDense: true,
                   ),
                   style: const TextStyle(fontSize: 13),
@@ -435,7 +464,8 @@ class _LoginPageState extends State<LoginPage> {
                   style: ElevatedButton.styleFrom(
                     backgroundColor: _notionText,
                     foregroundColor: Colors.white,
-                    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                    shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.zero),
                     elevation: 0,
                   ),
                   onPressed: _isLoading ? null : _submitAuth,
@@ -443,11 +473,13 @@ class _LoginPageState extends State<LoginPage> {
                       ? const SizedBox(
                           width: 18,
                           height: 18,
-                          child: CircularProgressIndicator(color: Colors.white, strokeWidth: 2),
+                          child: CircularProgressIndicator(
+                              color: Colors.white, strokeWidth: 2),
                         )
                       : Text(
                           _isSignUp ? '快速注册并登录' : '登录云同步版',
-                          style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                          style: const TextStyle(
+                              fontWeight: FontWeight.bold, fontSize: 14),
                         ),
                 ),
               ),
@@ -469,7 +501,10 @@ class _LoginPageState extends State<LoginPage> {
               },
               child: Text(
                 _isSignUp ? '已有账号？立即登录' : '没有账号？立即注册',
-                style: const TextStyle(color: _notionText, fontSize: 12, fontWeight: FontWeight.w600),
+                style: const TextStyle(
+                    color: _notionText,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600),
               ),
             ),
           ],
@@ -485,13 +520,17 @@ class _LoginPageState extends State<LoginPage> {
               foregroundColor: _notionText,
               backgroundColor: Colors.white,
               side: const BorderSide(color: _notionText, width: 1.0),
-              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+              shape:
+                  const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
             ),
             onPressed: _enterOfflineMode,
             icon: const Icon(Icons.storefront_outlined, size: 16),
             label: const Text(
               '放弃登录，返回本地默认店铺',
-              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 13, fontFamily: 'monospace'),
+              style: TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 13,
+                  fontFamily: 'monospace'),
             ),
           ),
         ),
@@ -511,10 +550,10 @@ class _LoginPageState extends State<LoginPage> {
         // 标题
         Row(
           children: [
-            Expanded(
+            const Expanded(
               child: Text(
                 'SELECT SHOP',
-                style: const TextStyle(
+                style: TextStyle(
                   fontSize: 24,
                   fontFamily: 'monospace',
                   fontWeight: FontWeight.bold,
@@ -530,7 +569,8 @@ class _LoginPageState extends State<LoginPage> {
                   _tempToken = null;
                 });
               },
-              child: const Text('返回登录', style: TextStyle(color: _notionGreyText, fontSize: 12)),
+              child: const Text('返回登录',
+                  style: TextStyle(color: _notionGreyText, fontSize: 12)),
             ),
           ],
         ),
@@ -544,7 +584,10 @@ class _LoginPageState extends State<LoginPage> {
         // 已经批准的店铺列表
         if (approvedShops.isNotEmpty) ...[
           const Text('可进入的店铺',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _notionGreyText)),
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: _notionGreyText)),
           const SizedBox(height: 6),
           for (final shop in approvedShops) ...[
             Container(
@@ -555,11 +598,14 @@ class _LoginPageState extends State<LoginPage> {
               child: ListTile(
                 title: Text(
                   shop.shopName,
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                      fontSize: 14, fontWeight: FontWeight.bold),
                 ),
                 subtitle: Text('角色：${shop.role == "CREATOR" ? "创建者" : "店员"}',
-                    style: const TextStyle(fontSize: 11, color: _notionGreyText)),
-                trailing: const Icon(Icons.arrow_forward_ios, size: 12, color: _notionText),
+                    style:
+                        const TextStyle(fontSize: 11, color: _notionGreyText)),
+                trailing: const Icon(Icons.arrow_forward_ios,
+                    size: 12, color: _notionText),
                 onTap: () => _enterShop(shop.shopId, shop.shopName),
               ),
             ),
@@ -571,7 +617,10 @@ class _LoginPageState extends State<LoginPage> {
         if (pendingShops.isNotEmpty) ...[
           const SizedBox(height: 12),
           const Text('等待审核批准的店铺',
-              style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _notionGreyText)),
+              style: TextStyle(
+                  fontSize: 12,
+                  fontWeight: FontWeight.bold,
+                  color: _notionGreyText)),
           const SizedBox(height: 6),
           for (final shop in pendingShops) ...[
             Container(
@@ -584,8 +633,10 @@ class _LoginPageState extends State<LoginPage> {
                   shop.shopName,
                   style: const TextStyle(fontSize: 14, color: _notionGreyText),
                 ),
-                subtitle: const Text('加入申请审核中...', style: TextStyle(fontSize: 11, color: Colors.amber)),
-                trailing: const Icon(Icons.hourglass_empty, size: 14, color: Colors.amber),
+                subtitle: const Text('加入申请审核中...',
+                    style: TextStyle(fontSize: 11, color: Colors.amber)),
+                trailing: const Icon(Icons.hourglass_empty,
+                    size: 14, color: Colors.amber),
               ),
             ),
             const SizedBox(height: 8),
@@ -605,7 +656,8 @@ class _LoginPageState extends State<LoginPage> {
               child: Text(
                 '您当前还没有绑定任何商铺\n请在下方输入商铺名以创建全新店铺工作区',
                 textAlign: TextAlign.center,
-                style: TextStyle(fontSize: 12, color: _notionGreyText, height: 1.5),
+                style: TextStyle(
+                    fontSize: 12, color: _notionGreyText, height: 1.5),
               ),
             ),
           ),
@@ -623,14 +675,18 @@ class _LoginPageState extends State<LoginPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               const Text('创建全新商铺工作区',
-                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold, color: _notionText)),
+                  style: TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.bold,
+                      color: _notionText)),
               const SizedBox(height: 8),
               TextField(
                 controller: _newShopNameController,
                 decoration: const InputDecoration(
                   hintText: '输入新商铺的名称',
                   border: OutlineInputBorder(borderRadius: BorderRadius.zero),
-                  contentPadding: EdgeInsets.symmetric(horizontal: 10, vertical: 10),
+                  contentPadding:
+                      EdgeInsets.symmetric(horizontal: 10, vertical: 10),
                   isDense: true,
                 ),
                 style: const TextStyle(fontSize: 13),
@@ -644,7 +700,8 @@ class _LoginPageState extends State<LoginPage> {
                     backgroundColor: Colors.white,
                     foregroundColor: _notionText,
                     side: const BorderSide(color: _notionText, width: 0.8),
-                    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                    shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.zero),
                     elevation: 0,
                   ),
                   onPressed: _isCreatingShop ? null : _createAndEnterShop,
@@ -652,7 +709,8 @@ class _LoginPageState extends State<LoginPage> {
                       ? const SizedBox(
                           width: 16,
                           height: 16,
-                          child: CircularProgressIndicator(color: _notionText, strokeWidth: 2),
+                          child: CircularProgressIndicator(
+                              color: _notionText, strokeWidth: 2),
                         )
                       : const Text('创建并直接登入'),
                 ),

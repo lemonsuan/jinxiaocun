@@ -586,6 +586,8 @@ class LocalInventoryDatabase {
 
     final now = DateTime.now();
     final receiptId = _nextId('in');
+    final resolvedItems = <InboundDraftItem>[];
+
     try {
       await _db.transaction((txn) async {
         await txn.insert('inbound_receipts', {
@@ -603,6 +605,7 @@ class LocalInventoryDatabase {
         for (var index = 0; index < items.length; index += 1) {
           final item = items[index];
           final code = _productCodeFor(item.productCode, item.productName);
+          resolvedItems.add(item.copyWith(productCode: code));
           await _upsertProduct(txn, code, item.productName, now);
           await txn.insert('inbound_items', {
             'id': '$receiptId-item-$index',
@@ -638,7 +641,7 @@ class LocalInventoryDatabase {
       sellerOrderNumber: normalizedSellerOrder,
       rebateOrderNumber: normalizedRebateOrder,
       createdAt: now,
-      items: List.unmodifiable(items),
+      items: List.unmodifiable(resolvedItems),
       isSettled: isSettled,
       ocrStatus: ocrStatus,
       imagePath: imagePath,
@@ -1167,7 +1170,7 @@ class LocalInventoryDatabase {
     if (normalizedCode != null && normalizedCode.isNotEmpty) {
       return normalizedCode.toUpperCase();
     }
-    return 'NAME:${name.trim().toLowerCase()}';
+    return 'SCBH:${DateTime.now().microsecondsSinceEpoch}';
   }
 
   String? _optionalText(String? value) {

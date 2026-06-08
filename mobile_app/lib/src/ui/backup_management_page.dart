@@ -1,6 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
 import 'dart:ui';
 import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
@@ -81,8 +80,9 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
       bool exportedToDownloads = false;
       if (Platform.isAndroid) {
         try {
-          final bool? success = await const MethodChannel('inventory_app/system_utils')
-              .invokeMethod<bool>('saveToDownloads', {
+          final bool? success =
+              await const MethodChannel('inventory_app/system_utils')
+                  .invokeMethod<bool>('saveToDownloads', {
             'fileName': fileName,
             'bytes': bytes,
           });
@@ -188,8 +188,7 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
               backgroundColor: colorScheme.surface.withOpacity(0.9),
               title: Row(
                 children: [
-                  Icon(Icons.warning_amber_rounded,
-                      color: colorScheme.error),
+                  Icon(Icons.warning_amber_rounded, color: colorScheme.error),
                   const SizedBox(width: 8),
                   const Text('安全警示',
                       style: TextStyle(fontWeight: FontWeight.bold)),
@@ -202,8 +201,7 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                   const Text(
                     '您正在尝试恢复系统数据库！',
                     style: TextStyle(
-                        fontWeight: FontWeight.bold,
-                        color: Colors.redAccent),
+                        fontWeight: FontWeight.bold, color: Colors.redAccent),
                   ),
                   const SizedBox(height: 12),
                   Text('此操作将用备份数据覆盖当前手机中的所有库存、商品和单据数据。覆盖后，当前数据将不可恢复！',
@@ -237,8 +235,7 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                       await widget.database.importBackupBytes(bytes);
                       if (mounted) {
                         messenger.showSnackBar(
-                          const SnackBar(
-                              content: Text('数据库覆盖恢复成功！数据已更新')),
+                          const SnackBar(content: Text('数据库覆盖恢复成功！数据已更新')),
                         );
                         widget.onDatabaseRestored?.call();
                       }
@@ -307,7 +304,8 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                 );
               } catch (_) {}
             },
-            icon: const Icon(Icons.folder_open_outlined, size: 20, color: Color(0xFF64748B)),
+            icon: const Icon(Icons.folder_open_outlined,
+                size: 20, color: Color(0xFF64748B)),
           ),
           const SizedBox(width: 8),
         ],
@@ -344,22 +342,22 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
 
                 // 3. 备份历史列表
                 if (_backupFiles.isEmpty)
-                  Padding(
-                    padding: const EdgeInsets.symmetric(vertical: 64),
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 64),
                     child: Column(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const Icon(
+                        Icon(
                           Icons.inventory_2_outlined,
                           size: 32,
                           color: Color(0xFFCBD5E1),
                         ),
-                        const SizedBox(height: 16),
+                        SizedBox(height: 16),
                         Text(
                           '暂无本地备份记录\n点击上方“导出备份”创建首个备份点',
                           textAlign: TextAlign.center,
                           style: TextStyle(
-                            color: const Color(0xFF94A3B8),
+                            color: Color(0xFF94A3B8),
                             fontSize: 12,
                             height: 1.6,
                             letterSpacing: 0.5,
@@ -386,7 +384,8 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                         ),
                       ),
                       child: ListTile(
-                        contentPadding: const EdgeInsets.symmetric(vertical: 12),
+                        contentPadding:
+                            const EdgeInsets.symmetric(vertical: 12),
                         onLongPress: () async {
                           if (await file.exists()) {
                             await Share.shareXFiles(
@@ -428,7 +427,8 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                             TextButton(
                               style: TextButton.styleFrom(
                                 foregroundColor: const Color(0xFF1E293B),
-                                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 12, vertical: 4),
                                 minimumSize: Size.zero,
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
@@ -482,7 +482,8 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
               style: OutlinedButton.styleFrom(
                 foregroundColor: const Color(0xFF1E293B),
                 side: const BorderSide(color: Color(0xFFE2E8F0), width: 0.8),
-                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero),
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 textStyle: const TextStyle(
                   fontWeight: FontWeight.w500,
@@ -508,7 +509,8 @@ class _BackupManagementPageState extends State<BackupManagementPage> {
                 foregroundColor: Colors.white,
                 backgroundColor: const Color(0xFF1E293B),
                 side: const BorderSide(color: Color(0xFF1E293B), width: 0.8),
-                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero),
                 padding: const EdgeInsets.symmetric(vertical: 14),
                 textStyle: const TextStyle(
                   fontWeight: FontWeight.w500,

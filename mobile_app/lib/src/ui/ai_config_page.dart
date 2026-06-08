@@ -101,7 +101,8 @@ class _AiConfigPageState extends State<AiConfigPage> {
                 .toList();
             setState(() {
               _models = models;
-              if (models.isNotEmpty && !models.contains(_modelController.text)) {
+              if (models.isNotEmpty &&
+                  !models.contains(_modelController.text)) {
                 _modelController.text = models.first;
               }
             });
@@ -143,13 +144,15 @@ class _AiConfigPageState extends State<AiConfigPage> {
                 .toList();
             setState(() {
               _models = models;
-              if (models.isNotEmpty && !models.contains(_modelController.text)) {
+              if (models.isNotEmpty &&
+                  !models.contains(_modelController.text)) {
                 _modelController.text = models.first;
               }
             });
             if (mounted) {
               ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(content: Text('成功加载了 ${models.length} 个 Anthropic 模型！')),
+                SnackBar(
+                    content: Text('成功加载了 ${models.length} 个 Anthropic 模型！')),
               );
             }
           } else {
@@ -248,8 +251,10 @@ class _AiConfigPageState extends State<AiConfigPage> {
                     child: SegmentedButton<String>(
                       showSelectedIcon: false,
                       style: SegmentedButton.styleFrom(
-                        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-                        side: const BorderSide(color: Color(0xFFE2E8F0), width: 0.8),
+                        shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.zero),
+                        side: const BorderSide(
+                            color: Color(0xFFE2E8F0), width: 0.8),
                       ),
                       segments: const [
                         ButtonSegment<String>(
@@ -276,7 +281,8 @@ class _AiConfigPageState extends State<AiConfigPage> {
                           _models.clear(); // 清空旧模型列表
                           if (_selectedFormat == 'anthropic') {
                             _urlController.text = 'https://api.anthropic.com';
-                            _modelController.text = 'claude-3-5-sonnet-20241022';
+                            _modelController.text =
+                                'claude-3-5-sonnet-20241022';
                           } else {
                             _urlController.text = 'https://api.deepseek.com';
                             _modelController.text = 'deepseek-v4-flash';
@@ -300,26 +306,33 @@ class _AiConfigPageState extends State<AiConfigPage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        if (_selectedFormat == 'openai' || _selectedFormat == 'anthropic') ...[
+                        if (_selectedFormat == 'openai' ||
+                            _selectedFormat == 'anthropic') ...[
                           TextFormField(
                             controller: _urlController,
                             decoration: const InputDecoration(
                               labelText: '接口地址 (API URL)',
-                              labelStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                              labelStyle: TextStyle(
+                                  color: Color(0xFF94A3B8), fontSize: 13),
                               hintText: '请输入 API 接口地址',
-                              hintStyle: TextStyle(color: Color(0xFFCBD5E1), fontSize: 13),
+                              hintStyle: TextStyle(
+                                  color: Color(0xFFCBD5E1), fontSize: 13),
                               border: UnderlineInputBorder(
-                                borderSide: BorderSide(color: Color(0xFFE2E8F0), width: 0.8),
+                                borderSide: BorderSide(
+                                    color: Color(0xFFE2E8F0), width: 0.8),
                               ),
                               enabledBorder: UnderlineInputBorder(
-                                borderSide: BorderSide(color: Color(0xFFE2E8F0), width: 0.8),
+                                borderSide: BorderSide(
+                                    color: Color(0xFFE2E8F0), width: 0.8),
                               ),
                               focusedBorder: UnderlineInputBorder(
-                                borderSide: BorderSide(color: Color(0xFF1E293B), width: 1.2),
+                                borderSide: BorderSide(
+                                    color: Color(0xFF1E293B), width: 1.2),
                               ),
                               isDense: true,
                             ),
-                            style: const TextStyle(fontSize: 14, color: Color(0xFF1E293B)),
+                            style: const TextStyle(
+                                fontSize: 14, color: Color(0xFF1E293B)),
                           ),
                           const SizedBox(height: 24),
                         ],
@@ -328,21 +341,27 @@ class _AiConfigPageState extends State<AiConfigPage> {
                           obscureText: true,
                           decoration: const InputDecoration(
                             labelText: 'API Key',
-                            labelStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                            labelStyle: TextStyle(
+                                color: Color(0xFF94A3B8), fontSize: 13),
                             hintText: '请输入您的 API Key',
-                            hintStyle: TextStyle(color: Color(0xFFCBD5E1), fontSize: 13),
+                            hintStyle: TextStyle(
+                                color: Color(0xFFCBD5E1), fontSize: 13),
                             border: UnderlineInputBorder(
-                              borderSide: BorderSide(color: Color(0xFFE2E8F0), width: 0.8),
+                              borderSide: BorderSide(
+                                  color: Color(0xFFE2E8F0), width: 0.8),
                             ),
                             enabledBorder: UnderlineInputBorder(
-                              borderSide: BorderSide(color: Color(0xFFE2E8F0), width: 0.8),
+                              borderSide: BorderSide(
+                                  color: Color(0xFFE2E8F0), width: 0.8),
                             ),
                             focusedBorder: UnderlineInputBorder(
-                              borderSide: BorderSide(color: Color(0xFF1E293B), width: 1.2),
+                              borderSide: BorderSide(
+                                  color: Color(0xFF1E293B), width: 1.2),
                             ),
                             isDense: true,
                           ),
-                          style: const TextStyle(fontSize: 14, color: Color(0xFF1E293B)),
+                          style: const TextStyle(
+                              fontSize: 14, color: Color(0xFF1E293B)),
                         ),
                         const SizedBox(height: 24),
                         Row(
@@ -351,7 +370,8 @@ class _AiConfigPageState extends State<AiConfigPage> {
                               child: _isLoadingModels
                                   ? const Center(
                                       child: Padding(
-                                        padding: EdgeInsets.symmetric(vertical: 8),
+                                        padding:
+                                            EdgeInsets.symmetric(vertical: 8),
                                         child: CircularProgressIndicator(
                                           strokeWidth: 2,
                                           color: Color(0xFF1E293B),
@@ -360,10 +380,15 @@ class _AiConfigPageState extends State<AiConfigPage> {
                                     )
                                   : OutlinedButton.icon(
                                       style: OutlinedButton.styleFrom(
-                                        foregroundColor: const Color(0xFF1E293B),
-                                        side: const BorderSide(color: Color(0xFFE2E8F0), width: 0.8),
-                                        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-                                        padding: const EdgeInsets.symmetric(vertical: 12),
+                                        foregroundColor:
+                                            const Color(0xFF1E293B),
+                                        side: const BorderSide(
+                                            color: Color(0xFFE2E8F0),
+                                            width: 0.8),
+                                        shape: const RoundedRectangleBorder(
+                                            borderRadius: BorderRadius.zero),
+                                        padding: const EdgeInsets.symmetric(
+                                            vertical: 12),
                                         textStyle: const TextStyle(
                                           fontWeight: FontWeight.w500,
                                           fontSize: 12,
@@ -371,7 +396,8 @@ class _AiConfigPageState extends State<AiConfigPage> {
                                         ),
                                       ),
                                       onPressed: _fetchModels,
-                                      icon: const Icon(Icons.sync_outlined, size: 14),
+                                      icon: const Icon(Icons.sync_outlined,
+                                          size: 14),
                                       label: const Text('加载云端模型'),
                                     ),
                             ),
@@ -380,17 +406,21 @@ class _AiConfigPageState extends State<AiConfigPage> {
                         const SizedBox(height: 24),
                         if (_models.isNotEmpty) ...[
                           DropdownButtonFormField<String>(
-                            value: _models.contains(_modelController.text)
-                                ? _modelController.text
-                                : _models.first,
+                            initialValue:
+                                _models.contains(_modelController.text)
+                                    ? _modelController.text
+                                    : _models.first,
                             decoration: const InputDecoration(
                               labelText: '选择云端模型',
-                              labelStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                              labelStyle: TextStyle(
+                                  color: Color(0xFF94A3B8), fontSize: 13),
                               border: UnderlineInputBorder(
-                                borderSide: BorderSide(color: Color(0xFFE2E8F0), width: 0.8),
+                                borderSide: BorderSide(
+                                    color: Color(0xFFE2E8F0), width: 0.8),
                               ),
                               enabledBorder: UnderlineInputBorder(
-                                borderSide: BorderSide(color: Color(0xFFE2E8F0), width: 0.8),
+                                borderSide: BorderSide(
+                                    color: Color(0xFFE2E8F0), width: 0.8),
                               ),
                               isDense: true,
                             ),
@@ -399,7 +429,8 @@ class _AiConfigPageState extends State<AiConfigPage> {
                                 value: m,
                                 child: Text(
                                   m,
-                                  style: const TextStyle(fontSize: 13, color: Color(0xFF1E293B)),
+                                  style: const TextStyle(
+                                      fontSize: 13, color: Color(0xFF1E293B)),
                                 ),
                               );
                             }).toList(),
@@ -417,21 +448,27 @@ class _AiConfigPageState extends State<AiConfigPage> {
                           controller: _modelController,
                           decoration: const InputDecoration(
                             labelText: '当前识别模型名称',
-                            labelStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                            labelStyle: TextStyle(
+                                color: Color(0xFF94A3B8), fontSize: 13),
                             hintText: '例如: deepseek-chat 或 gemini-1.5-flash',
-                            hintStyle: TextStyle(color: Color(0xFFCBD5E1), fontSize: 13),
+                            hintStyle: TextStyle(
+                                color: Color(0xFFCBD5E1), fontSize: 13),
                             border: UnderlineInputBorder(
-                              borderSide: BorderSide(color: Color(0xFFE2E8F0), width: 0.8),
+                              borderSide: BorderSide(
+                                  color: Color(0xFFE2E8F0), width: 0.8),
                             ),
                             enabledBorder: UnderlineInputBorder(
-                              borderSide: BorderSide(color: Color(0xFFE2E8F0), width: 0.8),
+                              borderSide: BorderSide(
+                                  color: Color(0xFFE2E8F0), width: 0.8),
                             ),
                             focusedBorder: UnderlineInputBorder(
-                              borderSide: BorderSide(color: Color(0xFF1E293B), width: 1.2),
+                              borderSide: BorderSide(
+                                  color: Color(0xFF1E293B), width: 1.2),
                             ),
                             isDense: true,
                           ),
-                          style: const TextStyle(fontSize: 14, color: Color(0xFF1E293B)),
+                          style: const TextStyle(
+                              fontSize: 14, color: Color(0xFF1E293B)),
                         ),
                       ],
                     ),
@@ -461,7 +498,8 @@ class _AiConfigPageState extends State<AiConfigPage> {
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFF1E293B),
                     foregroundColor: Colors.white,
-                    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                    shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.zero),
                     elevation: 0,
                   ),
                   onPressed: _isSaving ? null : _saveConfig,

@@ -3,7 +3,6 @@ import 'dart:io';
 import 'dart:typed_data';
 import 'dart:ui' as ui;
 
-
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
@@ -24,9 +23,6 @@ import 'ai_config_page.dart';
 import 'login_page.dart';
 import 'express_inbound_page.dart';
 import 'custom_camera_page.dart';
-
-
-
 
 enum _HistorySettlementFilter { all, settled, unsettled }
 
@@ -159,10 +155,10 @@ class _AppHomeState extends State<AppHome> {
           backgroundColor: Colors.white,
           selectedItemColor: _notionText,
           unselectedItemColor: _notionGreyText,
-          selectedLabelStyle: const TextStyle(
-              fontWeight: FontWeight.w600, fontSize: 11),
-          unselectedLabelStyle: const TextStyle(
-              fontWeight: FontWeight.normal, fontSize: 11),
+          selectedLabelStyle:
+              const TextStyle(fontWeight: FontWeight.w600, fontSize: 11),
+          unselectedLabelStyle:
+              const TextStyle(fontWeight: FontWeight.normal, fontSize: 11),
           elevation: 0,
           items: const [
             BottomNavigationBarItem(
@@ -219,13 +215,15 @@ class _AppHomeState extends State<AppHome> {
                 border: Border.all(color: _notionBorder, width: 1.0),
               ),
               child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
                 child: Column(
                   children: [
                     // 第一行：快递单号
                     Row(
                       children: [
-                        const Icon(Icons.mail_outline, color: _notionGreyText, size: 18),
+                        const Icon(Icons.mail_outline,
+                            color: _notionGreyText, size: 18),
                         const SizedBox(width: 12),
                         Expanded(
                           child: TextField(
@@ -234,19 +232,23 @@ class _AppHomeState extends State<AppHome> {
                               hintText: '输入或扫描快递单号',
                               border: InputBorder.none,
                               isDense: true,
-                              contentPadding: EdgeInsets.symmetric(vertical: 12),
+                              contentPadding:
+                                  EdgeInsets.symmetric(vertical: 12),
                             ),
-                            style: const TextStyle(fontSize: 14, color: _notionText),
+                            style: const TextStyle(
+                                fontSize: 14, color: _notionText),
                           ),
                         ),
                         const SizedBox(width: 8),
                         GestureDetector(
                           onTap: _scanTrackingNumber,
                           child: Container(
-                            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                            padding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 6),
                             decoration: BoxDecoration(
                               color: Colors.white,
-                              border: Border.all(color: _notionBorder, width: 1.0),
+                              border:
+                                  Border.all(color: _notionBorder, width: 1.0),
                             ),
                             child: const Icon(Icons.qr_code_scanner,
                                 color: _notionText, size: 16),
@@ -259,7 +261,8 @@ class _AppHomeState extends State<AppHome> {
                     // 第二行：订单号
                     Row(
                       children: [
-                        const Icon(Icons.storefront, color: _notionGreyText, size: 18),
+                        const Icon(Icons.storefront,
+                            color: _notionGreyText, size: 18),
                         const SizedBox(width: 12),
                         Expanded(
                           child: TextField(
@@ -268,9 +271,11 @@ class _AppHomeState extends State<AppHome> {
                               hintText: '输入订单号',
                               border: InputBorder.none,
                               isDense: true,
-                              contentPadding: EdgeInsets.symmetric(vertical: 12),
+                              contentPadding:
+                                  EdgeInsets.symmetric(vertical: 12),
                             ),
-                            style: const TextStyle(fontSize: 14, color: _notionText),
+                            style: const TextStyle(
+                                fontSize: 14, color: _notionText),
                           ),
                         ),
                       ],
@@ -290,9 +295,11 @@ class _AppHomeState extends State<AppHome> {
                               hintText: '输入方案编号',
                               border: InputBorder.none,
                               isDense: true,
-                              contentPadding: EdgeInsets.symmetric(vertical: 12),
+                              contentPadding:
+                                  EdgeInsets.symmetric(vertical: 12),
                             ),
-                            style: const TextStyle(fontSize: 14, color: _notionText),
+                            style: const TextStyle(
+                                fontSize: 14, color: _notionText),
                           ),
                         ),
                       ],
@@ -323,7 +330,8 @@ class _AppHomeState extends State<AppHome> {
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                       onPressed: _captureAndRecognizeList,
-                      icon: const Icon(Icons.photo_camera_outlined, size: 16, color: Colors.white),
+                      icon: const Icon(Icons.photo_camera_outlined,
+                          size: 16, color: Colors.white),
                       label: const Text('拍照识别',
                           style: TextStyle(fontWeight: FontWeight.normal)),
                     ),
@@ -334,13 +342,15 @@ class _AppHomeState extends State<AppHome> {
                       style: OutlinedButton.styleFrom(
                         backgroundColor: Colors.white,
                         foregroundColor: _notionText,
-                        side: const BorderSide(color: _notionBorder, width: 1.0),
+                        side:
+                            const BorderSide(color: _notionBorder, width: 1.0),
                         shape: const RoundedRectangleBorder(
                             borderRadius: BorderRadius.zero),
                         padding: const EdgeInsets.symmetric(vertical: 14),
                       ),
                       onPressed: _pickAndRecognizeList,
-                      icon: const Icon(Icons.photo_library_outlined, size: 16, color: _notionText),
+                      icon: const Icon(Icons.photo_library_outlined,
+                          size: 16, color: _notionText),
                       label: const Text('相册识别',
                           style: TextStyle(fontWeight: FontWeight.normal)),
                     ),
@@ -352,7 +362,9 @@ class _AppHomeState extends State<AppHome> {
               const SizedBox(height: 8),
               _inboundImageTile(
                 _currentInboundImagePath!,
-                trackingNumber: _trackingController.text.trim().isEmpty ? null : _trackingController.text.trim(),
+                trackingNumber: _trackingController.text.trim().isEmpty
+                    ? null
+                    : _trackingController.text.trim(),
               ),
             ],
             const SizedBox(height: 12),
@@ -394,11 +406,16 @@ class _AppHomeState extends State<AppHome> {
                     });
                   },
                   child: Container(
-                    padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                    padding:
+                        const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                     decoration: BoxDecoration(
-                      color: _isSettled ? const Color(0xFFDCF5DC) : const Color(0xFFFDE8E8),
+                      color: _isSettled
+                          ? const Color(0xFFDCF5DC)
+                          : const Color(0xFFFDE8E8),
                       border: Border.all(
-                        color: _isSettled ? const Color(0xFF4CAF50) : const Color(0xFFE53935),
+                        color: _isSettled
+                            ? const Color(0xFF4CAF50)
+                            : const Color(0xFFE53935),
                         width: 0.8,
                       ),
                     ),
@@ -408,7 +425,9 @@ class _AppHomeState extends State<AppHome> {
                         fontSize: 12,
                         fontFamily: 'monospace',
                         fontWeight: FontWeight.bold,
-                        color: _isSettled ? const Color(0xFF2E7D32) : const Color(0xFFC62828),
+                        color: _isSettled
+                            ? const Color(0xFF2E7D32)
+                            : const Color(0xFFC62828),
                       ),
                     ),
                   ),
@@ -427,9 +446,11 @@ class _AppHomeState extends State<AppHome> {
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                     ),
                     onPressed: _confirmInbound,
-                    icon: const Icon(Icons.archive_outlined, size: 16, color: Colors.white),
+                    icon: const Icon(Icons.archive_outlined,
+                        size: 16, color: Colors.white),
                     label: const Text('确认入库',
-                        style: TextStyle(fontSize: 14, fontWeight: FontWeight.bold)),
+                        style: TextStyle(
+                            fontSize: 14, fontWeight: FontWeight.bold)),
                   ),
                 ),
               ],
@@ -560,7 +581,8 @@ class _AppHomeState extends State<AppHome> {
             Row(
               children: [
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
                   decoration: BoxDecoration(
                     color: Colors.black,
                     border: Border.all(color: Colors.black, width: 0.8),
@@ -582,7 +604,9 @@ class _AppHomeState extends State<AppHome> {
                     fontSize: 11,
                     fontFamily: 'monospace',
                     fontWeight: FontWeight.w600,
-                    color: _authMode == 'online' ? Colors.green.shade700 : Colors.black,
+                    color: _authMode == 'online'
+                        ? Colors.green.shade700
+                        : Colors.black,
                   ),
                 ),
               ],
@@ -629,10 +653,15 @@ class _AppHomeState extends State<AppHome> {
                       color: Colors.black, size: 18),
                 ),
                 title: const Text('拍照计数',
-                    style:
-                        TextStyle(fontSize: 14, fontFamily: 'monospace', fontWeight: FontWeight.bold)),
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.bold)),
                 subtitle: const Text('端侧离线自动识别与标记计数',
-                    style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.grey)),
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        color: Colors.grey)),
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
@@ -657,10 +686,15 @@ class _AppHomeState extends State<AppHome> {
                       color: Colors.black, size: 18),
                 ),
                 title: const Text('商品价格管理',
-                    style:
-                        TextStyle(fontSize: 14, fontFamily: 'monospace', fontWeight: FontWeight.bold)),
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.bold)),
                 subtitle: const Text('查看全部商品并编辑入库/出库指导价格',
-                    style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.grey)),
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        color: Colors.grey)),
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
@@ -685,10 +719,15 @@ class _AppHomeState extends State<AppHome> {
                       color: Colors.black, size: 18),
                 ),
                 title: const Text('AI 智能提取配置',
-                    style:
-                        TextStyle(fontSize: 14, fontFamily: 'monospace', fontWeight: FontWeight.bold)),
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.bold)),
                 subtitle: const Text('配置 OpenAI/Gemini 双格式并动态选择大模型',
-                    style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.grey)),
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        color: Colors.grey)),
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
@@ -732,9 +771,14 @@ class _AppHomeState extends State<AppHome> {
                       ),
                       title: Text('OCR 行距 $valueText',
                           style: const TextStyle(
-                              fontSize: 14, fontFamily: 'monospace', fontWeight: FontWeight.bold)),
+                              fontSize: 14,
+                              fontFamily: 'monospace',
+                              fontWeight: FontWeight.bold)),
                       subtitle: const Text('严格 - 宽松',
-                          style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.grey)),
+                          style: TextStyle(
+                              fontSize: 11,
+                              fontFamily: 'monospace',
+                              color: Colors.grey)),
                     ),
                   ),
                   const SizedBox(width: 8),
@@ -780,10 +824,15 @@ class _AppHomeState extends State<AppHome> {
                       color: Colors.black, size: 18),
                 ),
                 title: const Text('备份管理',
-                    style:
-                        TextStyle(fontSize: 14, fontFamily: 'monospace', fontWeight: FontWeight.bold)),
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.bold)),
                 subtitle: const Text('本地备份数据历史、导入/导出与还原',
-                    style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.grey)),
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        color: Colors.grey)),
                 onTap: () {
                   Navigator.of(context).push(
                     MaterialPageRoute(
@@ -808,10 +857,15 @@ class _AppHomeState extends State<AppHome> {
                       color: Colors.black, size: 18),
                 ),
                 title: const Text('AI 图片分析重整库房',
-                    style:
-                        TextStyle(fontSize: 14, fontFamily: 'monospace', fontWeight: FontWeight.bold)),
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.bold)),
                 subtitle: const Text('对所有带图片的入库单重跑 AI 识别并一键重整库存',
-                    style: TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.grey)),
+                    style: TextStyle(
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        color: Colors.grey)),
                 onTap: _startAiInventoryRebuilding,
               ),
               Divider(height: 1, color: Colors.grey.shade200),
@@ -819,30 +873,40 @@ class _AppHomeState extends State<AppHome> {
                 contentPadding: EdgeInsets.zero,
                 leading: Container(
                   padding: const EdgeInsets.all(8),
-
                   decoration: BoxDecoration(
                     color: Colors.white,
                     border: Border.all(color: Colors.black, width: 0.8),
                   ),
                   child: Icon(
-                    _authMode == 'online' ? Icons.logout_outlined : Icons.cloud_queue_outlined,
+                    _authMode == 'online'
+                        ? Icons.logout_outlined
+                        : Icons.cloud_queue_outlined,
                     color: Colors.black,
                     size: 18,
                   ),
                 ),
                 title: Text(
                   _authMode == 'online' ? '切换商铺与账户' : '连接云端同步版',
-                  style: const TextStyle(fontSize: 14, fontFamily: 'monospace', fontWeight: FontWeight.bold),
+                  style: const TextStyle(
+                      fontSize: 14,
+                      fontFamily: 'monospace',
+                      fontWeight: FontWeight.bold),
                 ),
                 subtitle: Text(
-                  _authMode == 'online' ? '安全注销当前登录凭证并重新选择店铺' : '登录云端账户以开启多端工作区协同',
-                  style: const TextStyle(fontSize: 11, fontFamily: 'monospace', color: Colors.grey),
+                  _authMode == 'online'
+                      ? '安全注销当前登录凭证并重新选择店铺'
+                      : '登录云端账户以开启多端工作区协同',
+                  style: const TextStyle(
+                      fontSize: 11,
+                      fontFamily: 'monospace',
+                      color: Colors.grey),
                 ),
                 onTap: () async {
                   await _database.clearAuthCredentials();
                   if (mounted) {
                     Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(builder: (context) => const LoginPage()),
+                      MaterialPageRoute(
+                          builder: (context) => const LoginPage()),
                     );
                   }
                 },
@@ -854,8 +918,6 @@ class _AppHomeState extends State<AppHome> {
       const SizedBox(height: 16),
     ]);
   }
-
-
 
   Widget _sectionTitle(String value) {
     return Padding(
@@ -894,7 +956,10 @@ class _AppHomeState extends State<AppHome> {
             },
             icon: const Icon(Icons.flash_on, size: 14, color: Colors.black),
             label: const Text('极速模式',
-                style: TextStyle(fontSize: 12, fontFamily: 'monospace', color: Colors.black)),
+                style: TextStyle(
+                    fontSize: 12,
+                    fontFamily: 'monospace',
+                    color: Colors.black)),
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.black,
               side: const BorderSide(color: Colors.black, width: 0.8),
@@ -907,9 +972,13 @@ class _AppHomeState extends State<AppHome> {
           const SizedBox(width: 8),
           OutlinedButton.icon(
             onPressed: _clearCurrentInboundDraft,
-            icon: const Icon(Icons.cleaning_services_outlined, size: 14, color: Colors.black),
+            icon: const Icon(Icons.cleaning_services_outlined,
+                size: 14, color: Colors.black),
             label: const Text('清空当前单',
-                style: TextStyle(fontSize: 12, fontFamily: 'monospace', color: Colors.black)),
+                style: TextStyle(
+                    fontSize: 12,
+                    fontFamily: 'monospace',
+                    color: Colors.black)),
             style: OutlinedButton.styleFrom(
               foregroundColor: Colors.black,
               side: const BorderSide(color: Colors.black, width: 0.8),
@@ -923,9 +992,6 @@ class _AppHomeState extends State<AppHome> {
       ),
     );
   }
-
-
-
 
   Widget _historySettlementFilterControl() {
     return SegmentedButton<_HistorySettlementFilter>(
@@ -970,7 +1036,10 @@ class _AppHomeState extends State<AppHome> {
           Expanded(
             child: Text(
               '商品草稿 ${_draftItems.length}',
-              style: const TextStyle(fontSize: 15, fontFamily: 'monospace', fontWeight: FontWeight.bold),
+              style: const TextStyle(
+                  fontSize: 15,
+                  fontFamily: 'monospace',
+                  fontWeight: FontWeight.bold),
             ),
           ),
           TextButton.icon(
@@ -1067,7 +1136,7 @@ class _AppHomeState extends State<AppHome> {
                 child: ColoredBox(
                   color: colorScheme.surface,
                   child: DecoratedBox(
-                    decoration: BoxDecoration(
+                    decoration: const BoxDecoration(
                       border: Border(
                         bottom: BorderSide(color: _notionBorder, width: 0.5),
                       ),
@@ -1082,7 +1151,10 @@ class _AppHomeState extends State<AppHome> {
                           TextFormField(
                             key: ValueKey('draft-name-$index-$sourceKey'),
                             initialValue: item.productName,
-                            style: const TextStyle(fontSize: 14, color: _notionText, fontWeight: FontWeight.w600),
+                            style: const TextStyle(
+                                fontSize: 14,
+                                color: _notionText,
+                                fontWeight: FontWeight.w600),
                             maxLines: 1,
                             textInputAction: TextInputAction.next,
                             onChanged: (value) {
@@ -1106,15 +1178,21 @@ class _AppHomeState extends State<AppHome> {
                             children: [
                               Expanded(
                                 child: Container(
-                                  padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 6, vertical: 2),
                                   decoration: BoxDecoration(
                                     color: Colors.white,
-                                    border: Border.all(color: _notionBorder, width: 1.0),
+                                    border: Border.all(
+                                        color: _notionBorder, width: 1.0),
                                   ),
                                   child: TextFormField(
-                                    key: ValueKey('draft-code-$index-$sourceKey'),
+                                    key: ValueKey(
+                                        'draft-code-$index-$sourceKey'),
                                     initialValue: item.productCode ?? '',
-                                    style: const TextStyle(fontSize: 9, fontFamily: 'monospace', color: _notionGreyText),
+                                    style: const TextStyle(
+                                        fontSize: 9,
+                                        fontFamily: 'monospace',
+                                        color: _notionGreyText),
                                     maxLines: 1,
                                     textInputAction: TextInputAction.next,
                                     onChanged: (value) {
@@ -1131,7 +1209,8 @@ class _AppHomeState extends State<AppHome> {
                                       isDense: true,
                                       border: InputBorder.none,
                                       prefixText: '编码：',
-                                      prefixStyle: TextStyle(fontSize: 9, color: _notionGreyText),
+                                      prefixStyle: TextStyle(
+                                          fontSize: 9, color: _notionGreyText),
                                       contentPadding: EdgeInsets.zero,
                                     ),
                                   ),
@@ -1139,10 +1218,12 @@ class _AppHomeState extends State<AppHome> {
                               ),
                               const SizedBox(width: 8),
                               Container(
-                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                padding: const EdgeInsets.symmetric(
+                                    horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
                                   color: Colors.white,
-                                  border: Border.all(color: _notionBorder, width: 1.0),
+                                  border: Border.all(
+                                      color: _notionBorder, width: 1.0),
                                 ),
                                 child: SizedBox(
                                   width: 56,
@@ -1151,7 +1232,11 @@ class _AppHomeState extends State<AppHome> {
                                       'draft-qty-$index-${item.quantity}',
                                     ),
                                     initialValue: item.quantity.toString(),
-                                    style: const TextStyle(fontSize: 9, fontFamily: 'monospace', color: _notionText, fontWeight: FontWeight.bold),
+                                    style: const TextStyle(
+                                        fontSize: 9,
+                                        fontFamily: 'monospace',
+                                        color: _notionText,
+                                        fontWeight: FontWeight.bold),
                                     textAlign: TextAlign.end,
                                     keyboardType: TextInputType.number,
                                     onChanged: (value) {
@@ -1163,7 +1248,8 @@ class _AppHomeState extends State<AppHome> {
                                       isDense: true,
                                       border: InputBorder.none,
                                       prefixText: '数量：',
-                                      prefixStyle: TextStyle(fontSize: 9, color: _notionGreyText),
+                                      prefixStyle: TextStyle(
+                                          fontSize: 9, color: _notionGreyText),
                                       contentPadding: EdgeInsets.zero,
                                     ),
                                   ),
@@ -1222,7 +1308,9 @@ class _AppHomeState extends State<AppHome> {
                     Text(
                       stock.productName,
                       style: const TextStyle(
-                          fontSize: 14, color: _notionText, fontWeight: FontWeight.w600),
+                          fontSize: 14,
+                          color: _notionText,
+                          fontWeight: FontWeight.w600),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -1234,7 +1322,8 @@ class _AppHomeState extends State<AppHome> {
                               horizontal: 6, vertical: 2),
                           decoration: BoxDecoration(
                             color: Colors.white,
-                            border: Border.all(color: _notionBorder, width: 1.0),
+                            border:
+                                Border.all(color: _notionBorder, width: 1.0),
                           ),
                           child: Text(
                             '编码：${stock.productCode}',
@@ -1252,9 +1341,7 @@ class _AppHomeState extends State<AppHome> {
                             fontSize: 12,
                             fontFamily: 'monospace',
                             fontWeight: FontWeight.bold,
-                            color: isOutOfStock
-                                ? _notionGreyText
-                                : _notionText,
+                            color: isOutOfStock ? _notionGreyText : _notionText,
                           ),
                         ),
                       ],
@@ -1367,7 +1454,7 @@ class _AppHomeState extends State<AppHome> {
 
       // 如果宽度大于高度，则是横屏图，强制逆时针旋转90度（即顺时针旋转270度）
       if (width > height) {
-        final double angle = 270 * 3.141592653589793 / 180;
+        const double angle = 270 * 3.141592653589793 / 180;
         final int targetWidth = height;
         final int targetHeight = width;
 
@@ -1380,8 +1467,10 @@ class _AppHomeState extends State<AppHome> {
         canvas.drawImage(image, Offset.zero, ui.Paint());
 
         final ui.Picture picture = recorder.endRecording();
-        final ui.Image rotatedImage = await picture.toImage(targetWidth, targetHeight);
-        final ByteData? byteData = await rotatedImage.toByteData(format: ui.ImageByteFormat.png);
+        final ui.Image rotatedImage =
+            await picture.toImage(targetWidth, targetHeight);
+        final ByteData? byteData =
+            await rotatedImage.toByteData(format: ui.ImageByteFormat.png);
 
         if (byteData != null) {
           await file.writeAsBytes(byteData.buffer.asUint8List(), flush: true);
@@ -1417,7 +1506,8 @@ class _AppHomeState extends State<AppHome> {
               shape: const RoundedRectangleBorder(
                 borderRadius: BorderRadius.zero,
               ),
-              insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+              insetPadding:
+                  const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Column(
@@ -1439,7 +1529,9 @@ class _AppHomeState extends State<AppHome> {
                           ),
                         ),
                         IconButton(
-                          onPressed: isLoading ? null : () => Navigator.pop(dialogContext),
+                          onPressed: isLoading
+                              ? null
+                              : () => Navigator.pop(dialogContext),
                           icon: const Icon(Icons.close, color: Colors.grey),
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
@@ -1460,7 +1552,8 @@ class _AppHomeState extends State<AppHome> {
                               width: double.infinity,
                               decoration: BoxDecoration(
                                 color: Colors.white,
-                                border: Border.all(color: Colors.grey.shade300, width: 0.5),
+                                border: Border.all(
+                                    color: Colors.grey.shade300, width: 0.5),
                                 borderRadius: BorderRadius.zero,
                               ),
                               clipBehavior: Clip.antiAlias,
@@ -1505,7 +1598,8 @@ class _AppHomeState extends State<AppHome> {
                                 shape: const RoundedRectangleBorder(
                                   borderRadius: BorderRadius.zero,
                                 ),
-                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
                               ),
                               onPressed: isLoading
                                   ? null
@@ -1514,10 +1608,13 @@ class _AppHomeState extends State<AppHome> {
                                         quarterTurns = (quarterTurns + 1) % 4;
                                       });
                                     },
-                              icon: const Icon(Icons.rotate_right, size: 16, color: Colors.black),
+                              icon: const Icon(Icons.rotate_right,
+                                  size: 16, color: Colors.black),
                               label: const Text(
                                 '旋转90°',
-                                style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.normal),
+                                style: TextStyle(
+                                    fontFamily: 'monospace',
+                                    fontWeight: FontWeight.normal),
                               ),
                             ),
                           ),
@@ -1531,7 +1628,8 @@ class _AppHomeState extends State<AppHome> {
                                 shape: const RoundedRectangleBorder(
                                   borderRadius: BorderRadius.zero,
                                 ),
-                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
                               ),
                               onPressed: isLoading
                                   ? null
@@ -1542,7 +1640,8 @@ class _AppHomeState extends State<AppHome> {
                                       try {
                                         // 1. 如果有旋转，则先物理旋转并写回文件，且重置 quarterTurns
                                         if (quarterTurns % 4 != 0) {
-                                          await _rotateImageFile(path, quarterTurns);
+                                          await _rotateImageFile(
+                                              path, quarterTurns);
                                           setDialogState(() {
                                             quarterTurns = 0;
                                           });
@@ -1557,9 +1656,12 @@ class _AppHomeState extends State<AppHome> {
                                         final ocrText = ocrResult.editableText;
 
                                         // 使用本地处理器提取商品，优先以表格结构提取，其次退化为纯文本提取
-                                        var items = _postProcessor.processRows(rows);
-                                        if (items.isEmpty && ocrText.isNotEmpty) {
-                                          items = _postProcessor.processPlainText(ocrText);
+                                        var items =
+                                            _postProcessor.processRows(rows);
+                                        if (items.isEmpty &&
+                                            ocrText.isNotEmpty) {
+                                          items = _postProcessor
+                                              .processPlainText(ocrText);
                                         }
 
                                         newDraftItems = items
@@ -1567,7 +1669,8 @@ class _AppHomeState extends State<AppHome> {
                                                   productName: item.productName,
                                                   quantity: item.quantity,
                                                   productCode: item.productCode,
-                                                  purchasePrice: item.purchasePrice,
+                                                  purchasePrice:
+                                                      item.purchasePrice,
                                                   salePrice: item.salePrice,
                                                   sourceText: '重新识别提取',
                                                 ))
@@ -1592,7 +1695,9 @@ class _AppHomeState extends State<AppHome> {
                                   size: 16, color: Colors.white),
                               label: const Text(
                                 '开始识别',
-                                style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold),
+                                style: TextStyle(
+                                    fontFamily: 'monospace',
+                                    fontWeight: FontWeight.bold),
                               ),
                             ),
                           ),
@@ -1615,7 +1720,8 @@ class _AppHomeState extends State<AppHome> {
                         child: Container(
                           decoration: BoxDecoration(
                             color: Colors.white,
-                            border: Border.all(color: Colors.grey.shade300, width: 0.5),
+                            border: Border.all(
+                                color: Colors.grey.shade300, width: 0.5),
                             borderRadius: BorderRadius.zero,
                           ),
                           clipBehavior: Clip.antiAlias,
@@ -1625,17 +1731,20 @@ class _AppHomeState extends State<AppHome> {
                                   child: Center(
                                     child: Text(
                                       '未提取到商品信息',
-                                      style: TextStyle(fontFamily: 'monospace', color: Colors.grey),
+                                      style: TextStyle(
+                                          fontFamily: 'monospace',
+                                          color: Colors.grey),
                                     ),
                                   ),
                                 )
                               : ListView.separated(
                                   shrinkWrap: true,
                                   physics: const ClampingScrollPhysics(),
-                                  padding: const EdgeInsets.symmetric(vertical: 8),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 8),
                                   itemCount: newDraftItems.length,
-                                  separatorBuilder: (context, index) =>
-                                      Divider(height: 1, color: Colors.grey.shade200),
+                                  separatorBuilder: (context, index) => Divider(
+                                      height: 1, color: Colors.grey.shade200),
                                   itemBuilder: (context, index) {
                                     final item = newDraftItems[index];
                                     return Padding(
@@ -1688,7 +1797,8 @@ class _AppHomeState extends State<AppHome> {
                                 shape: const RoundedRectangleBorder(
                                   borderRadius: BorderRadius.zero,
                                 ),
-                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
                               ),
                               onPressed: () {
                                 setDialogState(() {
@@ -1697,7 +1807,9 @@ class _AppHomeState extends State<AppHome> {
                               },
                               child: const Text(
                                 '重新旋转',
-                                style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.normal),
+                                style: TextStyle(
+                                    fontFamily: 'monospace',
+                                    fontWeight: FontWeight.normal),
                               ),
                             ),
                           ),
@@ -1711,14 +1823,16 @@ class _AppHomeState extends State<AppHome> {
                                 shape: const RoundedRectangleBorder(
                                   borderRadius: BorderRadius.zero,
                                 ),
-                                padding: const EdgeInsets.symmetric(vertical: 12),
+                                padding:
+                                    const EdgeInsets.symmetric(vertical: 12),
                               ),
                               onPressed: newDraftItems.isEmpty
                                   ? null
                                   : () async {
                                       try {
-                                        await _database.updateInboundReceiptItems(
-                                            receipt.id, newDraftItems);
+                                        await _database
+                                            .updateInboundReceiptItems(
+                                                receipt.id, newDraftItems);
                                         if (dialogContext.mounted) {
                                           Navigator.pop(dialogContext);
                                           ScaffoldMessenger.of(context)
@@ -1739,7 +1853,9 @@ class _AppHomeState extends State<AppHome> {
                                     },
                               child: const Text(
                                 '确认覆写清单',
-                                style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold),
+                                style: TextStyle(
+                                    fontFamily: 'monospace',
+                                    fontWeight: FontWeight.bold),
                               ),
                             ),
                           ),
@@ -1958,7 +2074,8 @@ class _AppHomeState extends State<AppHome> {
                                             horizontal: 6, vertical: 2),
                                         decoration: BoxDecoration(
                                           color: Colors.white,
-                                          border: Border.all(color: _notionBorder, width: 1.0),
+                                          border: Border.all(
+                                              color: _notionBorder, width: 1.0),
                                         ),
                                         child: Text(
                                           '编码：${item.productCode ?? '无'}',
@@ -1989,7 +2106,8 @@ class _AppHomeState extends State<AppHome> {
                             Container(
                               decoration: BoxDecoration(
                                 color: Colors.white,
-                                border: Border.all(color: _notionBorder, width: 1.0),
+                                border: Border.all(
+                                    color: _notionBorder, width: 1.0),
                               ),
                               child: Row(
                                 mainAxisSize: MainAxisSize.min,
@@ -2043,7 +2161,8 @@ class _AppHomeState extends State<AppHome> {
                   File(receipt.imagePath!).existsSync()) ...[
                 const SizedBox(height: 8),
                 GestureDetector(
-                  onTap: () => _showReceiptImage(receipt.imagePath!, trackingNumber: receipt.trackingNumber),
+                  onTap: () => _showReceiptImage(receipt.imagePath!,
+                      trackingNumber: receipt.trackingNumber),
                   child: ClipRect(
                     child: Image.file(
                       File(receipt.imagePath!),
@@ -2085,15 +2204,19 @@ class _AppHomeState extends State<AppHome> {
                           final ok = await showDialog<bool>(
                             context: context,
                             builder: (ctx) => AlertDialog(
-                              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-                              title: const Text('删除单据', style: TextStyle(fontFamily: 'monospace')),
-                              content:
-                                  const Text('确认要删除这笔入库单据及对应的库存吗？该操作不可撤销！', style: TextStyle(fontFamily: 'monospace')),
+                              shape: const RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.zero),
+                              title: const Text('删除单据',
+                                  style: TextStyle(fontFamily: 'monospace')),
+                              content: const Text('确认要删除这笔入库单据及对应的库存吗？该操作不可撤销！',
+                                  style: TextStyle(fontFamily: 'monospace')),
                               actions: [
                                 TextButton(
-                                    onPressed: () =>
-                                        Navigator.pop(ctx, false),
-                                    child: const Text('取消', style: TextStyle(fontFamily: 'monospace', color: Colors.black))),
+                                    onPressed: () => Navigator.pop(ctx, false),
+                                    child: const Text('取消',
+                                        style: TextStyle(
+                                            fontFamily: 'monospace',
+                                            color: Colors.black))),
                                 TextButton(
                                   onPressed: () => Navigator.pop(ctx, true),
                                   child: const Text('确认删除',
@@ -2127,8 +2250,12 @@ class _AppHomeState extends State<AppHome> {
                   OutlinedButton(
                     style: OutlinedButton.styleFrom(
                       backgroundColor: hasChanges ? Colors.black : Colors.white,
-                      foregroundColor: hasChanges ? Colors.white : Colors.grey.shade400,
-                      side: BorderSide(color: hasChanges ? Colors.black : Colors.grey.shade300, width: 0.8),
+                      foregroundColor:
+                          hasChanges ? Colors.white : Colors.grey.shade400,
+                      side: BorderSide(
+                          color:
+                              hasChanges ? Colors.black : Colors.grey.shade300,
+                          width: 0.8),
                       shape: const RoundedRectangleBorder(
                           borderRadius: BorderRadius.zero),
                       padding: const EdgeInsets.symmetric(
@@ -2171,10 +2298,6 @@ class _AppHomeState extends State<AppHome> {
     );
   }
 
-
-
-
-
   String _formatReceiptTime(DateTime value) {
     String twoDigits(int value) => value.toString().padLeft(2, '0');
     return '${value.year}年${twoDigits(value.month)}月${twoDigits(value.day)}日 '
@@ -2184,14 +2307,17 @@ class _AppHomeState extends State<AppHome> {
   Widget _inboundImageTile(String imagePath, {String? trackingNumber}) {
     final file = File(imagePath);
     final exists = file.existsSync();
-    final titleText = trackingNumber != null ? '单号: $trackingNumber' : '已保存商品清单图片';
+    final titleText =
+        trackingNumber != null ? '单号: $trackingNumber' : '已保存商品清单图片';
     return ListTile(
       contentPadding: EdgeInsets.zero,
       leading: _imageThumbnail(file),
       title: Text(titleText),
       subtitle: Text(exists ? p.basename(imagePath) : '图片文件不存在'),
       trailing: exists ? const Icon(Icons.visibility_outlined) : null,
-      onTap: exists ? () => _showReceiptImage(imagePath, trackingNumber: trackingNumber) : null,
+      onTap: exists
+          ? () => _showReceiptImage(imagePath, trackingNumber: trackingNumber)
+          : null,
     );
   }
 
@@ -2222,7 +2348,8 @@ class _AppHomeState extends State<AppHome> {
       });
       return;
     }
-    final titleText = trackingNumber != null ? '单号: $trackingNumber' : p.basename(imagePath);
+    final titleText =
+        trackingNumber != null ? '单号: $trackingNumber' : p.basename(imagePath);
     Navigator.of(context).push(
       MaterialPageRoute<void>(
         fullscreenDialog: true,
@@ -2280,7 +2407,8 @@ class _AppHomeState extends State<AppHome> {
         if (order.imagePaths.isNotEmpty)
           Align(
             alignment: Alignment.centerLeft,
-            child: _imagePathWrap(order.imagePaths, trackingNumber: order.logisticsNumber),
+            child: _imagePathWrap(order.imagePaths,
+                trackingNumber: order.logisticsNumber),
           ),
       ],
     );
@@ -2482,7 +2610,8 @@ class _AppHomeState extends State<AppHome> {
                 Positioned.fill(
                   child: InkWell(
                     borderRadius: BorderRadius.circular(6),
-                    onTap: () => _showReceiptImage(imagePath, trackingNumber: trackingNumber),
+                    onTap: () => _showReceiptImage(imagePath,
+                        trackingNumber: trackingNumber),
                     child: _imageThumbnail(File(imagePath)),
                   ),
                 ),
@@ -2593,7 +2722,6 @@ class _AppHomeState extends State<AppHome> {
     }
   }
 
-
   // ─── 核验车 ───────────────────────────────────────────────
 
   Widget _reviewCartFloatingEntry() {
@@ -2619,8 +2747,6 @@ class _AppHomeState extends State<AppHome> {
       ),
     );
   }
-
-
 
   List<InboundReceipt> _filteredInboundHistory() {
     final keyword = _historySearchController.text.trim().toLowerCase();
@@ -2843,7 +2969,8 @@ class _AppHomeState extends State<AppHome> {
         return AlertDialog(
           shape: const RoundedRectangleBorder(), // Notion直角风
           title: const Text('AI 一键重整库房',
-              style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold)),
+              style: TextStyle(
+                  fontFamily: 'monospace', fontWeight: FontWeight.bold)),
           content: const Text(
             '此操作将直接读取所有带照片的入库单，将图片作为多模态数据发给云端 AI 大模型进行视觉识别解析（请确认已在 AI 配置中配置了多模态 Vision 模型）。\n\n'
             'AI 分析的商品清单将直接覆盖入库单商品明细。处理完后，系统将物理清空并重新生成全局库存表与台账流水以完成对账。\n\n'
@@ -2853,7 +2980,8 @@ class _AppHomeState extends State<AppHome> {
           actions: [
             OutlinedButton(
               onPressed: () => Navigator.pop(context, false),
-              style: OutlinedButton.styleFrom(shape: const RoundedRectangleBorder()),
+              style: OutlinedButton.styleFrom(
+                  shape: const RoundedRectangleBorder()),
               child: const Text('取消', style: TextStyle(color: Colors.black)),
             ),
             FilledButton(
@@ -2872,7 +3000,8 @@ class _AppHomeState extends State<AppHome> {
     if (confirm != true) return;
 
     // 2. 筛选带物理图片的入库单
-    final List<InboundReceipt> allReceipts = await _database.loadInboundHistory();
+    final List<InboundReceipt> allReceipts =
+        await _database.loadInboundHistory();
     final targetReceipts = allReceipts.where((r) {
       if (r.imagePath == null || r.imagePath!.isEmpty) return false;
       return File(r.imagePath!).existsSync();
@@ -2902,11 +3031,14 @@ class _AppHomeState extends State<AppHome> {
         return StatefulBuilder(
           builder: (context, setDialogState) {
             dialogStateSetter = setDialogState;
-            final progress = targetReceipts.isEmpty ? 0.0 : currentIndex / targetReceipts.length;
+            final progress = targetReceipts.isEmpty
+                ? 0.0
+                : currentIndex / targetReceipts.length;
             return AlertDialog(
               shape: const RoundedRectangleBorder(),
               title: Text(isFinished ? '重整已完成' : 'AI 多模态图片分析中',
-                  style: const TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold)),
+                  style: const TextStyle(
+                      fontFamily: 'monospace', fontWeight: FontWeight.bold)),
               content: SizedBox(
                 width: double.maxFinite,
                 child: Column(
@@ -2922,7 +3054,8 @@ class _AppHomeState extends State<AppHome> {
                       const SizedBox(height: 12),
                       Text(
                         '正在处理第 ${currentIndex + 1}/${targetReceipts.length} 张图片...',
-                        style: const TextStyle(fontSize: 13, fontWeight: FontWeight.bold),
+                        style: const TextStyle(
+                            fontSize: 13, fontWeight: FontWeight.bold),
                       ),
                       const SizedBox(height: 8),
                     ],
@@ -2934,8 +3067,12 @@ class _AppHomeState extends State<AppHome> {
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
-                        Text('成功覆盖: $successCount', style: const TextStyle(fontSize: 12, color: Colors.green)),
-                        Text('处理失败: $failCount', style: const TextStyle(fontSize: 12, color: Colors.red)),
+                        Text('成功覆盖: $successCount',
+                            style: const TextStyle(
+                                fontSize: 12, color: Colors.green)),
+                        Text('处理失败: $failCount',
+                            style: const TextStyle(
+                                fontSize: 12, color: Colors.red)),
                       ],
                     ),
                   ],
@@ -2965,12 +3102,14 @@ class _AppHomeState extends State<AppHome> {
       final receipt = targetReceipts[i];
       dialogStateSetter?.call(() {
         currentIndex = i;
-        statusMessage = '发送多模态 Vision 分析：${receipt.trackingNumber}\n单据ID: ${receipt.id}';
+        statusMessage =
+            '发送多模态 Vision 分析：${receipt.trackingNumber}\n单据ID: ${receipt.id}';
       });
 
       try {
         // 直接读取图片编码 Base64 发送大模型多模态解析（不需要 PaddleOCR 提取文本）
-        final result = await _gemmaExtractor.extractFromImage(receipt.imagePath!);
+        final result =
+            await _gemmaExtractor.extractFromImage(receipt.imagePath!);
 
         await _database.overwriteInboundItems(
           receiptId: receipt.id,
@@ -3014,7 +3153,6 @@ class _AppHomeState extends State<AppHome> {
     _refreshData();
   }
 
-
   Future<void> _refreshData() async {
     final stockTotals = await _database.loadStockTotals();
     final inboundHistory = await _database.loadInboundHistory();
@@ -3028,10 +3166,6 @@ class _AppHomeState extends State<AppHome> {
       _outboundHistory = outboundHistory;
     });
   }
-
-
-
-
 
   void _addManualDraftItem() {
     setState(() {
@@ -3120,10 +3254,6 @@ class _AppHomeState extends State<AppHome> {
     }
   }
 
-
-
-
-
   Future<void> _deleteStoredImage(String? imagePath) async {
     if (imagePath == null || imagePath.isEmpty) {
       return;
@@ -3138,8 +3268,6 @@ class _AppHomeState extends State<AppHome> {
       return;
     }
   }
-
-
 
   void _addStockToOutboundCart(WarehouseStock stock, int quantity) {
     final nextQuantity = quantity.clamp(1, stock.quantity).toInt();
@@ -3323,7 +3451,8 @@ class _AppHomeState extends State<AppHome> {
               shape: RoundedRectangleBorder(
                 borderRadius: BorderRadius.circular(24),
               ),
-              insetPadding: const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+              insetPadding:
+                  const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
               child: Padding(
                 padding: const EdgeInsets.all(24),
                 child: Column(
@@ -3344,7 +3473,9 @@ class _AppHomeState extends State<AppHome> {
                           ),
                         ),
                         IconButton(
-                          onPressed: isLoading ? null : () => Navigator.pop(dialogContext),
+                          onPressed: isLoading
+                              ? null
+                              : () => Navigator.pop(dialogContext),
                           icon: const Icon(Icons.close, color: Colors.grey),
                           padding: EdgeInsets.zero,
                           constraints: const BoxConstraints(),
@@ -3418,32 +3549,42 @@ class _AppHomeState extends State<AppHome> {
                                 : () async {
                                     if (_currentInboundImagePath == null ||
                                         _currentInboundImagePath!.isEmpty) {
-                                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                      ScaffoldMessenger.of(dialogContext)
+                                          .showSnackBar(
                                         const SnackBar(
-                                            content: Text('未找到当前单的图片，请先拍照或相册识别')),
+                                            content:
+                                                Text('未找到当前单的图片，请先拍照或相册识别')),
                                       );
                                       return;
                                     }
                                     setDialogState(() => isGenerating = true);
                                     try {
-                                      final recognition = await _paddleOcr.recognizeTable(
+                                      final recognition =
+                                          await _paddleOcr.recognizeTable(
                                         _currentInboundImagePath!,
-                                        rowMergeTolerance: _ocrRowMergeTolerance,
+                                        rowMergeTolerance:
+                                            _ocrRowMergeTolerance,
                                       );
-                                      _ocrTextController.text = recognition.editableText;
+                                      _ocrTextController.text =
+                                          recognition.editableText;
                                       if (dialogContext.mounted) {
-                                        ScaffoldMessenger.of(dialogContext).showSnackBar(
-                                          const SnackBar(content: Text('已重新生成 OCR 文字。')),
+                                        ScaffoldMessenger.of(dialogContext)
+                                            .showSnackBar(
+                                          const SnackBar(
+                                              content: Text('已重新生成 OCR 文字。')),
                                         );
                                       }
                                     } catch (e) {
                                       if (dialogContext.mounted) {
-                                        ScaffoldMessenger.of(dialogContext).showSnackBar(
-                                          SnackBar(content: Text('重新生成文字失败: $e')),
+                                        ScaffoldMessenger.of(dialogContext)
+                                            .showSnackBar(
+                                          SnackBar(
+                                              content: Text('重新生成文字失败: $e')),
                                         );
                                       }
                                     } finally {
-                                      setDialogState(() => isGenerating = false);
+                                      setDialogState(
+                                          () => isGenerating = false);
                                     }
                                   },
                             child: const Text(
@@ -3467,7 +3608,8 @@ class _AppHomeState extends State<AppHome> {
                                 : () async {
                                     final text = _ocrTextController.text.trim();
                                     if (text.isEmpty) {
-                                      ScaffoldMessenger.of(dialogContext).showSnackBar(
+                                      ScaffoldMessenger.of(dialogContext)
+                                          .showSnackBar(
                                         const SnackBar(
                                             content: Text('识别文本不能为空，无法提取')),
                                       );
@@ -3475,15 +3617,18 @@ class _AppHomeState extends State<AppHome> {
                                     }
                                     setDialogState(() => isExtracting = true);
                                     try {
-                                      final result = await _gemmaExtractor.extract(text);
+                                      final result =
+                                          await _gemmaExtractor.extract(text);
                                       if (!dialogContext.mounted) return;
                                       setState(() {
                                         if (result.trackingNumber != null &&
                                             result.trackingNumber!.isNotEmpty) {
-                                          _trackingController.text = result.trackingNumber!;
+                                          _trackingController.text =
+                                              result.trackingNumber!;
                                         }
                                         if (result.sellerOrderNumber != null &&
-                                            result.sellerOrderNumber!.isNotEmpty) {
+                                            result.sellerOrderNumber!
+                                                .isNotEmpty) {
                                           _sellerOrderController.text =
                                               result.sellerOrderNumber!;
                                         }
@@ -3503,11 +3648,13 @@ class _AppHomeState extends State<AppHome> {
                                         }
                                       });
                                       Navigator.pop(dialogContext); // 关闭弹窗
-                                      ScaffoldMessenger.of(context).showSnackBar(
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
                                         SnackBar(content: Text(_message!)),
                                       );
                                     } catch (e) {
-                                      var items = _postProcessor.processPlainText(text);
+                                      var items =
+                                          _postProcessor.processPlainText(text);
                                       if (!dialogContext.mounted) return;
                                       setState(() {
                                         if (items.isNotEmpty) {
@@ -3521,11 +3668,13 @@ class _AppHomeState extends State<AppHome> {
                                         }
                                       });
                                       Navigator.pop(dialogContext); // 关闭弹窗
-                                      ScaffoldMessenger.of(context).showSnackBar(
+                                      ScaffoldMessenger.of(context)
+                                          .showSnackBar(
                                         SnackBar(content: Text(_message!)),
                                       );
                                     } finally {
-                                      setDialogState(() => isExtracting = false);
+                                      setDialogState(
+                                          () => isExtracting = false);
                                     }
                                   },
                             child: const Text(
@@ -3545,8 +3694,6 @@ class _AppHomeState extends State<AppHome> {
       },
     );
   }
-
-
 
   Future<void> _scanDraftItem() async {
     final barcode = await Navigator.of(context).push<String>(
@@ -3650,7 +3797,8 @@ class _AppHomeState extends State<AppHome> {
               backgroundColor: Colors.white,
               foregroundColor: Colors.black,
               side: const BorderSide(color: Colors.black, width: 0.8),
-              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+              shape:
+                  const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
               textStyle: const TextStyle(fontFamily: 'monospace', fontSize: 13),
             ),
             segments: const [
@@ -3739,7 +3887,8 @@ class _ReviewCartPageState extends State<_ReviewCartPage>
     for (final number in numbers) {
       final cleanNumber = number.trim().toLowerCase();
       for (final receipt in widget.allReceipts) {
-        final cleanReceiptTracking = receipt.trackingNumber.trim().toLowerCase();
+        final cleanReceiptTracking =
+            receipt.trackingNumber.trim().toLowerCase();
         if (cleanReceiptTracking == cleanNumber) {
           if (!matchedTrackings.contains(receipt.id)) {
             matched.add(receipt);
@@ -3749,9 +3898,8 @@ class _ReviewCartPageState extends State<_ReviewCartPage>
       }
     }
 
-    final foundTrackings = matched
-        .map((r) => r.trackingNumber.trim().toLowerCase())
-        .toSet();
+    final foundTrackings =
+        matched.map((r) => r.trackingNumber.trim().toLowerCase()).toSet();
     final unmatched = numbers
         .where((n) => !foundTrackings.contains(n.trim().toLowerCase()))
         .toList();
@@ -3769,7 +3917,7 @@ class _ReviewCartPageState extends State<_ReviewCartPage>
       for (final receipt in _matchedReceipts) {
         await widget.database.setReceiptSettled(receipt.id, isSettled);
       }
-      
+
       // 同步更新外部 AppHome 中的原始状态，确保主页历史记录在关闭核验车后立即可见最新状态
       await widget.onSettlementChanged();
 
@@ -3897,11 +4045,11 @@ class _ReviewCartPageState extends State<_ReviewCartPage>
                       fontFamily: 'monospace',
                       fontSize: 13,
                     ),
-                    border: OutlineInputBorder(
+                    border: const OutlineInputBorder(
                       borderRadius: BorderRadius.zero,
                       borderSide: BorderSide(color: _notionBorder),
                     ),
-                    enabledBorder: OutlineInputBorder(
+                    enabledBorder: const OutlineInputBorder(
                       borderRadius: BorderRadius.zero,
                       borderSide: BorderSide(color: _notionBorder),
                     ),
@@ -4024,8 +4172,7 @@ class _ReviewCartPageState extends State<_ReviewCartPage>
       (sum, r) => sum + r.items.fold<int>(0, (s, i) => s + i.quantity),
     );
 
-    final settledCount =
-        _matchedReceipts.where((r) => r.isSettled).length;
+    final settledCount = _matchedReceipts.where((r) => r.isSettled).length;
 
     return ListView(
       padding: const EdgeInsets.all(12),
@@ -4074,8 +4221,7 @@ class _ReviewCartPageState extends State<_ReviewCartPage>
                 ),
                 onPressed: () => _batchSetSettled(true),
                 icon: const Icon(Icons.check_circle_outline, size: 16),
-                label: const Text('全部设为已结算',
-                    style: TextStyle(fontSize: 12)),
+                label: const Text('全部设为已结算', style: TextStyle(fontSize: 12)),
               ),
             ),
             const SizedBox(width: 8),
@@ -4095,8 +4241,7 @@ class _ReviewCartPageState extends State<_ReviewCartPage>
                 ),
                 onPressed: () => _batchSetSettled(false),
                 icon: const Icon(Icons.cancel_outlined, size: 16),
-                label: const Text('全部设为未结算',
-                    style: TextStyle(fontSize: 12)),
+                label: const Text('全部设为未结算', style: TextStyle(fontSize: 12)),
               ),
             ),
           ],
@@ -4124,8 +4269,7 @@ class _ReviewCartPageState extends State<_ReviewCartPage>
                 final receipt = receiptsWithImages[index];
                 final path = receipt.imagePath!;
                 return GestureDetector(
-                  onTap: () =>
-                      _showImageGallery(receiptsWithImages, index),
+                  onTap: () => _showImageGallery(receiptsWithImages, index),
                   child: ClipRect(
                     child: Image.file(
                       File(path),
@@ -4450,7 +4594,7 @@ class _ImageGalleryPageState extends State<_ImageGalleryPage> {
         centerTitle: true,
         title: Text(
           currentReceipt.trackingNumber.isEmpty
-              ? "无快递单号"
+              ? '无快递单号'
               : currentReceipt.trackingNumber,
           style: const TextStyle(
             fontSize: 20,
@@ -4510,7 +4654,8 @@ class _ImageGalleryPageState extends State<_ImageGalleryPage> {
             child: Center(
               child: ClipRect(
                 child: Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 14, vertical: 6),
                   color: Colors.black54,
                   child: Text(
                     '图片 ${_currentIndex + 1} / ${widget.receipts.length}',

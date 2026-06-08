@@ -207,7 +207,8 @@ class _PhotoCountPageState extends State<PhotoCountPage> {
                           TextButton(
                             style: TextButton.styleFrom(
                               foregroundColor: const Color(0xFF64748B),
-                              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 4),
                               minimumSize: Size.zero,
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                             ),
@@ -224,9 +225,12 @@ class _PhotoCountPageState extends State<PhotoCountPage> {
                           OutlinedButton(
                             style: OutlinedButton.styleFrom(
                               foregroundColor: const Color(0xFF1E293B),
-                              side: const BorderSide(color: Color(0xFFE2E8F0), width: 0.8),
-                              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-                              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                              side: const BorderSide(
+                                  color: Color(0xFFE2E8F0), width: 0.8),
+                              shape: const RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.zero),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 12, vertical: 8),
                               minimumSize: Size.zero,
                               tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               textStyle: const TextStyle(
@@ -257,12 +261,15 @@ class _PhotoCountPageState extends State<PhotoCountPage> {
 
                   // 3. 盘点草稿列表
                   if (_items.isEmpty)
-                    Padding(
-                      padding: const EdgeInsets.symmetric(vertical: 48),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 48),
                       child: Center(
                         child: Text(
                           '点击右上角录入实物信息',
-                          style: TextStyle(color: const Color(0xFF94A3B8), fontSize: 12, letterSpacing: 0.5),
+                          style: TextStyle(
+                              color: Color(0xFF94A3B8),
+                              fontSize: 12,
+                              letterSpacing: 0.5),
                         ),
                       ),
                     )
@@ -272,7 +279,8 @@ class _PhotoCountPageState extends State<PhotoCountPage> {
                       physics: const NeverScrollableScrollPhysics(),
                       itemCount: _items.length,
                       itemBuilder: (context, index) {
-                        return _draftItemCard(index, _items[index], colorScheme);
+                        return _draftItemCard(
+                            index, _items[index], colorScheme);
                       },
                     ),
                 ],
@@ -300,7 +308,8 @@ class _PhotoCountPageState extends State<PhotoCountPage> {
                   style: FilledButton.styleFrom(
                     backgroundColor: const Color(0xFF1E293B),
                     foregroundColor: Colors.white,
-                    shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                    shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.zero),
                     elevation: 0,
                   ),
                   onPressed: _isSubmitting ? null : _submitInventory,
@@ -308,7 +317,8 @@ class _PhotoCountPageState extends State<PhotoCountPage> {
                       ? const SizedBox(
                           width: 20,
                           height: 20,
-                          child: CircularProgressIndicator(strokeWidth: 2.0, color: Colors.white),
+                          child: CircularProgressIndicator(
+                              strokeWidth: 2.0, color: Colors.white),
                         )
                       : const Text(
                           '提交盘点入库',
@@ -352,7 +362,8 @@ class _PhotoCountPageState extends State<PhotoCountPage> {
                 child: Container(
                   color: Colors.black.withOpacity(0.4),
                   child: IconButton(
-                    icon: const Icon(Icons.delete_outline, color: Colors.white, size: 18),
+                    icon: const Icon(Icons.delete_outline,
+                        color: Colors.white, size: 18),
                     onPressed: () {
                       setState(() {
                         _imagePath = null;
@@ -374,11 +385,16 @@ class _PhotoCountPageState extends State<PhotoCountPage> {
               color: const Color(0xFF1E293B),
               child: const Row(
                 children: [
-                  Icon(Icons.check_circle_outline, color: Colors.white, size: 12),
+                  Icon(Icons.check_circle_outline,
+                      color: Colors.white, size: 12),
                   SizedBox(width: 6),
                   Text(
                     '凭证照片已就绪',
-                    style: TextStyle(color: Colors.white, fontSize: 10, fontWeight: FontWeight.w500, letterSpacing: 0.5),
+                    style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 10,
+                        fontWeight: FontWeight.w500,
+                        letterSpacing: 0.5),
                   ),
                 ],
               ),
@@ -400,8 +416,11 @@ class _PhotoCountPageState extends State<PhotoCountPage> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   ListTile(
-                    leading: const Icon(Icons.photo_camera_outlined, size: 20, color: Color(0xFF1E293B)),
-                    title: const Text('使用相机拍摄', style: TextStyle(fontSize: 13, color: Color(0xFF1E293B))),
+                    leading: const Icon(Icons.photo_camera_outlined,
+                        size: 20, color: Color(0xFF1E293B)),
+                    title: const Text('使用相机拍摄',
+                        style:
+                            TextStyle(fontSize: 13, color: Color(0xFF1E293B))),
                     onTap: () {
                       Navigator.pop(context);
                       _captureImage();
@@ -409,8 +428,11 @@ class _PhotoCountPageState extends State<PhotoCountPage> {
                   ),
                   const Divider(height: 1, color: Color(0xFFF1F5F9)),
                   ListTile(
-                    leading: const Icon(Icons.photo_library_outlined, size: 20, color: Color(0xFF1E293B)),
-                    title: const Text('从系统相册选取', style: TextStyle(fontSize: 13, color: Color(0xFF1E293B))),
+                    leading: const Icon(Icons.photo_library_outlined,
+                        size: 20, color: Color(0xFF1E293B)),
+                    title: const Text('从系统相册选取',
+                        style:
+                            TextStyle(fontSize: 13, color: Color(0xFF1E293B))),
                     onTap: () {
                       Navigator.pop(context);
                       _pickImage();
@@ -438,7 +460,11 @@ class _PhotoCountPageState extends State<PhotoCountPage> {
             SizedBox(height: 12),
             Text(
               '上传盘点凭证照片',
-              style: TextStyle(fontSize: 13, fontWeight: FontWeight.w600, color: Color(0xFF1E293B), letterSpacing: 0.5),
+              style: TextStyle(
+                  fontSize: 13,
+                  fontWeight: FontWeight.w600,
+                  color: Color(0xFF1E293B),
+                  letterSpacing: 0.5),
             ),
             SizedBox(height: 6),
             Text(
@@ -452,7 +478,8 @@ class _PhotoCountPageState extends State<PhotoCountPage> {
   }
 
   // 极简主义盘点行草稿
-  Widget _draftItemCard(int index, InboundDraftItem item, ColorScheme colorScheme) {
+  Widget _draftItemCard(
+      int index, InboundDraftItem item, ColorScheme colorScheme) {
     return Container(
       decoration: const BoxDecoration(
         border: Border(
@@ -476,18 +503,24 @@ class _PhotoCountPageState extends State<PhotoCountPage> {
                   },
                   decoration: const InputDecoration(
                     hintText: '输入货品名称 (必填)',
-                    hintStyle: TextStyle(color: Color(0xFFCBD5E1), fontSize: 13),
+                    hintStyle:
+                        TextStyle(color: Color(0xFFCBD5E1), fontSize: 13),
                     labelText: '货品名称',
-                    labelStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
+                    labelStyle:
+                        TextStyle(color: Color(0xFF94A3B8), fontSize: 11),
                     isDense: true,
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.symmetric(vertical: 4),
                   ),
-                  style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500, color: Color(0xFF1E293B)),
+                  style: const TextStyle(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w500,
+                      color: Color(0xFF1E293B)),
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.delete_outline, color: Color(0xFF94A3B8), size: 18),
+                icon: const Icon(Icons.delete_outline,
+                    color: Color(0xFF94A3B8), size: 18),
                 onPressed: () => _removeItem(index),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
@@ -506,18 +539,24 @@ class _PhotoCountPageState extends State<PhotoCountPage> {
                   },
                   decoration: const InputDecoration(
                     hintText: '输入条码或扫码录入',
-                    hintStyle: TextStyle(color: Color(0xFFCBD5E1), fontSize: 12),
+                    hintStyle:
+                        TextStyle(color: Color(0xFFCBD5E1), fontSize: 12),
                     labelText: '条码编码',
-                    labelStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 10),
+                    labelStyle:
+                        TextStyle(color: Color(0xFF94A3B8), fontSize: 10),
                     isDense: true,
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.symmetric(vertical: 4),
                   ),
-                  style: const TextStyle(fontSize: 12, fontFamily: 'monospace', color: Color(0xFF64748B)),
+                  style: const TextStyle(
+                      fontSize: 12,
+                      fontFamily: 'monospace',
+                      color: Color(0xFF64748B)),
                 ),
               ),
               IconButton(
-                icon: const Icon(Icons.qr_code_scanner_outlined, size: 16, color: Color(0xFF64748B)),
+                icon: const Icon(Icons.qr_code_scanner_outlined,
+                    size: 16, color: Color(0xFF64748B)),
                 onPressed: () => _scanItem(index),
                 padding: EdgeInsets.zero,
                 constraints: const BoxConstraints(),
@@ -537,14 +576,19 @@ class _PhotoCountPageState extends State<PhotoCountPage> {
                   },
                   decoration: const InputDecoration(
                     hintText: '数量',
-                    hintStyle: TextStyle(color: Color(0xFFCBD5E1), fontSize: 12),
+                    hintStyle:
+                        TextStyle(color: Color(0xFFCBD5E1), fontSize: 12),
                     labelText: '数量',
-                    labelStyle: TextStyle(color: Color(0xFF94A3B8), fontSize: 10),
+                    labelStyle:
+                        TextStyle(color: Color(0xFF94A3B8), fontSize: 10),
                     isDense: true,
                     border: InputBorder.none,
                     contentPadding: EdgeInsets.symmetric(vertical: 4),
                   ),
-                  style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600, color: Color(0xFF1E293B)),
+                  style: const TextStyle(
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                      color: Color(0xFF1E293B)),
                 ),
               ),
             ],

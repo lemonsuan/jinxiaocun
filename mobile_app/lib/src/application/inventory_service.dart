@@ -56,6 +56,11 @@ class InventoryService {
     }
 
     final now = DateTime.now();
+    final resolvedItems = items.map((item) {
+      final code = _productCodeFor(item.productCode, item.productName);
+      return item.copyWith(productCode: code);
+    }).toList();
+
     final receipt = InboundReceipt(
       id: _nextId('in'),
       trackingNumber: normalizedTracking,
@@ -63,14 +68,14 @@ class InventoryService {
       rebateOrderNumber: normalizedRebateOrder,
       schemeNumber: normalizedScheme,
       createdAt: now,
-      items: List.unmodifiable(items),
+      items: List.unmodifiable(resolvedItems),
       isSettled: isSettled,
       ocrStatus: OcrStatus.confirmed,
       imagePath: imagePath,
     );
 
-    for (final item in items) {
-      final code = _productCodeFor(item.productCode, item.productName);
+    for (final item in resolvedItems) {
+      final code = item.productCode!;
       _increaseStock(code, item.productName, item.quantity);
       _ledger.add(
         StockLedgerEntry(
@@ -313,7 +318,7 @@ class InventoryService {
     if (normalizedCode != null && normalizedCode.isNotEmpty) {
       return normalizedCode.toUpperCase();
     }
-    return 'NAME:${name.trim().toLowerCase()}';
+    return 'SCBH:${DateTime.now().microsecondsSinceEpoch}';
   }
 
   String? _optionalText(String? value) {
