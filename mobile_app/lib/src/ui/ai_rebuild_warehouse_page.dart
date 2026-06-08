@@ -209,6 +209,97 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
     }
   }
 
+  void _showReceiptDetailDialog(InboundReceipt receipt) {
+    showDialog(
+      context: context,
+      builder: (context) {
+        return AlertDialog(
+          backgroundColor: Colors.white,
+          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+          title: Text(
+            receipt.trackingNumber.isEmpty
+                ? '商品明细 (无单号)'
+                : '商品明细 (${receipt.trackingNumber})',
+            style: const TextStyle(
+              fontSize: 14,
+              fontWeight: FontWeight.bold,
+              color: Color(0xFF1E293B),
+            ),
+          ),
+          content: SizedBox(
+            width: double.maxFinite,
+            child: receipt.items.isEmpty
+                ? const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 24),
+                    child: Center(
+                      child: Text(
+                        '该单据暂无识别到的商品明细',
+                        style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                      ),
+                    ),
+                  )
+                : ListView.separated(
+                    shrinkWrap: true,
+                    itemCount: receipt.items.length,
+                    separatorBuilder: (context, index) =>
+                        const Divider(color: Color(0xFFF1F5F9), height: 1),
+                    itemBuilder: (context, index) {
+                      final item = receipt.items[index];
+                      return Padding(
+                        padding: const EdgeInsets.symmetric(vertical: 8.0),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              item.productName,
+                              style: const TextStyle(
+                                fontSize: 13,
+                                fontWeight: FontWeight.w600,
+                                color: Color(0xFF1E293B),
+                              ),
+                            ),
+                            const SizedBox(height: 4),
+                            Row(
+                              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                              children: [
+                                Text(
+                                  '编码: ${item.productCode ?? '无'}',
+                                  style: const TextStyle(
+                                    fontSize: 11,
+                                    color: Color(0xFF64748B),
+                                  ),
+                                ),
+                                Text(
+                                  '数量: ${item.quantity}',
+                                  style: const TextStyle(
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.bold,
+                                    color: Color(0xFF1E293B),
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ],
+                        ),
+                      );
+                    },
+                  ),
+          ),
+          actions: [
+            TextButton(
+              style: TextButton.styleFrom(
+                foregroundColor: const Color(0xFF64748B),
+                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+              ),
+              onPressed: () => Navigator.pop(context),
+              child: const Text('关闭', style: TextStyle(fontSize: 12)),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -322,124 +413,145 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
                           final receipt = _receipts[index];
                           final isItemProcessing = _currentlyProcessingId == receipt.id;
 
-                          return Container(
-                            decoration: BoxDecoration(
-                              color: Colors.white,
-                              border: Border.all(
-                                color: isItemProcessing
-                                    ? const Color(0xFF1E293B)
-                                    : const Color(0xFFE2E8F0),
-                                width: isItemProcessing ? 1.2 : 0.8,
+                          return GestureDetector(
+                            onTap: () => _showReceiptDetailDialog(receipt),
+                            behavior: HitTestBehavior.opaque,
+                            child: Container(
+                              decoration: BoxDecoration(
+                                color: Colors.white,
+                                border: Border.all(
+                                  color: isItemProcessing
+                                      ? const Color(0xFF1E293B)
+                                      : const Color(0xFFE2E8F0),
+                                  width: isItemProcessing ? 1.2 : 0.8,
+                                ),
                               ),
-                            ),
-                            padding: const EdgeInsets.all(12),
-                            child: Row(
-                              children: [
-                                // 缩略图
-                                Container(
-                                  width: 60,
-                                  height: 60,
-                                  decoration: BoxDecoration(
-                                    color: const Color(0xFFF8FAFC),
-                                    border: Border.all(color: const Color(0xFFE2E8F0), width: 0.5),
+                              padding: const EdgeInsets.all(12),
+                              child: Row(
+                                children: [
+                                  // 缩略图
+                                  Container(
+                                    width: 60,
+                                    height: 60,
+                                    decoration: BoxDecoration(
+                                      color: const Color(0xFFF8FAFC),
+                                      border: Border.all(color: const Color(0xFFE2E8F0), width: 0.5),
+                                    ),
+                                    child: Image.file(
+                                      File(receipt.imagePath!),
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (context, error, stackTrace) {
+                                        return const Center(
+                                          child: Icon(Icons.broken_image_outlined, size: 20, color: Color(0xFF94A3B8)),
+                                        );
+                                      },
+                                    ),
                                   ),
-                                  child: Image.file(
-                                    File(receipt.imagePath!),
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (context, error, stackTrace) {
-                                      return const Center(
-                                        child: Icon(Icons.broken_image_outlined, size: 20, color: Color(0xFF94A3B8)),
-                                      );
-                                    },
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                // 单据信息
-                                Expanded(
-                                  child: Column(
-                                    crossAxisAlignment: CrossAxisAlignment.start,
-                                    children: [
-                                      Text(
-                                        receipt.trackingNumber.isEmpty
-                                            ? '无快递单号 (单号由系统自动生成)'
-                                            : receipt.trackingNumber,
-                                        style: TextStyle(
-                                          fontSize: 13,
-                                          fontWeight: FontWeight.w600,
-                                          color: receipt.trackingNumber.isEmpty
-                                              ? const Color(0xFF94A3B8)
-                                              : const Color(0xFF1E293B),
+                                  const SizedBox(width: 12),
+                                  // 单据信息
+                                  Expanded(
+                                    child: Column(
+                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                          receipt.trackingNumber.isEmpty
+                                              ? '无快递单号 (单号由系统自动生成)'
+                                              : receipt.trackingNumber,
+                                          style: TextStyle(
+                                            fontSize: 13,
+                                            fontWeight: FontWeight.w600,
+                                            color: receipt.trackingNumber.isEmpty
+                                                ? const Color(0xFF94A3B8)
+                                                : const Color(0xFF1E293B),
+                                          ),
+                                          maxLines: 1,
+                                          overflow: TextOverflow.ellipsis,
                                         ),
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                      ),
-                                      const SizedBox(height: 6),
-                                      Row(
-                                        children: [
-                                          // 结算状态
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                            color: receipt.isSettled
-                                                ? const Color(0xFFF1F5F9)
-                                                : const Color(0xFFEFF6FF),
-                                            child: Text(
-                                              receipt.isSettled ? '已结算' : '未结算',
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w500,
-                                                color: receipt.isSettled
-                                                    ? const Color(0xFF64748B)
-                                                    : const Color(0xFF2563EB),
+                                        const SizedBox(height: 6),
+                                        Row(
+                                          children: [
+                                            // 结算状态
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              color: receipt.isSettled
+                                                  ? const Color(0xFFF1F5F9)
+                                                  : const Color(0xFFEFF6FF),
+                                              child: Text(
+                                                receipt.isSettled ? '已结算' : '未结算',
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w500,
+                                                  color: receipt.isSettled
+                                                      ? const Color(0xFF64748B)
+                                                      : const Color(0xFF2563EB),
+                                                ),
                                               ),
                                             ),
-                                          ),
-                                          const SizedBox(width: 8),
-                                          // OCR 状态
-                                          Container(
-                                            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                            color: _getOcrStatusColor(receipt.ocrStatus).withAlpha(25),
-                                            child: Text(
-                                              _getOcrStatusLabel(receipt.ocrStatus),
-                                              style: TextStyle(
-                                                fontSize: 10,
-                                                fontWeight: FontWeight.w600,
-                                                color: _getOcrStatusColor(receipt.ocrStatus),
+                                            const SizedBox(width: 8),
+                                            // OCR 状态
+                                            Container(
+                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              color: _getOcrStatusColor(receipt.ocrStatus).withAlpha(25),
+                                              child: Text(
+                                                _getOcrStatusLabel(receipt.ocrStatus),
+                                                style: TextStyle(
+                                                  fontSize: 10,
+                                                  fontWeight: FontWeight.w600,
+                                                  color: _getOcrStatusColor(receipt.ocrStatus),
+                                                ),
                                               ),
                                             ),
-                                          ),
-                                        ],
-                                      ),
-                                    ],
-                                  ),
-                                ),
-                                const SizedBox(width: 12),
-                                // 独立分析按钮
-                                SizedBox(
-                                  height: 32,
-                                  child: isItemProcessing
-                                      ? const Padding(
-                                          padding: EdgeInsets.symmetric(horizontal: 16),
-                                          child: SizedBox(
-                                            width: 16,
-                                            height: 16,
-                                            child: CircularProgressIndicator(
-                                              strokeWidth: 1.5,
-                                              color: Color(0xFF1E293B),
-                                            ),
-                                          ),
-                                        )
-                                      : OutlinedButton(
-                                          style: OutlinedButton.styleFrom(
-                                            foregroundColor: const Color(0xFF1E293B),
-                                            side: const BorderSide(color: Color(0xFFE2E8F0), width: 0.8),
-                                            shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-                                            padding: const EdgeInsets.symmetric(horizontal: 10),
-                                          ),
-                                          onPressed: _isProcessing ? null : () => _analyzeSingle(receipt),
-                                          child: const Text('重新分析', style: TextStyle(fontSize: 11)),
+                                            // 是否已压缩图片
+                                            if (receipt.imagePath != null &&
+                                                receipt.imagePath!.contains('_compressed')) ...[
+                                              const SizedBox(width: 8),
+                                              Container(
+                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                color: const Color(0xFFF1F5F9),
+                                                child: const Text(
+                                                  '已压缩',
+                                                  style: TextStyle(
+                                                    fontSize: 10,
+                                                    fontWeight: FontWeight.w500,
+                                                    color: Color(0xFF475569),
+                                                  ),
+                                                ),
+                                              ),
+                                            ],
+                                          ],
                                         ),
-                                ),
-                              ],
+                                      ],
+                                    ),
+                                  ),
+                                  const SizedBox(width: 12),
+                                  // 独立分析按钮
+                                  SizedBox(
+                                    height: 32,
+                                    child: isItemProcessing
+                                        ? const Padding(
+                                            padding: EdgeInsets.symmetric(horizontal: 16),
+                                            child: SizedBox(
+                                              width: 16,
+                                              height: 16,
+                                              child: CircularProgressIndicator(
+                                                strokeWidth: 1.5,
+                                                color: Color(0xFF1E293B),
+                                              ),
+                                            ),
+                                          )
+                                        : OutlinedButton(
+                                            style: OutlinedButton.styleFrom(
+                                              foregroundColor: const Color(0xFF1E293B),
+                                              side: const BorderSide(color: Color(0xFFE2E8F0), width: 0.8),
+                                              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                                              padding: const EdgeInsets.symmetric(horizontal: 10),
+                                            ),
+                                            onPressed: _isProcessing ? null : () => _analyzeSingle(receipt),
+                                            child: const Text('重新分析', style: TextStyle(fontSize: 11)),
+                                          ),
+                                  ),
+                                ],
+                              ),
                             ),
                           );
                         },
