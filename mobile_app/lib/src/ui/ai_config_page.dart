@@ -50,6 +50,7 @@ class _AiConfigPageState extends State<AiConfigPage> {
   List<String> _models = [];
   bool _isLoadingModels = false;
   bool _isTestingConnection = false;
+  bool _obscureApiKey = true;
   bool _isSaving = false;
 
   @override
@@ -556,27 +557,41 @@ class _AiConfigPageState extends State<AiConfigPage> {
                         ],
                         TextFormField(
                           controller: _keyController,
-                          obscureText: true,
-                          decoration: const InputDecoration(
+                          obscureText: _obscureApiKey,
+                          decoration: InputDecoration(
                             labelText: 'API Key',
-                            labelStyle: TextStyle(
+                            labelStyle: const TextStyle(
                                 color: Color(0xFF94A3B8), fontSize: 13),
                             hintText: '请输入您的 API Key',
-                            hintStyle: TextStyle(
+                            hintStyle: const TextStyle(
                                 color: Color(0xFFCBD5E1), fontSize: 13),
-                            border: UnderlineInputBorder(
+                            border: const UnderlineInputBorder(
                               borderSide: BorderSide(
                                   color: Color(0xFFE2E8F0), width: 0.8),
                             ),
-                            enabledBorder: UnderlineInputBorder(
+                            enabledBorder: const UnderlineInputBorder(
                               borderSide: BorderSide(
                                   color: Color(0xFFE2E8F0), width: 0.8),
                             ),
-                            focusedBorder: UnderlineInputBorder(
+                            focusedBorder: const UnderlineInputBorder(
                               borderSide: BorderSide(
                                   color: Color(0xFF1E293B), width: 1.2),
                             ),
                             isDense: true,
+                            suffixIcon: IconButton(
+                              icon: Icon(
+                                _obscureApiKey
+                                    ? Icons.visibility_off_outlined
+                                    : Icons.visibility_outlined,
+                                size: 18,
+                                color: const Color(0xFF94A3B8),
+                              ),
+                              onPressed: () {
+                                setState(() {
+                                  _obscureApiKey = !_obscureApiKey;
+                                });
+                              },
+                            ),
                           ),
                           style: const TextStyle(
                               fontSize: 14, color: Color(0xFF1E293B)),
