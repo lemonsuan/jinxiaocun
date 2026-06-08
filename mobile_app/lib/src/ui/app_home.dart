@@ -1831,9 +1831,12 @@ class _AppHomeState extends State<AppHome> {
                                   ? null
                                   : () async {
                                       try {
-                                        await _database
-                                            .updateInboundReceiptItems(
-                                                receipt.id, newDraftItems);
+                                        await _database.overwriteInboundItems(
+                                          receiptId: receipt.id,
+                                          items: newDraftItems,
+                                          ocrStatus: OcrStatus.confirmed,
+                                        );
+                                        await _database.rebuildInventoryStockAndLedger();
                                         if (dialogContext.mounted) {
                                           Navigator.pop(dialogContext);
                                           ScaffoldMessenger.of(context)
