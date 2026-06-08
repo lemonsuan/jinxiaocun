@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 11
+- **Total Sessions**: 12
 - **Last Active**: 2026-06-08
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~378 | Active |
+| `journal-1.md` | ~411 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 12 | 2026-06-08 | 合并OCR与AI配置并精简大标题 | `35aae72` | `master` |
 | 11 | 2026-06-08 | 优化入库单重新识别与AI库房重整逻辑 | `7e65e0e`, `d2da7d4`, `7ac2094`, `b234e38`, `7ba67cb`, `8f50de9`, `13eeae6`, `551c83e`, `46b11d6` | `master` |
 | 10 | 2026-05-30 | 实现移动端文本选择弹出菜单的自动汉化国际化配置 | `a0f20f8` | `master` |
 | 9 | 2026-05-30 | 解决Android在Release混淆下导致的JNI方法找不到Crash | `dd262e3` | `master` |

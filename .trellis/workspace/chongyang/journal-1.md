@@ -376,3 +376,36 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 12: 合并OCR与AI配置并精简大标题
+
+**Date**: 2026-06-08
+**Task**: 合并OCR与AI配置并精简大标题
+**Branch**: `master`
+
+### Summary
+
+合并本地与云端AI/OCR配置，新增自建局域网OCR服务支持；从个人中心移除拍照统计功能；移除各主要Tab顶部的冗余标题大字。
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `35aae72` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
