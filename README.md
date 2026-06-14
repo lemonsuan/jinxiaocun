@@ -91,3 +91,14 @@ cd mobile_app
 flutter pub get
 flutter run
 ```
+
+---
+
+## 📦 发布包管理规范
+
+为了统一管理和方便收集不同版本的安装包/构建产物，项目制定了以下打包铁律：
+
+1. **统一收集目录**：所有端打包生成的软件安装包或最终构建产物，必须统一存放在项目根目录下的 **`releases/`** 文件夹中。
+2. **命名规则**：
+   * 移动端 (Android APK)：以 `app-v<版本号>.apk` 命名，例如 `releases/app-v1.0.3+5.apk`。
+   * Web 端 (Frontend)：如有独立包，需打包为 `frontend-v<版本号>.zip` 放入该目录。

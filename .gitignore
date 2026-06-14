@@ -20,3 +20,4 @@ mobile_app/ios/LocalPods/InventoryPaddleOcr/OpenCV/opencv2.framework/Versions/A/
 
 # Local downloads and big model files
 download/
+releases/

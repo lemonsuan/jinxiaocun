@@ -17,7 +17,6 @@ import '../ocr/pp_structure_post_processor.dart';
 import '../platform/paddle_ocr_channel.dart';
 import 'scanner_page.dart';
 import 'product_price_page.dart';
-import 'photo_count_page.dart';
 import 'data_management_page.dart';
 import 'ai_config_page.dart';
 import 'login_page.dart';
