@@ -17,7 +17,8 @@ class AiRebuildWarehousePage extends StatefulWidget {
 }
 
 class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
-  late final AiInboundExtractor _aiInboundExtractor = AiInboundExtractor(widget.database);
+  late final AiInboundExtractor _aiInboundExtractor =
+      AiInboundExtractor(widget.database);
 
   List<InboundReceipt> _receipts = [];
   bool _isLoading = true;
@@ -71,11 +72,13 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
     setState(() {
       _isProcessing = true;
       _currentlyProcessingId = receipt.id;
-      _statusMessage = '正在分析单据: ${receipt.trackingNumber.isEmpty ? '无单号' : receipt.trackingNumber}...';
+      _statusMessage =
+          '正在分析单据: ${receipt.trackingNumber.isEmpty ? '无单号' : receipt.trackingNumber}...';
     });
 
     try {
-      final result = await _aiInboundExtractor.extractFromImage(receipt.imagePath!);
+      final result =
+          await _aiInboundExtractor.extractFromImage(receipt.imagePath!);
       if (!mounted) return;
       await widget.database.overwriteInboundItems(
         receiptId: receipt.id,
@@ -126,7 +129,8 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
 
     if (targets.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(onlyUnsettled ? '未找到任何未结算且带图片的单据。' : '没有可分析的单据。')),
+        SnackBar(
+            content: Text(onlyUnsettled ? '未找到任何未结算且带图片的单据。' : '没有可分析的单据。')),
       );
       return;
     }
@@ -146,11 +150,13 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
       setState(() {
         _currentIndex = i;
         _currentlyProcessingId = receipt.id;
-        _statusMessage = '正在处理第 ${i + 1}/$_totalCount 张图片...\n快递单号: ${receipt.trackingNumber}';
+        _statusMessage =
+            '正在处理第 ${i + 1}/$_totalCount 张图片...\n快递单号: ${receipt.trackingNumber}';
       });
 
       try {
-        final result = await _aiInboundExtractor.extractFromImage(receipt.imagePath!);
+        final result =
+            await _aiInboundExtractor.extractFromImage(receipt.imagePath!);
         if (!mounted) break;
         await widget.database.overwriteInboundItems(
           receiptId: receipt.id,
@@ -253,7 +259,8 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
                     child: Center(
                       child: Text(
                         '该单据暂无识别到的商品明细',
-                        style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                        style:
+                            TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
                       ),
                     ),
                   )
@@ -308,7 +315,8 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
             TextButton(
               style: TextButton.styleFrom(
                 foregroundColor: const Color(0xFF64748B),
-                shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero),
               ),
               onPressed: () => Navigator.pop(context),
               child: const Text('关闭', style: TextStyle(fontSize: 12)),
@@ -386,7 +394,8 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
                   ],
                   Text(
                     _statusMessage,
-                    style: const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
+                    style:
+                        const TextStyle(fontSize: 11, color: Color(0xFF64748B)),
                   ),
                   if (_totalCount > 0) ...[
                     const SizedBox(height: 8),
@@ -394,12 +403,14 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
                       children: [
                         Text(
                           '成功: $_successCount',
-                          style: const TextStyle(fontSize: 11, color: Color(0xFF10B981)),
+                          style: const TextStyle(
+                              fontSize: 11, color: Color(0xFF10B981)),
                         ),
                         const SizedBox(width: 16),
                         Text(
                           '失败: $_failCount',
-                          style: const TextStyle(fontSize: 11, color: Color(0xFFEF4444)),
+                          style: const TextStyle(
+                              fontSize: 11, color: Color(0xFFEF4444)),
                         ),
                       ],
                     ),
@@ -421,16 +432,20 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
                     ? const Center(
                         child: Text(
                           '未找到任何带照片的入库单单据。',
-                          style: TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
+                          style:
+                              TextStyle(color: Color(0xFF94A3B8), fontSize: 13),
                         ),
                       )
                     : ListView.separated(
-                        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                        padding: const EdgeInsets.symmetric(
+                            horizontal: 16, vertical: 8),
                         itemCount: _receipts.length,
-                        separatorBuilder: (context, index) => const SizedBox(height: 12),
+                        separatorBuilder: (context, index) =>
+                            const SizedBox(height: 12),
                         itemBuilder: (context, index) {
                           final receipt = _receipts[index];
-                          final isItemProcessing = _currentlyProcessingId == receipt.id;
+                          final isItemProcessing =
+                              _currentlyProcessingId == receipt.id;
 
                           return GestureDetector(
                             onTap: () => _showReceiptDetailDialog(receipt),
@@ -454,14 +469,20 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
                                     height: 60,
                                     decoration: BoxDecoration(
                                       color: const Color(0xFFF8FAFC),
-                                      border: Border.all(color: const Color(0xFFE2E8F0), width: 0.5),
+                                      border: Border.all(
+                                          color: const Color(0xFFE2E8F0),
+                                          width: 0.5),
                                     ),
                                     child: Image.file(
                                       File(receipt.imagePath!),
                                       fit: BoxFit.cover,
-                                      errorBuilder: (context, error, stackTrace) {
+                                      errorBuilder:
+                                          (context, error, stackTrace) {
                                         return const Center(
-                                          child: Icon(Icons.broken_image_outlined, size: 20, color: Color(0xFF94A3B8)),
+                                          child: Icon(
+                                              Icons.broken_image_outlined,
+                                              size: 20,
+                                              color: Color(0xFF94A3B8)),
                                         );
                                       },
                                     ),
@@ -470,7 +491,8 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
                                   // 单据信息
                                   Expanded(
                                     child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
                                       children: [
                                         Text(
                                           receipt.trackingNumber.isEmpty
@@ -479,9 +501,10 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
                                           style: TextStyle(
                                             fontSize: 13,
                                             fontWeight: FontWeight.w600,
-                                            color: receipt.trackingNumber.isEmpty
-                                                ? const Color(0xFF94A3B8)
-                                                : const Color(0xFF1E293B),
+                                            color:
+                                                receipt.trackingNumber.isEmpty
+                                                    ? const Color(0xFF94A3B8)
+                                                    : const Color(0xFF1E293B),
                                           ),
                                           maxLines: 1,
                                           overflow: TextOverflow.ellipsis,
@@ -491,12 +514,17 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
                                           children: [
                                             // 结算状态
                                             Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 6,
+                                                      vertical: 2),
                                               color: receipt.isSettled
                                                   ? const Color(0xFFF1F5F9)
                                                   : const Color(0xFFEFF6FF),
                                               child: Text(
-                                                receipt.isSettled ? '已结算' : '未结算',
+                                                receipt.isSettled
+                                                    ? '已结算'
+                                                    : '未结算',
                                                 style: TextStyle(
                                                   fontSize: 10,
                                                   fontWeight: FontWeight.w500,
@@ -509,23 +537,34 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
                                             const SizedBox(width: 8),
                                             // OCR 状态
                                             Container(
-                                              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-                                              color: _getOcrStatusColor(receipt.ocrStatus).withAlpha(25),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 6,
+                                                      vertical: 2),
+                                              color: _getOcrStatusColor(
+                                                      receipt.ocrStatus)
+                                                  .withAlpha(25),
                                               child: Text(
-                                                _getOcrStatusLabel(receipt.ocrStatus),
+                                                _getOcrStatusLabel(
+                                                    receipt.ocrStatus),
                                                 style: TextStyle(
                                                   fontSize: 10,
                                                   fontWeight: FontWeight.w600,
-                                                  color: _getOcrStatusColor(receipt.ocrStatus),
+                                                  color: _getOcrStatusColor(
+                                                      receipt.ocrStatus),
                                                 ),
                                               ),
                                             ),
                                             // 是否已压缩图片
                                             if (receipt.imagePath != null &&
-                                                receipt.imagePath!.contains('_compressed')) ...[
+                                                receipt.imagePath!.contains(
+                                                    '_compressed')) ...[
                                               const SizedBox(width: 8),
                                               Container(
-                                                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                                                padding:
+                                                    const EdgeInsets.symmetric(
+                                                        horizontal: 6,
+                                                        vertical: 2),
                                                 color: const Color(0xFFF1F5F9),
                                                 child: const Text(
                                                   '已压缩',
@@ -548,7 +587,8 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
                                     height: 32,
                                     child: isItemProcessing
                                         ? const Padding(
-                                            padding: EdgeInsets.symmetric(horizontal: 16),
+                                            padding: EdgeInsets.symmetric(
+                                                horizontal: 16),
                                             child: SizedBox(
                                               width: 16,
                                               height: 16,
@@ -560,13 +600,24 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
                                           )
                                         : OutlinedButton(
                                             style: OutlinedButton.styleFrom(
-                                              foregroundColor: const Color(0xFF1E293B),
-                                              side: const BorderSide(color: Color(0xFFE2E8F0), width: 0.8),
-                                              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-                                              padding: const EdgeInsets.symmetric(horizontal: 10),
+                                              foregroundColor:
+                                                  const Color(0xFF1E293B),
+                                              side: const BorderSide(
+                                                  color: Color(0xFFE2E8F0),
+                                                  width: 0.8),
+                                              shape:
+                                                  const RoundedRectangleBorder(
+                                                      borderRadius:
+                                                          BorderRadius.zero),
+                                              padding:
+                                                  const EdgeInsets.symmetric(
+                                                      horizontal: 10),
                                             ),
-                                            onPressed: _isProcessing ? null : () => _analyzeSingle(receipt),
-                                            child: const Text('重新分析', style: TextStyle(fontSize: 11)),
+                                            onPressed: _isProcessing
+                                                ? null
+                                                : () => _analyzeSingle(receipt),
+                                            child: const Text('重新分析',
+                                                style: TextStyle(fontSize: 11)),
                                           ),
                                   ),
                                 ],
@@ -595,13 +646,18 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
                       child: OutlinedButton(
                         style: OutlinedButton.styleFrom(
                           foregroundColor: const Color(0xFF1E293B),
-                          side: const BorderSide(color: Color(0xFFE2E8F0), width: 0.8),
-                          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                          side: const BorderSide(
+                              color: Color(0xFFE2E8F0), width: 0.8),
+                          shape: const RoundedRectangleBorder(
+                              borderRadius: BorderRadius.zero),
                         ),
-                        onPressed: _isProcessing ? null : () => _runBatch(onlyUnsettled: true),
+                        onPressed: _isProcessing
+                            ? null
+                            : () => _runBatch(onlyUnsettled: true),
                         child: const Text(
                           '只分析未结算部分',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                          style: TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.w600),
                         ),
                       ),
                     ),
@@ -614,13 +670,17 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
                         style: FilledButton.styleFrom(
                           backgroundColor: const Color(0xFF1E293B),
                           foregroundColor: Colors.white,
-                          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                          shape: const RoundedRectangleBorder(
+                              borderRadius: BorderRadius.zero),
                           elevation: 0,
                         ),
-                        onPressed: _isProcessing ? null : () => _runBatch(onlyUnsettled: false),
+                        onPressed: _isProcessing
+                            ? null
+                            : () => _runBatch(onlyUnsettled: false),
                         child: const Text(
                           '全部分析',
-                          style: TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+                          style: TextStyle(
+                              fontSize: 12, fontWeight: FontWeight.w600),
                         ),
                       ),
                     ),

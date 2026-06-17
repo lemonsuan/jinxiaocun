@@ -1676,4 +1676,8 @@ class LocalInventoryDatabase {
       }
     });
   }
+
+  Future<void> clearWarehouseStock() async {
+    await _db.delete('warehouse_stock');
+  }
 }

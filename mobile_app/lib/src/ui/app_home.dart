@@ -60,7 +60,8 @@ class _AppHomeState extends State<AppHome> {
   static const Color _notionBorder = Color(0xFFEDEDEB);
 
   final LocalInventoryDatabase _database = LocalInventoryDatabase();
-  late final AiInboundExtractor _aiInboundExtractor = AiInboundExtractor(_database);
+  late final AiInboundExtractor _aiInboundExtractor =
+      AiInboundExtractor(_database);
   final PpStructurePostProcessor _postProcessor = PpStructurePostProcessor();
   final PaddleOcrChannel _paddleOcr = PaddleOcrChannel();
   final ImagePicker _imagePicker = ImagePicker();
@@ -97,6 +98,8 @@ class _AppHomeState extends State<AppHome> {
       _HistorySettlementFilter.all;
   String? _expandedReceiptId;
   final Map<String, int> _editingReceiptQuantities = {};
+  bool _isCalendarView = false;
+  final Set<String> _expandedDates = {};
 
   @override
   void initState() {
@@ -160,20 +163,23 @@ class _AppHomeState extends State<AppHome> {
           unselectedLabelStyle:
               const TextStyle(fontWeight: FontWeight.normal, fontSize: 11),
           elevation: 0,
-          items: const [
-            BottomNavigationBarItem(
+          items: [
+            const BottomNavigationBarItem(
               icon: Icon(Icons.qr_code_scanner, size: 20),
               label: '扫码入库',
             ),
-            BottomNavigationBarItem(
+            const BottomNavigationBarItem(
               icon: Icon(Icons.receipt_long_outlined, size: 20),
               label: '历史入库',
             ),
             BottomNavigationBarItem(
-              icon: Icon(Icons.inventory_2_outlined, size: 20),
+              icon: GestureDetector(
+                onLongPress: _showClearStockConfirmDialog,
+                child: const Icon(Icons.inventory_2_outlined, size: 20),
+              ),
               label: '库存管理',
             ),
-            BottomNavigationBarItem(
+            const BottomNavigationBarItem(
               icon: Icon(Icons.person_outline, size: 20),
               label: '我的',
             ),
@@ -485,14 +491,172 @@ class _AppHomeState extends State<AppHome> {
         ),
       ),
       const SizedBox(height: 8),
-      _historySettlementFilterControl(),
+      Row(
+        children: [
+          Expanded(child: _historySettlementFilterControl()),
+          const SizedBox(width: 8),
+          IconButton(
+            style: IconButton.styleFrom(
+              backgroundColor: Colors.white,
+              shape:
+                  const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+              side: const BorderSide(color: Colors.black, width: 0.8),
+            ),
+            onPressed: () {
+              setState(() {
+                _isCalendarView = !_isCalendarView;
+              });
+            },
+            icon: Icon(
+              _isCalendarView ? Icons.list : Icons.calendar_month,
+              color: Colors.black,
+            ),
+            tooltip: _isCalendarView ? '列表视图' : '日历视图',
+          ),
+        ],
+      ),
       const SizedBox(height: 8),
       if (_inboundHistory.isEmpty)
         const ListTile(title: Text('暂无入库记录'))
       else if (receipts.isEmpty)
-        const ListTile(title: Text('没有匹配的入库记录')),
-      ...receipts.map(_receiptTile),
+        const ListTile(title: Text('没有匹配的入库记录'))
+      else if (_isCalendarView)
+        _buildCalendarView(receipts)
+      else
+        ...receipts.map(_receiptTile),
     ]);
+  }
+
+  String _formatDateKey(DateTime dt) {
+    final local = dt.toLocal();
+    final year = local.year;
+    final month = local.month.toString().padLeft(2, '0');
+    final day = local.day.toString().padLeft(2, '0');
+    return '$year-$month-$day';
+  }
+
+  Widget _buildCalendarView(List<InboundReceipt> receipts) {
+    final Map<String, List<InboundReceipt>> grouped = {};
+    for (final receipt in receipts) {
+      final key = _formatDateKey(receipt.createdAt);
+      grouped.putIfAbsent(key, () => []).add(receipt);
+    }
+
+    final sortedDates = grouped.keys.toList()..sort((a, b) => b.compareTo(a));
+
+    return Column(
+      children: sortedDates.map((dateStr) {
+        final dateReceipts = grouped[dateStr]!;
+        final isExpanded = _expandedDates.contains(dateStr);
+
+        int totalItemsCount = 0;
+        for (final r in dateReceipts) {
+          for (final item in r.items) {
+            totalItemsCount += item.quantity;
+          }
+        }
+
+        return Container(
+          margin: const EdgeInsets.only(bottom: 12),
+          decoration: BoxDecoration(
+            color: Colors.white,
+            border: Border.all(color: _notionBorder, width: 1.0),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              InkWell(
+                onTap: () {
+                  setState(() {
+                    if (isExpanded) {
+                      _expandedDates.remove(dateStr);
+                    } else {
+                      _expandedDates.add(dateStr);
+                    }
+                  });
+                },
+                child: Padding(
+                  padding: const EdgeInsets.all(16),
+                  child: Row(
+                    children: [
+                      const Icon(Icons.calendar_today_outlined,
+                          size: 16, color: _notionGreyText),
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: Row(
+                          children: [
+                            Text(
+                              dateStr,
+                              style: const TextStyle(
+                                fontSize: 15,
+                                fontWeight: FontWeight.bold,
+                                color: _notionText,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: const BoxDecoration(
+                                color: _notionBg,
+                              ),
+                              child: Text(
+                                '${dateReceipts.length} 单',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: _notionGreyText,
+                                  fontFamily: 'monospace',
+                                ),
+                              ),
+                            ),
+                            const SizedBox(width: 6),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 6, vertical: 2),
+                              decoration: const BoxDecoration(
+                                color: _notionBg,
+                              ),
+                              child: Text(
+                                '共 $totalItemsCount 件',
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: _notionGreyText,
+                                  fontFamily: 'monospace',
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Icon(
+                        isExpanded ? Icons.expand_less : Icons.expand_more,
+                        size: 20,
+                        color: _notionGreyText,
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              if (isExpanded) ...[
+                const Divider(height: 1, color: _notionBorder),
+                Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                  child: Column(
+                    children: dateReceipts.map((receipt) {
+                      return Padding(
+                        padding: const EdgeInsets.only(bottom: 8.0),
+                        child: _receiptTile(receipt),
+                      );
+                    }).toList(),
+                  ),
+                ),
+              ],
+            ],
+          ),
+        );
+      }).toList(),
+    );
   }
 
   Widget _stockTotalsTab() {
@@ -1648,10 +1812,10 @@ class _AppHomeState extends State<AppHome> {
                               icon: const Icon(Icons.rotate_right,
                                   size: 16, color: Colors.black),
                               label: const Text(
-                                  '旋转90°',
-                                  style: TextStyle(
-                                      fontFamily: 'monospace',
-                                      fontWeight: FontWeight.normal),
+                                '旋转90°',
+                                style: TextStyle(
+                                    fontFamily: 'monospace',
+                                    fontWeight: FontWeight.normal),
                               ),
                             ),
                           ),
@@ -1687,8 +1851,9 @@ class _AppHomeState extends State<AppHome> {
                                         // 2. 根据识别方式调用相应接口
                                         List<InboundDraftItem> items = [];
                                         if (reRecognizeMethod == 'ai') {
-                                          final result = await _aiInboundExtractor
-                                              .extractFromImage(path);
+                                          final result =
+                                              await _aiInboundExtractor
+                                                  .extractFromImage(path);
                                           items = result.items;
                                         } else {
                                           final ocrResult = await _paddleOcr
@@ -1696,7 +1861,8 @@ class _AppHomeState extends State<AppHome> {
                                                   rowMergeTolerance:
                                                       _ocrRowMergeTolerance);
                                           final rows = ocrResult.rows;
-                                          final ocrText = ocrResult.editableText;
+                                          final ocrText =
+                                              ocrResult.editableText;
 
                                           // 使用本地处理器提取商品
                                           var processedItems =
@@ -1711,7 +1877,8 @@ class _AppHomeState extends State<AppHome> {
                                                     productName: e.productName,
                                                     quantity: e.quantity,
                                                     productCode: e.productCode,
-                                                    purchasePrice: e.purchasePrice,
+                                                    purchasePrice:
+                                                        e.purchasePrice,
                                                     salePrice: e.salePrice,
                                                   ))
                                               .toList();
@@ -1725,9 +1892,10 @@ class _AppHomeState extends State<AppHome> {
                                                   purchasePrice:
                                                       item.purchasePrice,
                                                   salePrice: item.salePrice,
-                                                  sourceText: reRecognizeMethod == 'ai'
-                                                      ? 'AI重新识别提取'
-                                                      : 'OCR重新识别提取',
+                                                  sourceText:
+                                                      reRecognizeMethod == 'ai'
+                                                          ? 'AI重新识别提取'
+                                                          : 'OCR重新识别提取',
                                                 ))
                                             .toList();
 
@@ -3059,6 +3227,59 @@ class _AppHomeState extends State<AppHome> {
     });
   }
 
+  void _showClearStockConfirmDialog() {
+    showDialog(
+      context: context,
+      builder: (BuildContext context) {
+        return AlertDialog(
+          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+          title: const Text('⚠️ 危险操作：清除库存数据'),
+          content: const Text(
+              '此操作将永久清空当前的库存统计总量（即所有商品的库存数归零/清空）。\n\n注意：此操作不会影响历史入库和出库的单据记录，仅重置当前的统计库存。确认清除吗？'),
+          actions: <Widget>[
+            TextButton(
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.grey,
+                shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero),
+              ),
+              child: const Text('取消'),
+              onPressed: () {
+                Navigator.of(context).pop();
+              },
+            ),
+            TextButton(
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.red,
+                shape: const RoundedRectangleBorder(
+                    borderRadius: BorderRadius.zero),
+              ),
+              child: const Text('确认清除'),
+              onPressed: () async {
+                Navigator.of(context).pop();
+                try {
+                  await _database.clearWarehouseStock();
+                  await _refreshData();
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      const SnackBar(content: Text('已清除所有库存统计数据')),
+                    );
+                  }
+                } catch (e) {
+                  if (mounted) {
+                    ScaffoldMessenger.of(context).showSnackBar(
+                      SnackBar(content: Text('清除失败: $e')),
+                    );
+                  }
+                }
+              },
+            ),
+          ],
+        );
+      },
+    );
+  }
+
   void _addManualDraftItem() {
     setState(() {
       _draftItems.add(
@@ -3509,8 +3730,8 @@ class _AppHomeState extends State<AppHome> {
                                     }
                                     setDialogState(() => isExtracting = true);
                                     try {
-                                      final result =
-                                          await _aiInboundExtractor.extract(text);
+                                      final result = await _aiInboundExtractor
+                                          .extract(text);
                                       if (!dialogContext.mounted) return;
                                       setState(() {
                                         if (result.trackingNumber != null &&
@@ -3766,10 +3987,8 @@ class _ReviewCartPageState extends State<_ReviewCartPage>
     final input = _trackingInputController.text;
     if (input.trim().isEmpty) return;
 
-    final cleanedLines = input
-        .split('\n')
-        .map((line) => line.trim())
-        .join('\n');
+    final cleanedLines =
+        input.split('\n').map((line) => line.trim()).join('\n');
 
     if (cleanedLines != input) {
       _trackingInputController.value = TextEditingValue(
@@ -3951,7 +4170,8 @@ class _ReviewCartPageState extends State<_ReviewCartPage>
                     ),
                     suffixIcon: _trackingInputController.text.isNotEmpty
                         ? IconButton(
-                            icon: const Icon(Icons.cancel, color: _notionGreyText, size: 18),
+                            icon: const Icon(Icons.cancel,
+                                color: _notionGreyText, size: 18),
                             onPressed: () {
                               _trackingInputController.clear();
                               setState(() {

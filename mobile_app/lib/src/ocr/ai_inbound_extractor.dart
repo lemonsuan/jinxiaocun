@@ -173,14 +173,17 @@ class AiInboundExtractor {
       final base64String = base64Encode(bytes);
 
       final uri = Uri.parse(url.trim());
-      final response = await http.post(
-        uri,
-        headers: {'Content-Type': 'application/json; charset=utf-8'},
-        body: jsonEncode({'image': base64String}),
-      ).timeout(const Duration(seconds: 45));
+      final response = await http
+          .post(
+            uri,
+            headers: {'Content-Type': 'application/json; charset=utf-8'},
+            body: jsonEncode({'image': base64String}),
+          )
+          .timeout(const Duration(seconds: 45));
 
       if (response.statusCode != 200) {
-        throw Exception('自建 OCR 服务请求失败 (HTTP ${response.statusCode}): ${utf8.decode(response.bodyBytes)}');
+        throw Exception(
+            '自建 OCR 服务请求失败 (HTTP ${response.statusCode}): ${utf8.decode(response.bodyBytes)}');
       }
 
       String? extractedText;
@@ -188,9 +191,9 @@ class AiInboundExtractor {
         final decoded = jsonDecode(utf8.decode(response.bodyBytes));
         if (decoded is Map) {
           extractedText = decoded['markdown']?.toString() ??
-                          decoded['text']?.toString() ??
-                          decoded['result']?.toString() ??
-                          decoded['data']?.toString();
+              decoded['text']?.toString() ??
+              decoded['result']?.toString() ??
+              decoded['data']?.toString();
         } else if (decoded is String) {
           extractedText = decoded;
         }

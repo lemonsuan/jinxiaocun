@@ -63,7 +63,10 @@ class _ProductPricePageState extends State<ProductPricePage> {
   int _getTotalCount() => _allProducts.length;
 
   int _getSetPriceCount() {
-    return _allProducts.where((p) => p.defaultPurchasePrice != null || p.defaultSalePrice != null).length;
+    return _allProducts
+        .where(
+            (p) => p.defaultPurchasePrice != null || p.defaultSalePrice != null)
+        .length;
   }
 
   int _getUnsetPriceCount() => _getTotalCount() - _getSetPriceCount();
@@ -109,7 +112,8 @@ class _ProductPricePageState extends State<ProductPricePage> {
 
                 // 2. 检索输入框 (极简直角框线设计)
                 Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
                   child: TextField(
                     controller: _searchController,
                     onChanged: (val) {
@@ -119,19 +123,24 @@ class _ProductPricePageState extends State<ProductPricePage> {
                     },
                     decoration: InputDecoration(
                       hintText: '搜索商品名称或编码...',
-                      hintStyle: const TextStyle(color: Color(0xFFCBD5E1), fontSize: 13),
-                      prefixIcon: const Icon(Icons.search_outlined, size: 18, color: Color(0xFF94A3B8)),
+                      hintStyle: const TextStyle(
+                          color: Color(0xFFCBD5E1), fontSize: 13),
+                      prefixIcon: const Icon(Icons.search_outlined,
+                          size: 18, color: Color(0xFF94A3B8)),
                       border: const OutlineInputBorder(
                         borderRadius: BorderRadius.zero,
-                        borderSide: BorderSide(color: Color(0xFFE2E8F0), width: 0.8),
+                        borderSide:
+                            BorderSide(color: Color(0xFFE2E8F0), width: 0.8),
                       ),
                       enabledBorder: const OutlineInputBorder(
                         borderRadius: BorderRadius.zero,
-                        borderSide: BorderSide(color: Color(0xFFE2E8F0), width: 0.8),
+                        borderSide:
+                            BorderSide(color: Color(0xFFE2E8F0), width: 0.8),
                       ),
                       focusedBorder: const OutlineInputBorder(
                         borderRadius: BorderRadius.zero,
-                        borderSide: BorderSide(color: Color(0xFF1E293B), width: 1.2),
+                        borderSide:
+                            BorderSide(color: Color(0xFF1E293B), width: 1.2),
                       ),
                       filled: true,
                       fillColor: Colors.white,
@@ -139,7 +148,8 @@ class _ProductPricePageState extends State<ProductPricePage> {
                       suffixIcon: _searchQuery.isEmpty
                           ? null
                           : IconButton(
-                              icon: const Icon(Icons.clear_outlined, size: 16, color: Color(0xFF94A3B8)),
+                              icon: const Icon(Icons.clear_outlined,
+                                  size: 16, color: Color(0xFF94A3B8)),
                               onPressed: () {
                                 setState(() {
                                   _searchController.clear();
@@ -148,7 +158,8 @@ class _ProductPricePageState extends State<ProductPricePage> {
                               },
                             ),
                     ),
-                    style: const TextStyle(fontSize: 13, color: Color(0xFF1E293B)),
+                    style:
+                        const TextStyle(fontSize: 13, color: Color(0xFF1E293B)),
                   ),
                 ),
                 const SizedBox(height: 16),
@@ -159,11 +170,13 @@ class _ProductPricePageState extends State<ProductPricePage> {
                       ? const Center(
                           child: Text(
                             '暂无相关商品数据',
-                            style: TextStyle(color: Color(0xFF94A3B8), fontSize: 12),
+                            style: TextStyle(
+                                color: Color(0xFF94A3B8), fontSize: 12),
                           ),
                         )
                       : ListView.builder(
-                          padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 8),
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 24, vertical: 8),
                           itemCount: filtered.length,
                           itemBuilder: (context, index) {
                             final product = filtered[index];
@@ -189,11 +202,14 @@ class _ProductPricePageState extends State<ProductPricePage> {
         child: Row(
           mainAxisAlignment: MainAxisAlignment.spaceAround,
           children: [
-            _statItem('品类总量', _getTotalCount().toString(), const Color(0xFF1E293B)),
+            _statItem(
+                '品类总量', _getTotalCount().toString(), const Color(0xFF1E293B)),
             Container(width: 0.8, height: 24, color: const Color(0xFFE2E8F0)),
-            _statItem('已配价格', _getSetPriceCount().toString(), const Color(0xFF64748B)),
+            _statItem('已配价格', _getSetPriceCount().toString(),
+                const Color(0xFF64748B)),
             Container(width: 0.8, height: 24, color: const Color(0xFFE2E8F0)),
-            _statItem('未配价格', _getUnsetPriceCount().toString(), const Color(0xFF94A3B8)),
+            _statItem('未配价格', _getUnsetPriceCount().toString(),
+                const Color(0xFF94A3B8)),
           ],
         ),
       ),
@@ -205,19 +221,28 @@ class _ProductPricePageState extends State<ProductPricePage> {
       children: [
         Text(
           title,
-          style: const TextStyle(fontSize: 10, fontWeight: FontWeight.w500, color: Color(0xFF94A3B8), letterSpacing: 0.5),
+          style: const TextStyle(
+              fontSize: 10,
+              fontWeight: FontWeight.w500,
+              color: Color(0xFF94A3B8),
+              letterSpacing: 0.5),
         ),
         const SizedBox(height: 6),
         Text(
           val,
-          style: TextStyle(fontSize: 18, fontWeight: FontWeight.w600, color: color, fontFamily: 'monospace'),
+          style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.w600,
+              color: color,
+              fontFamily: 'monospace'),
         ),
       ],
     );
   }
 
   // 极简主义商品行
-  Widget _productPriceCard(ProductCatalogItem product, ColorScheme colorScheme) {
+  Widget _productPriceCard(
+      ProductCatalogItem product, ColorScheme colorScheme) {
     final hasPurchase = product.defaultPurchasePrice != null;
     final hasSale = product.defaultSalePrice != null;
 
@@ -251,13 +276,17 @@ class _ProductPricePageState extends State<ProductPricePage> {
                     ),
                   ),
                   const SizedBox(width: 8),
-                  const Icon(Icons.edit_note_outlined, size: 18, color: Color(0xFF94A3B8)),
+                  const Icon(Icons.edit_note_outlined,
+                      size: 18, color: Color(0xFF94A3B8)),
                 ],
               ),
               const SizedBox(height: 8),
               Text(
                 '编码: ${product.productCode}',
-                style: const TextStyle(fontSize: 10, fontFamily: 'monospace', color: Color(0xFF94A3B8)),
+                style: const TextStyle(
+                    fontSize: 10,
+                    fontFamily: 'monospace',
+                    color: Color(0xFF94A3B8)),
               ),
               const SizedBox(height: 12),
               const Divider(height: 1, color: Color(0xFFF1F5F9)),
@@ -268,7 +297,11 @@ class _ProductPricePageState extends State<ProductPricePage> {
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('采购指导价', style: TextStyle(fontSize: 9, color: Color(0xFF94A3B8), letterSpacing: 0.5)),
+                        const Text('采购指导价',
+                            style: TextStyle(
+                                fontSize: 9,
+                                color: Color(0xFF94A3B8),
+                                letterSpacing: 0.5)),
                         const SizedBox(height: 4),
                         Text(
                           _formatPrice(product.defaultPurchasePrice),
@@ -276,19 +309,26 @@ class _ProductPricePageState extends State<ProductPricePage> {
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                             fontFamily: 'monospace',
-                            color: hasPurchase ? const Color(0xFF1E293B) : const Color(0xFF94A3B8),
+                            color: hasPurchase
+                                ? const Color(0xFF1E293B)
+                                : const Color(0xFF94A3B8),
                           ),
                         ),
                       ],
                     ),
                   ),
-                  Container(width: 0.8, height: 20, color: const Color(0xFFF1F5F9)),
+                  Container(
+                      width: 0.8, height: 20, color: const Color(0xFFF1F5F9)),
                   const SizedBox(width: 24),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        const Text('销售指导价', style: TextStyle(fontSize: 9, color: Color(0xFF94A3B8), letterSpacing: 0.5)),
+                        const Text('销售指导价',
+                            style: TextStyle(
+                                fontSize: 9,
+                                color: Color(0xFF94A3B8),
+                                letterSpacing: 0.5)),
                         const SizedBox(height: 4),
                         Text(
                           _formatPrice(product.defaultSalePrice),
@@ -296,7 +336,9 @@ class _ProductPricePageState extends State<ProductPricePage> {
                             fontSize: 12,
                             fontWeight: FontWeight.w600,
                             fontFamily: 'monospace',
-                            color: hasSale ? const Color(0xFF1E293B) : const Color(0xFF94A3B8),
+                            color: hasSale
+                                ? const Color(0xFF1E293B)
+                                : const Color(0xFF94A3B8),
                           ),
                         ),
                       ],
@@ -341,7 +383,8 @@ class _ProductPricePageState extends State<ProductPricePage> {
                 bottom: MediaQuery.of(context).viewInsets.bottom,
               ),
               child: ClipRRect(
-                borderRadius: const BorderRadius.vertical(top: Radius.circular(24)),
+                borderRadius:
+                    const BorderRadius.vertical(top: Radius.circular(24)),
                 child: BackdropFilter(
                   filter: ImageFilter.blur(sigmaX: 16, sigmaY: 16),
                   child: Container(
@@ -357,7 +400,8 @@ class _ProductPricePageState extends State<ProductPricePage> {
                             children: [
                               const Text(
                                 '配置商品指导价',
-                                style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                                style: TextStyle(
+                                    fontSize: 18, fontWeight: FontWeight.bold),
                               ),
                               IconButton(
                                 icon: const Icon(Icons.close),
@@ -368,7 +412,8 @@ class _ProductPricePageState extends State<ProductPricePage> {
                           const SizedBox(height: 8),
                           Text(
                             product.productName,
-                            style: TextStyle(color: colorScheme.outline, fontSize: 14),
+                            style: TextStyle(
+                                color: colorScheme.outline, fontSize: 14),
                           ),
                           const SizedBox(height: 20),
 
@@ -378,11 +423,16 @@ class _ProductPricePageState extends State<ProductPricePage> {
                             controller: purchaseController,
                             colorScheme: colorScheme,
                             shortcuts: [
-                              _shortcutBtn('+1', () => adjustPrice(purchaseController, 1.0)),
-                              _shortcutBtn('+5', () => adjustPrice(purchaseController, 5.0)),
-                              _shortcutBtn('+10', () => adjustPrice(purchaseController, 10.0)),
-                              _shortcutBtn('-1', () => adjustPrice(purchaseController, -1.0)),
-                              _shortcutBtn('-5', () => adjustPrice(purchaseController, -5.0)),
+                              _shortcutBtn('+1',
+                                  () => adjustPrice(purchaseController, 1.0)),
+                              _shortcutBtn('+5',
+                                  () => adjustPrice(purchaseController, 5.0)),
+                              _shortcutBtn('+10',
+                                  () => adjustPrice(purchaseController, 10.0)),
+                              _shortcutBtn('-1',
+                                  () => adjustPrice(purchaseController, -1.0)),
+                              _shortcutBtn('-5',
+                                  () => adjustPrice(purchaseController, -5.0)),
                             ],
                           ),
                           const SizedBox(height: 20),
@@ -393,11 +443,16 @@ class _ProductPricePageState extends State<ProductPricePage> {
                             controller: saleController,
                             colorScheme: colorScheme,
                             shortcuts: [
-                              _shortcutBtn('+5', () => adjustPrice(saleController, 5.0)),
-                              _shortcutBtn('+10', () => adjustPrice(saleController, 10.0)),
-                              _shortcutBtn('+50', () => adjustPrice(saleController, 50.0)),
-                              _shortcutBtn('-5', () => adjustPrice(saleController, -5.0)),
-                              _shortcutBtn('-10', () => adjustPrice(saleController, -10.0)),
+                              _shortcutBtn(
+                                  '+5', () => adjustPrice(saleController, 5.0)),
+                              _shortcutBtn('+10',
+                                  () => adjustPrice(saleController, 10.0)),
+                              _shortcutBtn('+50',
+                                  () => adjustPrice(saleController, 50.0)),
+                              _shortcutBtn('-5',
+                                  () => adjustPrice(saleController, -5.0)),
+                              _shortcutBtn('-10',
+                                  () => adjustPrice(saleController, -10.0)),
                             ],
                           ),
                           const SizedBox(height: 28),
@@ -413,8 +468,10 @@ class _ProductPricePageState extends State<ProductPricePage> {
                                 ),
                               ),
                               onPressed: () async {
-                                final pVal = double.tryParse(purchaseController.text.trim());
-                                final sVal = double.tryParse(saleController.text.trim());
+                                final pVal = double.tryParse(
+                                    purchaseController.text.trim());
+                                final sVal =
+                                    double.tryParse(saleController.text.trim());
                                 await widget.database.updateProductPrice(
                                   product.productCode,
                                   purchasePrice: pVal,
@@ -424,7 +481,10 @@ class _ProductPricePageState extends State<ProductPricePage> {
                                 _loadProducts();
                                 widget.onPricesUpdated?.call();
                               },
-                              child: const Text('保存配置', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                              child: const Text('保存配置',
+                                  style: TextStyle(
+                                      fontSize: 16,
+                                      fontWeight: FontWeight.bold)),
                             ),
                           ),
                           const SizedBox(height: 12),
@@ -466,7 +526,8 @@ class _ProductPricePageState extends State<ProductPricePage> {
             border: OutlineInputBorder(
               borderRadius: BorderRadius.circular(12),
             ),
-            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            contentPadding:
+                const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
           ),
         ),
         const SizedBox(height: 8),

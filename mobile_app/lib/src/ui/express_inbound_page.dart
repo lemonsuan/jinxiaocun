@@ -90,7 +90,8 @@ class _ExpressInboundPageState extends State<ExpressInboundPage> {
       inboundDir.createSync(recursive: true);
     }
     final extension = image.path.split('.').last;
-    final filename = 'inbound_${DateTime.now().millisecondsSinceEpoch}.$extension';
+    final filename =
+        'inbound_${DateTime.now().millisecondsSinceEpoch}.$extension';
     final targetPath = '${inboundDir.path}/$filename';
     await File(image.path).copy(targetPath);
     return targetPath;
@@ -105,7 +106,8 @@ class _ExpressInboundPageState extends State<ExpressInboundPage> {
       );
       final rows = recognition.rows;
       final editableText = recognition.editableText;
-      final orderNumber = widget.postProcessor.extractSellerOrderNumber(editableText);
+      final orderNumber =
+          widget.postProcessor.extractSellerOrderNumber(editableText);
 
       var items = widget.postProcessor.processRows(rows);
       if (items.isEmpty && editableText.isNotEmpty) {
@@ -167,7 +169,8 @@ class _ExpressInboundPageState extends State<ExpressInboundPage> {
             appBar: AppBar(
               backgroundColor: Colors.black,
               foregroundColor: Colors.white,
-              title: Text('单号: $trackingNumber', style: const TextStyle(fontSize: 14)),
+              title: Text('单号: $trackingNumber',
+                  style: const TextStyle(fontSize: 14)),
               elevation: 0,
             ),
             body: Center(
@@ -273,7 +276,8 @@ class _ExpressInboundPageState extends State<ExpressInboundPage> {
                           // 跳转到统一的 CustomCameraPage 拍照识别，享受取景框物理图像裁剪
                           final image = await Navigator.of(context).push<XFile>(
                             MaterialPageRoute(
-                              builder: (context) => const CustomCameraPage(title: '极速模式拍照识别'),
+                              builder: (context) =>
+                                  const CustomCameraPage(title: '极速模式拍照识别'),
                             ),
                           );
 
@@ -287,7 +291,8 @@ class _ExpressInboundPageState extends State<ExpressInboundPage> {
                               });
                             }
                             // 给相机硬件转场释放留出足够物理缓冲时间
-                            await Future.delayed(const Duration(milliseconds: 500));
+                            await Future.delayed(
+                                const Duration(milliseconds: 500));
                             await _controller.start();
                             break;
                           }
@@ -301,10 +306,12 @@ class _ExpressInboundPageState extends State<ExpressInboundPage> {
                           }
 
                           try {
-                            final storedImagePath = await _storeInboundImage(image);
+                            final storedImagePath =
+                                await _storeInboundImage(image);
 
                             // 本地快速创建待处理单据
-                            final receipt = await widget.database.confirmInbound(
+                            final receipt =
+                                await widget.database.confirmInbound(
                               trackingNumber: raw,
                               items: const [],
                               imagePath: storedImagePath,
@@ -312,7 +319,8 @@ class _ExpressInboundPageState extends State<ExpressInboundPage> {
                             );
 
                             // 后台开启异步大模型提取，完全不阻塞当前扫码流水线
-                            unawaited(_runAsyncOcr(receipt.id, storedImagePath));
+                            unawaited(
+                                _runAsyncOcr(receipt.id, storedImagePath));
 
                             // 加载最近入库列表
                             await _loadRecentReceipts();
@@ -338,7 +346,8 @@ class _ExpressInboundPageState extends State<ExpressInboundPage> {
                           }
 
                           // 等待页面滑出转场完全结束，相机硬件彻底释放后，再重启扫码
-                          await Future.delayed(const Duration(milliseconds: 500));
+                          await Future.delayed(
+                              const Duration(milliseconds: 500));
                           await _controller.start();
                           break;
                         }
@@ -360,7 +369,8 @@ class _ExpressInboundPageState extends State<ExpressInboundPage> {
                             height: 24,
                             child: CircularProgressIndicator(
                               strokeWidth: 1.8,
-                              valueColor: AlwaysStoppedAnimation<Color>(Colors.white),
+                              valueColor:
+                                  AlwaysStoppedAnimation<Color>(Colors.white),
                             ),
                           ),
                           const SizedBox(height: 16),
@@ -422,7 +432,8 @@ class _ExpressInboundPageState extends State<ExpressInboundPage> {
                   ),
                 ),
                 style: TextButton.styleFrom(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                 ),
               ),
             ),
@@ -510,13 +521,16 @@ class _ExpressInboundPageState extends State<ExpressInboundPage> {
     final hasImage = receipt.imagePath != null && receipt.imagePath!.isNotEmpty;
 
     return GestureDetector(
-      onTap: hasImage ? () => _showReceiptImage(receipt.imagePath!, receipt.trackingNumber) : null,
+      onTap: hasImage
+          ? () => _showReceiptImage(receipt.imagePath!, receipt.trackingNumber)
+          : null,
       child: Container(
         padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
         decoration: BoxDecoration(
           color: isFirst ? const Color(0xFFE8F5E9) : null,
           border: isFirst
-              ? const Border(left: BorderSide(color: Color(0xFF4CAF50), width: 2.5))
+              ? const Border(
+                  left: BorderSide(color: Color(0xFF4CAF50), width: 2.5))
               : null,
         ),
         child: Row(
@@ -553,7 +567,8 @@ class _ExpressInboundPageState extends State<ExpressInboundPage> {
               padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
               decoration: BoxDecoration(
                 color: ocrColor.withOpacity(0.1),
-                border: Border.all(color: ocrColor.withOpacity(0.4), width: 0.8),
+                border:
+                    Border.all(color: ocrColor.withOpacity(0.4), width: 0.8),
               ),
               child: Text(
                 ocrLabel,

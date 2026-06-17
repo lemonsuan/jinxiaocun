@@ -25,7 +25,8 @@ class _AiConfigPageState extends State<AiConfigPage> {
 
   // 配置状态
   String _ocrMode = 'local';
-  final TextEditingController _selfHostedOcrUrlController = TextEditingController();
+  final TextEditingController _selfHostedOcrUrlController =
+      TextEditingController();
 
   String _aiApiFormat = 'openai';
   final TextEditingController _apiKeyController = TextEditingController();
@@ -82,7 +83,8 @@ class _AiConfigPageState extends State<AiConfigPage> {
     setState(() => _isLoading = true);
     try {
       await widget.database.saveOcrMode(_ocrMode);
-      await widget.database.saveSelfHostedOcrUrl(_selfHostedOcrUrlController.text.trim());
+      await widget.database
+          .saveSelfHostedOcrUrl(_selfHostedOcrUrlController.text.trim());
       await widget.database.saveAiApiFormat(_aiApiFormat);
       await widget.database.saveGeminiApiKey(_apiKeyController.text.trim());
       await widget.database.saveGeminiApiUrl(_apiUrlController.text.trim());
@@ -110,7 +112,8 @@ class _AiConfigPageState extends State<AiConfigPage> {
   InputDecoration _inputDecoration(String labelText, {Widget? suffixIcon}) {
     return InputDecoration(
       labelText: labelText,
-      labelStyle: const TextStyle(color: _notionGreyText, fontFamily: 'monospace', fontSize: 13),
+      labelStyle: const TextStyle(
+          color: _notionGreyText, fontFamily: 'monospace', fontSize: 13),
       filled: true,
       fillColor: Colors.white,
       suffixIcon: suffixIcon,
@@ -204,9 +207,12 @@ class _AiConfigPageState extends State<AiConfigPage> {
                               selectedForegroundColor: Colors.white,
                               backgroundColor: Colors.white,
                               foregroundColor: Colors.black,
-                              side: const BorderSide(color: Colors.black, width: 0.8),
-                              shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-                              textStyle: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+                              side: const BorderSide(
+                                  color: Colors.black, width: 0.8),
+                              shape: const RoundedRectangleBorder(
+                                  borderRadius: BorderRadius.zero),
+                              textStyle: const TextStyle(
+                                  fontFamily: 'monospace', fontSize: 13),
                             ),
                             segments: const [
                               ButtonSegment<String>(
@@ -230,7 +236,8 @@ class _AiConfigPageState extends State<AiConfigPage> {
                           const SizedBox(height: 16),
                           TextField(
                             controller: _selfHostedOcrUrlController,
-                            style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
+                            style: const TextStyle(
+                                fontFamily: 'monospace', fontSize: 14),
                             decoration: _inputDecoration(
                               '自建 OCR 服务地址 (POST)',
                             ),
@@ -267,13 +274,21 @@ class _AiConfigPageState extends State<AiConfigPage> {
                       children: [
                         DropdownButtonFormField<String>(
                           value: _aiApiFormat,
-                          style: const TextStyle(color: Colors.black, fontFamily: 'monospace', fontSize: 14),
+                          style: const TextStyle(
+                              color: Colors.black,
+                              fontFamily: 'monospace',
+                              fontSize: 14),
                           dropdownColor: Colors.white,
                           decoration: _inputDecoration('AI API 格式'),
                           items: const [
-                            DropdownMenuItem(value: 'openai', child: Text('OpenAI 兼容接口')),
-                            DropdownMenuItem(value: 'gemini', child: Text('Google Gemini 格式')),
-                            DropdownMenuItem(value: 'anthropic', child: Text('Anthropic Claude 格式')),
+                            DropdownMenuItem(
+                                value: 'openai', child: Text('OpenAI 兼容接口')),
+                            DropdownMenuItem(
+                                value: 'gemini',
+                                child: Text('Google Gemini 格式')),
+                            DropdownMenuItem(
+                                value: 'anthropic',
+                                child: Text('Anthropic Claude 格式')),
                           ],
                           onChanged: (val) {
                             if (val != null) {
@@ -287,12 +302,15 @@ class _AiConfigPageState extends State<AiConfigPage> {
                         TextField(
                           controller: _apiKeyController,
                           obscureText: _obscureApiKey,
-                          style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
+                          style: const TextStyle(
+                              fontFamily: 'monospace', fontSize: 14),
                           decoration: _inputDecoration(
                             'API Key',
                             suffixIcon: IconButton(
                               icon: Icon(
-                                _obscureApiKey ? Icons.visibility_off : Icons.visibility,
+                                _obscureApiKey
+                                    ? Icons.visibility_off
+                                    : Icons.visibility,
                                 color: _notionGreyText,
                                 size: 20,
                               ),
@@ -307,13 +325,15 @@ class _AiConfigPageState extends State<AiConfigPage> {
                         const SizedBox(height: 16),
                         TextField(
                           controller: _apiUrlController,
-                          style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
+                          style: const TextStyle(
+                              fontFamily: 'monospace', fontSize: 14),
                           decoration: _inputDecoration('API 接口地址'),
                         ),
                         const SizedBox(height: 16),
                         TextField(
                           controller: _modelController,
-                          style: const TextStyle(fontFamily: 'monospace', fontSize: 14),
+                          style: const TextStyle(
+                              fontFamily: 'monospace', fontSize: 14),
                           decoration: _inputDecoration('大模型名称 (model)'),
                         ),
                       ],
@@ -331,7 +351,8 @@ class _AiConfigPageState extends State<AiConfigPage> {
                         backgroundColor: Colors.black,
                         foregroundColor: Colors.white,
                         elevation: 0,
-                        shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+                        shape: const RoundedRectangleBorder(
+                            borderRadius: BorderRadius.zero),
                       ),
                       onPressed: _saveSettings,
                       child: const Text(

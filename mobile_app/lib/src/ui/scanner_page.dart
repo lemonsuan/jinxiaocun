@@ -164,7 +164,8 @@ class _ScannerPageState extends State<ScannerPage>
           height: label != null ? 72 : 46,
           decoration: BoxDecoration(
             color: Colors.white.withOpacity(0.06),
-            border: Border.all(color: Colors.white.withOpacity(0.2), width: 0.8),
+            border:
+                Border.all(color: Colors.white.withOpacity(0.2), width: 0.8),
             borderRadius: BorderRadius.zero,
           ),
           child: Material(
@@ -210,8 +211,7 @@ class _ScannerMaskPainter extends CustomPainter {
     // 使用 Path.combine 镂空直角扫描框
     final backgroundPath = Path()
       ..addRect(Rect.fromLTWH(0, 0, size.width, size.height));
-    final holePath = Path()
-      ..addRect(scanRect);
+    final holePath = Path()..addRect(scanRect);
 
     final cutPath =
         Path.combine(PathOperation.difference, backgroundPath, holePath);

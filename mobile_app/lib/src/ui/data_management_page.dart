@@ -61,7 +61,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
               _compressionMessage = '没有检测到任何符合条件的可压缩图片';
             } else {
               _compressionProgress = current / total;
-              _compressionMessage = '正在压缩: $current / $total 张图片 (${(_compressionProgress * 100).toStringAsFixed(0)}%)';
+              _compressionMessage =
+                  '正在压缩: $current / $total 张图片 (${(_compressionProgress * 100).toStringAsFixed(0)}%)';
             }
           });
         },
@@ -391,7 +392,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
                   onPressed: () {
                     Navigator.pop(dialogContext);
                   },
-                  child: const Text('取消', style: TextStyle(color: Colors.black)),
+                  child:
+                      const Text('取消', style: TextStyle(color: Colors.black)),
                 ),
                 FilledButton(
                   style: FilledButton.styleFrom(
@@ -578,14 +580,16 @@ class _DataManagementPageState extends State<DataManagementPage> {
                       child: ListTile(
                         contentPadding:
                             const EdgeInsets.symmetric(vertical: 12),
-                        onLongPress: _isLoading ? null : () async {
-                          if (await file.exists()) {
-                            await Share.shareXFiles(
-                              [XFile(file.path)],
-                              text: '分享商品管理系统数据备份：$name',
-                            );
-                          }
-                        },
+                        onLongPress: _isLoading
+                            ? null
+                            : () async {
+                                if (await file.exists()) {
+                                  await Share.shareXFiles(
+                                    [XFile(file.path)],
+                                    text: '分享商品管理系统数据备份：$name',
+                                  );
+                                }
+                              },
                         leading: const Icon(
                           Icons.insert_drive_file_outlined,
                           color: Color(0xFF94A3B8),
@@ -624,7 +628,9 @@ class _DataManagementPageState extends State<DataManagementPage> {
                                 minimumSize: Size.zero,
                                 tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                               ),
-                              onPressed: _isLoading ? null : () => _restoreFromLocalFile(file),
+                              onPressed: _isLoading
+                                  ? null
+                                  : () => _restoreFromLocalFile(file),
                               child: const Text(
                                 '还原',
                                 style: TextStyle(
@@ -641,7 +647,9 @@ class _DataManagementPageState extends State<DataManagementPage> {
                                 color: Color(0xFF94A3B8),
                                 size: 18,
                               ),
-                              onPressed: _isLoading ? null : () => _deleteBackupFile(file),
+                              onPressed: _isLoading
+                                  ? null
+                                  : () => _deleteBackupFile(file),
                               padding: EdgeInsets.zero,
                               constraints: const BoxConstraints(),
                               splashRadius: 16,
@@ -749,7 +757,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
           const SizedBox(height: 12),
           CheckboxListTile(
             title: const Text('已结算文本数据', style: TextStyle(fontSize: 12)),
-            subtitle: const Text('物理清除已勾选结算的入库明细及流水，释放数据库', style: TextStyle(fontSize: 10)),
+            subtitle: const Text('物理清除已勾选结算的入库明细及流水，释放数据库',
+                style: TextStyle(fontSize: 10)),
             value: _clearTextSelected,
             onChanged: _isLoading
                 ? null
@@ -764,7 +773,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
           ),
           CheckboxListTile(
             title: const Text('已结算物理图片', style: TextStyle(fontSize: 12)),
-            subtitle: const Text('物理删除已结算单据对应的拍照文件，释放手机存储', style: TextStyle(fontSize: 10)),
+            subtitle: const Text('物理删除已结算单据对应的拍照文件，释放手机存储',
+                style: TextStyle(fontSize: 10)),
             value: _clearImagesSelected,
             onChanged: _isLoading
                 ? null
@@ -783,14 +793,16 @@ class _DataManagementPageState extends State<DataManagementPage> {
             child: OutlinedButton.icon(
               style: OutlinedButton.styleFrom(
                 foregroundColor: Colors.red,
-                side: BorderSide(color: _isLoading ? Colors.grey : Colors.red, width: 0.8),
+                side: BorderSide(
+                    color: _isLoading ? Colors.grey : Colors.red, width: 0.8),
                 shape: const RoundedRectangleBorder(
                     borderRadius: BorderRadius.zero),
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),
               onPressed: _isLoading ? null : _showClearConfirmationDialog,
               icon: const Icon(Icons.delete_forever, size: 16),
-              label: const Text('一键清空所选数据', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+              label: const Text('一键清空所选数据',
+                  style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
             ),
           ),
         ],
@@ -822,7 +834,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
           const SizedBox(height: 8),
           const Text(
             '将创建时间超过 7 天的历史入库单拍照进行尺寸缩小（宽/高最大 1000 像素），能腾出 90% 以上的图片占用存储，且不影响字迹阅读。已经压缩过的图片不会重复处理。',
-            style: TextStyle(fontSize: 10, color: Color(0xFF64748B), height: 1.4),
+            style:
+                TextStyle(fontSize: 10, color: Color(0xFF64748B), height: 1.4),
           ),
           const SizedBox(height: 12),
           if (_isCompressing) ...[
@@ -835,7 +848,10 @@ class _DataManagementPageState extends State<DataManagementPage> {
             const SizedBox(height: 8),
             Text(
               _compressionMessage,
-              style: const TextStyle(fontSize: 11, color: Color(0xFF1E293B), fontFamily: 'monospace'),
+              style: const TextStyle(
+                  fontSize: 11,
+                  color: Color(0xFF1E293B),
+                  fontFamily: 'monospace'),
             ),
           ] else
             Row(
@@ -844,14 +860,19 @@ class _DataManagementPageState extends State<DataManagementPage> {
                   child: OutlinedButton.icon(
                     style: OutlinedButton.styleFrom(
                       foregroundColor: const Color(0xFF1E293B),
-                      side: const BorderSide(color: Color(0xFFE2E8F0), width: 0.8),
+                      side: const BorderSide(
+                          color: Color(0xFFE2E8F0), width: 0.8),
                       shape: const RoundedRectangleBorder(
                           borderRadius: BorderRadius.zero),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
-                    onPressed: _isLoading ? null : () => _startCompression(force: false),
+                    onPressed: _isLoading
+                        ? null
+                        : () => _startCompression(force: false),
                     icon: const Icon(Icons.compress, size: 16),
-                    label: const Text('开始增量压缩', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    label: const Text('开始增量压缩',
+                        style: TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.bold)),
                   ),
                 ),
                 const SizedBox(width: 16),
@@ -864,9 +885,13 @@ class _DataManagementPageState extends State<DataManagementPage> {
                           borderRadius: BorderRadius.zero),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
-                    onPressed: _isLoading ? null : () => _startCompression(force: true),
+                    onPressed: _isLoading
+                        ? null
+                        : () => _startCompression(force: true),
                     icon: const Icon(Icons.refresh, size: 16),
-                    label: const Text('强制全部重压', style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+                    label: const Text('强制全部重压',
+                        style: TextStyle(
+                            fontSize: 12, fontWeight: FontWeight.bold)),
                   ),
                 ),
               ],

@@ -26,9 +26,8 @@ void main() async {
   }
 
   // 只要拥有已激活的店铺（无论是默认本地店铺还是云端店铺），直接进入 AppHome ；否则进入登录网关
-  final Widget homeScreen = activeShopId.isNotEmpty
-      ? const AppHome()
-      : const LoginPage();
+  final Widget homeScreen =
+      activeShopId.isNotEmpty ? const AppHome() : const LoginPage();
 
   runApp(InventoryApp(homeScreen: homeScreen));
 }
