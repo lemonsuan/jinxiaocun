@@ -3228,53 +3228,111 @@ class _AppHomeState extends State<AppHome> {
   }
 
   void _showClearStockConfirmDialog() {
+    bool clearStockOnly = true;
+    bool deleteProducts = false;
+
     showDialog(
       context: context,
-      builder: (BuildContext context) {
-        return AlertDialog(
-          shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-          title: const Text('⚠️ 危险操作：清除库存数据'),
-          content: const Text(
-              '此操作将永久清空当前的库存统计总量（即所有商品的库存数归零/清空）。\n\n注意：此操作不会影响历史入库和出库的单据记录，仅重置当前的统计库存。确认清除吗？'),
-          actions: <Widget>[
-            TextButton(
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.grey,
-                shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.zero),
+      builder: (BuildContext dialogContext) {
+        return StatefulBuilder(
+          builder: (BuildContext builderContext, setStateDialog) {
+            return AlertDialog(
+              shape:
+                  const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+              title: const Text('⚠️ 危险操作：清理数据'),
+              content: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  const Text('此操作属于敏感调试功能，请选择您要清除的数据类型：\n'),
+                  CheckboxListTile(
+                    activeColor: Colors.black,
+                    title: const Text('仅将所有商品库存归零/清空',
+                        style: TextStyle(fontSize: 13, color: Colors.black)),
+                    subtitle: const Text('仅重置当前库存量，不影响商品目录',
+                        style: TextStyle(fontSize: 11, color: Colors.grey)),
+                    value: clearStockOnly,
+                    onChanged: (val) {
+                      setStateDialog(() {
+                        clearStockOnly = val ?? false;
+                        if (!clearStockOnly) {
+                          deleteProducts = false;
+                        }
+                      });
+                    },
+                    controlAffinity: ListTileControlAffinity.leading,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                  CheckboxListTile(
+                    activeColor: Colors.black,
+                    title: const Text('连带删除商品库中的商品目录',
+                        style: TextStyle(fontSize: 13, color: Colors.black)),
+                    subtitle: const Text('彻底清除所有的商品基础目录信息',
+                        style: TextStyle(fontSize: 11, color: Colors.grey)),
+                    value: deleteProducts,
+                    onChanged: (val) {
+                      setStateDialog(() {
+                        deleteProducts = val ?? false;
+                        if (deleteProducts) {
+                          clearStockOnly = true;
+                        }
+                      });
+                    },
+                    controlAffinity: ListTileControlAffinity.leading,
+                    contentPadding: EdgeInsets.zero,
+                  ),
+                ],
               ),
-              child: const Text('取消'),
-              onPressed: () {
-                Navigator.of(context).pop();
-              },
-            ),
-            TextButton(
-              style: TextButton.styleFrom(
-                foregroundColor: Colors.red,
-                shape: const RoundedRectangleBorder(
-                    borderRadius: BorderRadius.zero),
-              ),
-              child: const Text('确认清除'),
-              onPressed: () async {
-                Navigator.of(context).pop();
-                try {
-                  await _database.clearWarehouseStock();
-                  await _refreshData();
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      const SnackBar(content: Text('已清除所有库存统计数据')),
-                    );
-                  }
-                } catch (e) {
-                  if (mounted) {
-                    ScaffoldMessenger.of(context).showSnackBar(
-                      SnackBar(content: Text('清除失败: $e')),
-                    );
-                  }
-                }
-              },
-            ),
-          ],
+              actions: <Widget>[
+                TextButton(
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.grey,
+                    shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.zero),
+                  ),
+                  onPressed: () {
+                    Navigator.of(dialogContext).pop();
+                  },
+                  child: const Text('取消'),
+                ),
+                TextButton(
+                  style: TextButton.styleFrom(
+                    foregroundColor: Colors.red,
+                    shape: const RoundedRectangleBorder(
+                        borderRadius: BorderRadius.zero),
+                  ),
+                  onPressed: (!clearStockOnly && !deleteProducts)
+                      ? null
+                      : () async {
+                          Navigator.of(dialogContext).pop();
+                          try {
+                            if (deleteProducts) {
+                              await _database.clearStockAndProducts();
+                            } else if (clearStockOnly) {
+                              await _database.clearWarehouseStock();
+                            }
+                            await _refreshData();
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(
+                                    content: Text(deleteProducts
+                                        ? '已成功清理库存并清空商品目录'
+                                        : '已成功清空所有库存统计数据')),
+                              );
+                            }
+                          } catch (e) {
+                            if (mounted) {
+                              ScaffoldMessenger.of(context).showSnackBar(
+                                SnackBar(content: Text('清理失败: $e')),
+                              );
+                            }
+                          }
+                        },
+                  child: const Text('确认清除'),
+                ),
+              ],
+            );
+          },
         );
       },
     );

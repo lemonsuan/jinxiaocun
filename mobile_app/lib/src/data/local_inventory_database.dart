@@ -1680,4 +1680,11 @@ class LocalInventoryDatabase {
   Future<void> clearWarehouseStock() async {
     await _db.delete('warehouse_stock');
   }
+
+  Future<void> clearStockAndProducts() async {
+    await _db.transaction((txn) async {
+      await txn.delete('warehouse_stock');
+      await txn.delete('products');
+    });
+  }
 }
