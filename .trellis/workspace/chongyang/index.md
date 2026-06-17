@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 12
-- **Last Active**: 2026-06-08
+- **Total Sessions**: 13
+- **Last Active**: 2026-06-17
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~411 | Active |
+| `journal-1.md` | ~445 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 13 | 2026-06-17 | Add Inbound Calendar and Stock Clearing Features | `b387493`, `6d7eb3a` | `master` |
 | 12 | 2026-06-08 | 合并OCR与AI配置并精简大标题 | `35aae72` | `master` |
 | 11 | 2026-06-08 | 优化入库单重新识别与AI库房重整逻辑 | `7e65e0e`, `d2da7d4`, `7ac2094`, `b234e38`, `7ba67cb`, `8f50de9`, `13eeae6`, `551c83e`, `46b11d6` | `master` |
 | 10 | 2026-05-30 | 实现移动端文本选择弹出菜单的自动汉化国际化配置 | `a0f20f8` | `master` |

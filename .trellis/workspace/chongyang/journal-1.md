@@ -409,3 +409,37 @@
 ### Next Steps
 
 - None - task complete
+
+
+## Session 13: Add Inbound Calendar and Stock Clearing Features
+
+**Date**: 2026-06-17
+**Task**: Add Inbound Calendar and Stock Clearing Features
+**Branch**: `master`
+
+### Summary
+
+Implemented an inbound history calendar view (grouped by date) and added a debug long press stock clearing function with double options in App, fixed a BuildContext shadowing bug to avoid crashes.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b387493` | (see git log) |
+| `6d7eb3a` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
