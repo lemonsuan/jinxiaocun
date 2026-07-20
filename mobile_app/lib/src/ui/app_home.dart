@@ -7,6 +7,9 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
+import 'package:flutter/services.dart';
+import 'package:share_plus/share_plus.dart';
+import 'package:archive/archive_io.dart';
 
 import '../application/inventory_service.dart';
 import '../data/local_inventory_database.dart';
@@ -512,6 +515,21 @@ class _AppHomeState extends State<AppHome> {
               color: Colors.black,
             ),
             tooltip: _isCalendarView ? '列表视图' : '日历视图',
+          ),
+          const SizedBox(width: 8),
+          IconButton(
+            style: IconButton.styleFrom(
+              backgroundColor: Colors.white,
+              shape:
+                  const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+              side: const BorderSide(color: Colors.black, width: 0.8),
+            ),
+            onPressed: _downloadReceiptPhotosByDateRange,
+            icon: const Icon(
+              Icons.download,
+              color: Colors.black,
+            ),
+            tooltip: '下载拍照入库单',
           ),
         ],
       ),
@@ -3008,6 +3026,101 @@ class _AppHomeState extends State<AppHome> {
     }).toList(growable: false);
   }
 
+  Future<void> _downloadReceiptPhotosByDateRange() async {
+    final pickedRange = await showDateRangePicker(
+      context: context,
+      firstDate: DateTime(2020),
+      lastDate: DateTime.now().add(const Duration(days: 365)),
+      initialDateRange: DateTimeRange(
+        start: DateTime.now().subtract(const Duration(days: 7)),
+        end: DateTime.now(),
+      ),
+      locale: const Locale('zh', 'CN'),
+      builder: (context, child) {
+        return Theme(
+          data: Theme.of(context).copyWith(
+            colorScheme: const ColorScheme.light(
+              primary: Colors.black,
+              onPrimary: Colors.white,
+              onSurface: Colors.black,
+            ),
+            textButtonTheme: TextButtonThemeData(
+              style: TextButton.styleFrom(
+                foregroundColor: Colors.black,
+              ),
+            ),
+          ),
+          child: child!,
+        );
+      },
+    );
+
+    if (pickedRange == null) return;
+
+    final start = DateTime(pickedRange.start.year, pickedRange.start.month,
+        pickedRange.start.day, 0, 0, 0);
+    final end = DateTime(pickedRange.end.year, pickedRange.end.month,
+        pickedRange.end.day, 23, 59, 59);
+
+    final List<InboundReceipt> matchingReceipts = [];
+    for (final receipt in _inboundHistory) {
+      if (receipt.createdAt.isAfter(start) && receipt.createdAt.isBefore(end)) {
+        if (receipt.imagePath != null && receipt.imagePath!.isNotEmpty) {
+          final file = File(receipt.imagePath!);
+          if (file.existsSync()) {
+            matchingReceipts.add(receipt);
+          }
+        }
+      }
+    }
+
+    if (matchingReceipts.isEmpty) {
+      if (mounted) {
+        showDialog<void>(
+          context: context,
+          builder: (ctx) => AlertDialog(
+            shape:
+                const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+            title: const Text('提示',
+                style: TextStyle(
+                    fontFamily: 'monospace', fontWeight: FontWeight.bold)),
+            content: Text(
+              '在所选日期范围（${_formatDate(start)} 至 ${_formatDate(end)}）内，未找到包含拍照的入库单。',
+              style: const TextStyle(fontFamily: 'monospace'),
+            ),
+            actions: [
+              TextButton(
+                onPressed: () => Navigator.pop(ctx),
+                child: const Text('好的',
+                    style: TextStyle(
+                        color: Colors.black, fontFamily: 'monospace')),
+              ),
+            ],
+          ),
+        );
+      }
+      return;
+    }
+
+    if (mounted) {
+      showDialog<void>(
+        context: context,
+        barrierDismissible: false,
+        builder: (ctx) {
+          return _DownloadReceiptPhotosDialog(
+            matchingReceipts: matchingReceipts,
+            startDateStr: _formatDate(start),
+            endDateStr: _formatDate(end),
+          );
+        },
+      );
+    }
+  }
+
+  String _formatDate(DateTime dt) {
+    return '${dt.year}-${dt.month.toString().padLeft(2, '0')}-${dt.day.toString().padLeft(2, '0')}';
+  }
+
   List<WarehouseStock> _filteredStockTotals() {
     final keyword = _stockSearchController.text.trim().toLowerCase();
     if (keyword.isEmpty) {
@@ -4866,6 +4979,278 @@ class _ImageGalleryPageState extends State<_ImageGalleryPage> {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _DownloadReceiptPhotosDialog extends StatefulWidget {
+  const _DownloadReceiptPhotosDialog({
+    required this.matchingReceipts,
+    required this.startDateStr,
+    required this.endDateStr,
+  });
+
+  final List<InboundReceipt> matchingReceipts;
+  final String startDateStr;
+  final String endDateStr;
+
+  @override
+  State<_DownloadReceiptPhotosDialog> createState() =>
+      _DownloadReceiptPhotosDialogState();
+}
+
+class _DownloadReceiptPhotosDialogState
+    extends State<_DownloadReceiptPhotosDialog> {
+  bool _isSaving = false;
+  String _statusText = '';
+  double _progress = 0.0;
+
+  Future<void> _saveToPhone() async {
+    setState(() {
+      _isSaving = true;
+      _statusText = '准备打包压缩...';
+      _progress = 0.0;
+    });
+
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final dateStr = '${widget.startDateStr}_to_${widget.endDateStr}';
+      final zipFileName = 'inbound_photos_$dateStr.zip';
+      final zipPath = p.join(tempDir.path, zipFileName);
+      final zipFile = File(zipPath);
+
+      if (zipFile.existsSync()) {
+        zipFile.deleteSync();
+      }
+
+      final encoder = ZipFileEncoder();
+      encoder.create(zipPath);
+
+      final total = widget.matchingReceipts.length;
+      for (int i = 0; i < total; i++) {
+        final receipt = widget.matchingReceipts[i];
+        final file = File(receipt.imagePath!);
+        if (!file.existsSync()) continue;
+
+        setState(() {
+          _statusText = '正在打包压缩 (${i + 1}/$total)...';
+          _progress = (i + 1) / total;
+        });
+
+        final recDate = receipt.createdAt.toLocal();
+        final recDateStr =
+            '${recDate.year}${recDate.month.toString().padLeft(2, '0')}${recDate.day.toString().padLeft(2, '0')}';
+        final suffix = receipt.trackingNumber.trim().isEmpty
+            ? receipt.id
+            : receipt.trackingNumber.trim();
+        final newFileName = 'inbound_${recDateStr}_$suffix.jpg';
+
+        encoder.addFile(file, newFileName);
+      }
+      encoder.close();
+
+      setState(() {
+        _statusText = '打包完成，正在导出...';
+        _progress = 1.0;
+      });
+
+      final bytes = await zipFile.readAsBytes();
+
+      if (Platform.isAndroid) {
+        final bool? success =
+            await const MethodChannel('inventory_app/system_utils')
+                .invokeMethod<bool>('saveToDownloads', {
+          'fileName': zipFileName,
+          'bytes': bytes,
+        });
+
+        if (mounted) {
+          Navigator.pop(context);
+          if (success == true) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              SnackBar(content: Text('已成功导出压缩包 $zipFileName 到系统 Download/ 目录')),
+            );
+          } else {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('导出压缩包失败，请检查存储空间。')),
+            );
+          }
+        }
+      } else {
+        if (!mounted) return;
+        final RenderBox? box = context.findRenderObject() as RenderBox?;
+        final sharePositionOrigin = box != null
+            ? (box.localToGlobal(Offset.zero) & box.size)
+            : null;
+        await SharePlus.instance.share(
+          ShareParams(
+            text: '拍照入库单压缩包（${widget.startDateStr} 至 ${widget.endDateStr}）',
+            files: [XFile(zipPath)],
+            sharePositionOrigin: sharePositionOrigin,
+          ),
+        );
+        if (mounted) {
+          Navigator.pop(context);
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+          _statusText = '打包失败: $e';
+        });
+      }
+    }
+  }
+
+  Future<void> _sharePhotos() async {
+    setState(() {
+      _isSaving = true;
+      _statusText = '正在生成压缩包以供分享...';
+      _progress = 0.0;
+    });
+
+    try {
+      final tempDir = await getTemporaryDirectory();
+      final dateStr = '${widget.startDateStr}_to_${widget.endDateStr}';
+      final zipFileName = 'inbound_photos_$dateStr.zip';
+      final zipPath = p.join(tempDir.path, zipFileName);
+      final zipFile = File(zipPath);
+
+      if (zipFile.existsSync()) {
+        zipFile.deleteSync();
+      }
+
+      final encoder = ZipFileEncoder();
+      encoder.create(zipPath);
+
+      final total = widget.matchingReceipts.length;
+      for (int i = 0; i < total; i++) {
+        final receipt = widget.matchingReceipts[i];
+        final file = File(receipt.imagePath!);
+        if (!file.existsSync()) continue;
+
+        setState(() {
+          _statusText = '正在打包压缩 (${i + 1}/$total)...';
+          _progress = (i + 1) / total;
+        });
+
+        final recDate = receipt.createdAt.toLocal();
+        final recDateStr =
+            '${recDate.year}${recDate.month.toString().padLeft(2, '0')}${recDate.day.toString().padLeft(2, '0')}';
+        final suffix = receipt.trackingNumber.trim().isEmpty
+            ? receipt.id
+            : receipt.trackingNumber.trim();
+        final newFileName = 'inbound_${recDateStr}_$suffix.jpg';
+
+        encoder.addFile(file, newFileName);
+      }
+      encoder.close();
+
+      setState(() {
+        _statusText = '打包完成，正在拉起分享...';
+        _progress = 1.0;
+      });
+
+      if (!mounted) return;
+      final RenderBox? box = context.findRenderObject() as RenderBox?;
+      final sharePositionOrigin = box != null
+          ? (box.localToGlobal(Offset.zero) & box.size)
+          : null;
+      await SharePlus.instance.share(
+        ShareParams(
+          text: '拍照入库单压缩包（${widget.startDateStr} 至 ${widget.endDateStr}）',
+          files: [XFile(zipPath)],
+          sharePositionOrigin: sharePositionOrigin,
+        ),
+      );
+
+      if (mounted) {
+        Navigator.pop(context);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _isSaving = false;
+          _statusText = '分享失败: $e';
+        });
+      }
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return AlertDialog(
+      shape: const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
+      title: const Text(
+        '导出拍照入库单',
+        style: TextStyle(fontFamily: 'monospace', fontWeight: FontWeight.bold),
+      ),
+      content: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            '日期范围: ${widget.startDateStr} 至 ${widget.endDateStr}',
+            style: const TextStyle(fontFamily: 'monospace', fontSize: 13),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            '符合条件的照片: ${widget.matchingReceipts.length} 张',
+            style: const TextStyle(
+              fontFamily: 'monospace',
+              fontSize: 13,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
+          if (_isSaving) ...[
+            const SizedBox(height: 16),
+            LinearProgressIndicator(
+              value: _progress,
+              color: Colors.black,
+              backgroundColor: Colors.grey.shade200,
+            ),
+            const SizedBox(height: 8),
+            Text(
+              _statusText,
+              style: const TextStyle(
+                fontFamily: 'monospace',
+                fontSize: 12,
+                color: Colors.grey,
+              ),
+            ),
+          ],
+        ],
+      ),
+      actions: [
+        if (!_isSaving) ...[
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text(
+              '取消',
+              style: TextStyle(color: Colors.grey, fontFamily: 'monospace'),
+            ),
+          ),
+          TextButton(
+            onPressed: _sharePhotos,
+            child: const Text(
+              '分享压缩包',
+              style: TextStyle(color: Colors.black, fontFamily: 'monospace'),
+            ),
+          ),
+          TextButton(
+            onPressed: _saveToPhone,
+            child: Text(
+              Platform.isAndroid ? '保存到手机' : '存储到文件',
+              style: const TextStyle(
+                color: Colors.black,
+                fontFamily: 'monospace',
+                fontWeight: FontWeight.bold,
+              ),
+            ),
+          ),
+        ],
+      ],
     );
   }
 }
