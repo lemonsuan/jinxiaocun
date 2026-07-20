@@ -443,3 +443,36 @@ Implemented an inbound history calendar view (grouped by date) and added a debug
 ### Next Steps
 
 - None - task complete
+
+
+## Session 14: Add date-filtered zip export for photo inbound receipts
+
+**Date**: 2026-07-20
+**Task**: Add date-filtered zip export for photo inbound receipts
+**Branch**: `master`
+
+### Summary
+
+Add a feature to filter and export photo inbound receipts within a selected date range into a single ZIP file on Android and iOS.
+
+### Main Changes
+
+(Add details)
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `2dc4d90` | (see git log) |
+
+### Testing
+
+- [OK] (Add test results)
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- None - task complete
