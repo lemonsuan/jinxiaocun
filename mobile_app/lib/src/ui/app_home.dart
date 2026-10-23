@@ -4135,6 +4135,7 @@ class _ReviewCartPageState extends State<_ReviewCartPage>
   List<InboundReceipt> _matchedReceipts = [];
   List<String> _unmatchedNumbers = [];
   bool _hasSearched = false;
+  bool _isSettling = false;
 
   @override
   void initState() {
@@ -4206,9 +4207,19 @@ class _ReviewCartPageState extends State<_ReviewCartPage>
   }
 
   Future<void> _batchSetSettled(bool isSettled) async {
-    if (_matchedReceipts.isEmpty) return;
+    if (_isSettling || _matchedReceipts.isEmpty) return;
+
+    // 先快照当前待修改的目标清单与数量，防止异步过程中用户清空输入框导致 _matchedReceipts 被重置
+    final targets = List<InboundReceipt>.from(_matchedReceipts);
+    final targetIds = targets.map((r) => r.id).toSet();
+    final targetCount = targets.length;
+
+    setState(() {
+      _isSettling = true;
+    });
+
     try {
-      for (final receipt in _matchedReceipts) {
+      for (final receipt in targets) {
         await widget.database.setReceiptSettled(receipt.id, isSettled);
       }
 
@@ -4218,23 +4229,28 @@ class _ReviewCartPageState extends State<_ReviewCartPage>
       // 在内存中直接批量更新 widget.allReceipts，保证在当前页面重新匹配单号时仍获取最新数据
       for (int i = 0; i < widget.allReceipts.length; i++) {
         final r = widget.allReceipts[i];
-        if (_matchedReceipts.any((m) => m.id == r.id)) {
+        if (targetIds.contains(r.id)) {
           widget.allReceipts[i] = r.copyWith(isSettled: isSettled);
         }
       }
 
       // 同步重绘当前展示的 _matchedReceipts 以便结算红绿状态标签在点击的瞬间立即刷新
-      setState(() {
-        _matchedReceipts = _matchedReceipts.map((receipt) {
-          return receipt.copyWith(isSettled: isSettled);
-        }).toList();
-      });
+      if (mounted) {
+        setState(() {
+          _matchedReceipts = _matchedReceipts.map((receipt) {
+            if (targetIds.contains(receipt.id)) {
+              return receipt.copyWith(isSettled: isSettled);
+            }
+            return receipt;
+          }).toList();
+        });
+      }
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(
-              '已将 ${_matchedReceipts.length} 个入库单设为${isSettled ? "已结算" : "未结算"}',
+              '已将 $targetCount 个入库单设为${isSettled ? "已结算" : "未结算"}',
             ),
             behavior: SnackBarBehavior.floating,
           ),
@@ -4245,6 +4261,12 @@ class _ReviewCartPageState extends State<_ReviewCartPage>
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('批量操作失败: $e')),
         );
+      }
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSettling = false;
+        });
       }
     }
   }
@@ -4343,14 +4365,16 @@ class _ReviewCartPageState extends State<_ReviewCartPage>
                         ? IconButton(
                             icon: const Icon(Icons.cancel,
                                 color: _notionGreyText, size: 18),
-                            onPressed: () {
-                              _trackingInputController.clear();
-                              setState(() {
-                                _matchedReceipts = [];
-                                _unmatchedNumbers = [];
-                                _hasSearched = false;
-                              });
-                            },
+                            onPressed: _isSettling
+                                ? null
+                                : () {
+                                    _trackingInputController.clear();
+                                    setState(() {
+                                      _matchedReceipts = [];
+                                      _unmatchedNumbers = [];
+                                      _hasSearched = false;
+                                    });
+                                  },
                           )
                         : null,
                     border: const OutlineInputBorder(
@@ -4381,7 +4405,7 @@ class _ReviewCartPageState extends State<_ReviewCartPage>
                       ),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
-                    onPressed: _searchByTrackingNumbers,
+                    onPressed: _isSettling ? null : _searchByTrackingNumbers,
                     icon: const Icon(Icons.search, size: 16),
                     label: const Text('查询入库单'),
                   ),
@@ -4527,9 +4551,21 @@ class _ReviewCartPageState extends State<_ReviewCartPage>
                   ),
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
-                onPressed: () => _batchSetSettled(true),
-                icon: const Icon(Icons.check_circle_outline, size: 16),
-                label: const Text('全部设为已结算', style: TextStyle(fontSize: 12)),
+                onPressed: _isSettling ? null : () => _batchSetSettled(true),
+                icon: _isSettling
+                    ? const SizedBox(
+                        width: 14,
+                        height: 14,
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: Color(0xff2d6a4f),
+                        ),
+                      )
+                    : const Icon(Icons.check_circle_outline, size: 16),
+                label: Text(
+                  _isSettling ? '正在处理中...' : '全部设为已结算',
+                  style: const TextStyle(fontSize: 12),
+                ),
               ),
             ),
             const SizedBox(width: 8),
@@ -4547,7 +4583,7 @@ class _ReviewCartPageState extends State<_ReviewCartPage>
                   ),
                   padding: const EdgeInsets.symmetric(vertical: 12),
                 ),
-                onPressed: () => _batchSetSettled(false),
+                onPressed: _isSettling ? null : () => _batchSetSettled(false),
                 icon: const Icon(Icons.cancel_outlined, size: 16),
                 label: const Text('全部设为未结算', style: TextStyle(fontSize: 12)),
               ),
