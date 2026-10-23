@@ -25,6 +25,11 @@ class _CustomCameraPageState extends State<CustomCameraPage>
   FlashMode _flashMode = FlashMode.off;
   String _statusMessage = '正在初始化相机...';
 
+  // 快门定格动效与点击对焦状态
+  bool _showShutterFlash = false;
+  Offset? _focusPoint;
+  bool _showFocusIndicator = false;
+
   // 记录逻辑预览区的宽高，用于物理图片坐标映射裁剪
   double _logicalWidth = 0.0;
   double _logicalHeight = 0.0;
@@ -93,6 +98,11 @@ class _CustomCameraPageState extends State<CustomCameraPage>
       await controller.initialize();
       await controller.lockCaptureOrientation(DeviceOrientation.portraitUp);
       await controller.setFlashMode(_flashMode);
+      try {
+        await controller.setFocusMode(FocusMode.auto);
+      } catch (e) {
+        debugPrint('自动对焦预热异常: $e');
+      }
 
       if (mounted) {
         setState(() {
@@ -123,15 +133,68 @@ class _CustomCameraPageState extends State<CustomCameraPage>
     }
   }
 
+  Future<void> _onTapToFocus(
+      TapDownDetails details, double maxWidth, double maxHeight) async {
+    if (_controller == null ||
+        !_isInitialized ||
+        _isTakingPicture ||
+        maxWidth <= 0 ||
+        maxHeight <= 0) {
+      return;
+    }
+
+    final Offset pos = details.localPosition;
+    final double dx = (pos.dx / maxWidth).clamp(0.0, 1.0);
+    final double dy = (pos.dy / maxHeight).clamp(0.0, 1.0);
+
+    setState(() {
+      _focusPoint = pos;
+      _showFocusIndicator = true;
+    });
+
+    try {
+      await _controller!.setFocusPoint(Offset(dx, dy));
+      await _controller!.setFocusMode(FocusMode.auto);
+      HapticFeedback.selectionClick();
+    } catch (e) {
+      debugPrint('对焦设置异常: $e');
+    }
+
+    Future.delayed(const Duration(milliseconds: 900), () {
+      if (mounted) {
+        setState(() {
+          _showFocusIndicator = false;
+        });
+      }
+    });
+  }
+
   Future<void> _takePicture() async {
     if (_controller == null || !_isInitialized || _isTakingPicture) return;
 
+    // 快门触发轻触感
+    HapticFeedback.lightImpact();
+
     setState(() {
       _isTakingPicture = true;
+      _showShutterFlash = true;
+    });
+
+    // 瞬时快门切白动效 (70ms)，模拟单反/原生快门帘定格感
+    Future.delayed(const Duration(milliseconds: 70), () {
+      if (mounted) {
+        setState(() {
+          _showShutterFlash = false;
+        });
+      }
     });
 
     try {
       final XFile file = await _controller!.takePicture();
+
+      // 核心定格信号：硬件传感器真正曝光捕捉完成的一瞬间，立即触发强震动！
+      // 提示操作人员“已曝光完成，现在可以移开手机”
+      HapticFeedback.heavyImpact();
 
       // 物理图片裁剪：只保留取景框范围内的图片内容
       if (_logicalWidth > 0 && _logicalHeight > 0) {
@@ -258,22 +321,58 @@ class _CustomCameraPageState extends State<CustomCameraPage>
             _buildAppBar(),
             Expanded(
               child: _isInitialized && _controller != null
-                  ? Stack(
-                      fit: StackFit.expand,
-                      children: [
-                        CameraPreview(_controller!),
-                        _buildTargetOverlay(),
-                        if (_isTakingPicture)
-                          Container(
-                            color: Colors.black.withOpacity(0.5),
-                            child: const Center(
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2.0,
-                                color: Colors.white,
-                              ),
-                            ),
+                  ? LayoutBuilder(
+                      builder: (context, constraints) {
+                        return GestureDetector(
+                          behavior: HitTestBehavior.opaque,
+                          onTapDown: (details) => _onTapToFocus(
+                            details,
+                            constraints.maxWidth,
+                            constraints.maxHeight,
                           ),
-                      ],
+                          child: Stack(
+                            fit: StackFit.expand,
+                            children: [
+                              CameraPreview(_controller!),
+                              _buildTargetOverlay(),
+                              if (_showFocusIndicator && _focusPoint != null)
+                                Positioned(
+                                  left: _focusPoint!.dx - 27,
+                                  top: _focusPoint!.dy - 27,
+                                  child: IgnorePointer(
+                                    child: Container(
+                                      width: 54,
+                                      height: 54,
+                                      decoration: BoxDecoration(
+                                        border: Border.all(
+                                          color: Colors.amber,
+                                          width: 1.5,
+                                        ),
+                                        borderRadius: BorderRadius.circular(2),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              if (_showShutterFlash)
+                                IgnorePointer(
+                                  child: Container(
+                                    color: Colors.white.withOpacity(0.85),
+                                  ),
+                                ),
+                              if (_isTakingPicture && !_showShutterFlash)
+                                Container(
+                                  color: Colors.black.withOpacity(0.5),
+                                  child: const Center(
+                                    child: CircularProgressIndicator(
+                                      strokeWidth: 2.0,
+                                      color: Colors.white,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        );
+                      },
                     )
                   : Center(
                       child: Text(
