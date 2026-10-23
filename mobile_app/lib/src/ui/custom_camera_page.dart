@@ -3,6 +3,7 @@ import 'dart:ui' as ui;
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
+import 'package:path_provider/path_provider.dart';
 
 class CustomCameraPage extends StatefulWidget {
   final String title;
@@ -22,7 +23,41 @@ class _CustomCameraPageState extends State<CustomCameraPage>
   List<CameraDescription> _cameras = [];
   bool _isInitialized = false;
   bool _isTakingPicture = false;
-  FlashMode _flashMode = FlashMode.off;
+  
+  // 记忆闪光灯状态：静态变量保证流水线连续拍照时无缝继承；持久化文件保证App重启后依旧保留
+  static FlashMode _lastFlashMode = FlashMode.off;
+  static bool _hasLoadedPersisted = false;
+  FlashMode _flashMode = _lastFlashMode;
+
+  static Future<File> _getFlashPrefFile() async {
+    final dir = await getApplicationDocumentsDirectory();
+    return File('${dir.path}/camera_flash_pref.txt');
+  }
+
+  static Future<void> _loadPersistedFlashMode() async {
+    if (_hasLoadedPersisted) return;
+    try {
+      final file = await _getFlashPrefFile();
+      if (file.existsSync()) {
+        final content = (await file.readAsString()).trim();
+        if (content == 'torch') {
+          _lastFlashMode = FlashMode.torch;
+        } else if (content == 'off') {
+          _lastFlashMode = FlashMode.off;
+        }
+      }
+      _hasLoadedPersisted = true;
+    } catch (_) {}
+  }
+
+  static Future<void> _savePersistedFlashMode(FlashMode mode) async {
+    _lastFlashMode = mode;
+    try {
+      final file = await _getFlashPrefFile();
+      await file.writeAsString(mode == FlashMode.torch ? 'torch' : 'off');
+    } catch (_) {}
+  }
+
   String _statusMessage = '正在初始化相机...';
 
   // 快门定格动效与点击对焦状态
@@ -67,6 +102,9 @@ class _CustomCameraPageState extends State<CustomCameraPage>
   }
 
   Future<void> _initializeCamera() async {
+    await _loadPersistedFlashMode();
+    _flashMode = _lastFlashMode;
+
     setState(() {
       _isInitialized = false;
       _statusMessage = '正在检测摄像头硬件...';
@@ -97,7 +135,11 @@ class _CustomCameraPageState extends State<CustomCameraPage>
 
       await controller.initialize();
       await controller.lockCaptureOrientation(DeviceOrientation.portraitUp);
-      await controller.setFlashMode(_flashMode);
+      try {
+        await controller.setFlashMode(_flashMode);
+      } catch (e) {
+        debugPrint('恢复闪光灯状态异常: $e');
+      }
       try {
         await controller.setFocusMode(FocusMode.auto);
       } catch (e) {
@@ -125,9 +167,12 @@ class _CustomCameraPageState extends State<CustomCameraPage>
         _flashMode == FlashMode.off ? FlashMode.torch : FlashMode.off;
     try {
       await _controller!.setFlashMode(nextMode);
-      setState(() {
-        _flashMode = nextMode;
-      });
+      _savePersistedFlashMode(nextMode);
+      if (mounted) {
+        setState(() {
+          _flashMode = nextMode;
+        });
+      }
     } catch (e) {
       debugPrint('切换闪光灯失败: $e');
     }
