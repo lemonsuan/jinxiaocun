@@ -10,6 +10,7 @@ import android.provider.MediaStore
 import android.os.Build
 import android.os.Environment
 import java.io.File
+import java.io.FileInputStream
 import java.io.FileOutputStream
 import com.xcy.yuntuitui.inventory.ocr.OcrService
 import io.flutter.embedding.android.FlutterActivity
