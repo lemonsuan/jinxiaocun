@@ -4,6 +4,7 @@ import 'dart:typed_data';
 
 import 'package:path/path.dart' as path;
 import 'package:path_provider/path_provider.dart';
+import 'package:archive/archive_io.dart';
 import 'package:sqflite/sqflite.dart';
 import 'package:image/image.dart' as img;
 
@@ -416,51 +417,53 @@ class LocalInventoryDatabase {
     );
   }
 
-  Future<Uint8List> exportBackupBytes() async {
+  Future<Uint8List> exportBackupBytes({bool includeImages = true}) async {
     final tableRows = <String, List<Map<String, Object?>>>{};
     for (final table in _backupTables) {
       tableRows[table] = await _db.query(table);
     }
 
     final images = <Map<String, String>>[];
-    final exportedImagePaths = <String>{};
-    for (final row in tableRows['inbound_receipts'] ?? const []) {
-      final imagePath = row['image_path'];
-      if (imagePath is! String ||
-          imagePath.isEmpty ||
-          exportedImagePaths.contains(imagePath)) {
-        continue;
+    if (includeImages) {
+      final exportedImagePaths = <String>{};
+      for (final row in tableRows['inbound_receipts'] ?? const []) {
+        final imagePath = row['image_path'];
+        if (imagePath is! String ||
+            imagePath.isEmpty ||
+            exportedImagePaths.contains(imagePath)) {
+          continue;
+        }
+        final file = File(imagePath);
+        if (!file.existsSync()) {
+          continue;
+        }
+        exportedImagePaths.add(imagePath);
+        final bytes = await file.readAsBytes();
+        images.add({
+          'originalPath': imagePath,
+          'fileName': path.basename(imagePath),
+          'base64': base64Encode(bytes),
+        });
       }
-      final file = File(imagePath);
-      if (!file.existsSync()) {
-        continue;
+      for (final row in tableRows['outbound_attachments'] ?? const []) {
+        final imagePath = row['image_path'];
+        if (imagePath is! String ||
+            imagePath.isEmpty ||
+            exportedImagePaths.contains(imagePath)) {
+          continue;
+        }
+        final file = File(imagePath);
+        if (!file.existsSync()) {
+          continue;
+        }
+        exportedImagePaths.add(imagePath);
+        final bytes = await file.readAsBytes();
+        images.add({
+          'originalPath': imagePath,
+          'fileName': path.basename(imagePath),
+          'base64': base64Encode(bytes),
+        });
       }
-      exportedImagePaths.add(imagePath);
-      final bytes = await file.readAsBytes();
-      images.add({
-        'originalPath': imagePath,
-        'fileName': path.basename(imagePath),
-        'base64': base64Encode(bytes),
-      });
-    }
-    for (final row in tableRows['outbound_attachments'] ?? const []) {
-      final imagePath = row['image_path'];
-      if (imagePath is! String ||
-          imagePath.isEmpty ||
-          exportedImagePaths.contains(imagePath)) {
-        continue;
-      }
-      final file = File(imagePath);
-      if (!file.existsSync()) {
-        continue;
-      }
-      exportedImagePaths.add(imagePath);
-      final bytes = await file.readAsBytes();
-      images.add({
-        'originalPath': imagePath,
-        'fileName': path.basename(imagePath),
-        'base64': base64Encode(bytes),
-      });
     }
 
     final backup = <String, Object?>{
@@ -470,11 +473,189 @@ class LocalInventoryDatabase {
       'exportedAt': DateTime.now().toIso8601String(),
       'tables': tableRows,
       'images': images,
+      'includeImages': includeImages,
     };
     return Uint8List.fromList(utf8.encode(jsonEncode(backup)));
   }
 
+  /// 稳妥的全量 ZIP 备份：以流式方式打包核心数据库表和物理单据照片，杜绝内存爆满卡死
+  Future<void> exportBackupZipFile(
+    File destinationZipFile, {
+    void Function(int current, int total, String status)? onProgress,
+  }) async {
+    onProgress?.call(0, 1, '正在导出核心数据库表...');
+    final jsonBytes = await exportBackupBytes(includeImages: false);
+
+    final tempDir = await getTemporaryDirectory();
+    final tempJsonFile = File(path.join(tempDir.path, 'backup_data_${DateTime.now().microsecondsSinceEpoch}.json'));
+    await tempJsonFile.writeAsBytes(jsonBytes, flush: true);
+
+    if (destinationZipFile.existsSync()) {
+      destinationZipFile.deleteSync();
+    }
+
+    final encoder = ZipFileEncoder();
+    encoder.create(destinationZipFile.path);
+    encoder.addFile(tempJsonFile, 'backup_data.json');
+
+    // 收集所有需要备份的实际存在的图片文件
+    final imageFiles = <String, File>{}; // relativeName -> File
+    final receiptRows = await _db.query('inbound_receipts');
+    for (final row in receiptRows) {
+      final imgPath = row['image_path'];
+      if (imgPath is String && imgPath.isNotEmpty) {
+        final f = File(imgPath);
+        if (f.existsSync()) {
+          final relName = path.basename(imgPath);
+          imageFiles[relName] = f;
+        }
+      }
+    }
+    final outboundRows = await _db.query('outbound_attachments');
+    for (final row in outboundRows) {
+      final imgPath = row['image_path'];
+      if (imgPath is String && imgPath.isNotEmpty) {
+        final f = File(imgPath);
+        if (f.existsSync()) {
+          final relName = path.basename(imgPath);
+          imageFiles[relName] = f;
+        }
+      }
+    }
+
+    final totalImages = imageFiles.length;
+    int current = 0;
+    for (final entry in imageFiles.entries) {
+      current++;
+      onProgress?.call(current, totalImages, '正在流式压缩单据照片 ($current/$totalImages)...');
+      encoder.addFile(entry.value, 'images/${entry.key}');
+    }
+
+    onProgress?.call(totalImages, totalImages, '正在完成归档封装...');
+    encoder.close();
+
+    try {
+      if (tempJsonFile.existsSync()) {
+        tempJsonFile.deleteSync();
+      }
+    } catch (_) {}
+  }
+
+  /// 通用还原入口：自动识别 .zip 压缩包、纯数据 .json 以及旧版带 Base64 的 .json 备份
+  Future<void> importBackupFromFile(File file) async {
+    final lower = file.path.toLowerCase();
+    if (lower.endsWith('.zip')) {
+      await importBackupFromZip(file);
+      return;
+    }
+    final bytes = await file.readAsBytes();
+    if (bytes.length >= 4 &&
+        bytes[0] == 0x50 &&
+        bytes[1] == 0x4B &&
+        bytes[2] == 0x03 &&
+        bytes[3] == 0x04) {
+      await importBackupFromZip(file);
+      return;
+    }
+    await importBackupBytes(bytes);
+  }
+
+  /// 从 ZIP 归档包中解压还原数据库与全部单据物理照片
+  Future<void> importBackupFromZip(File zipFile) async {
+    final tempDir = await getTemporaryDirectory();
+    final extractDir = Directory(path.join(tempDir.path, 'extract_${DateTime.now().microsecondsSinceEpoch}'));
+    await extractDir.create(recursive: true);
+
+    try {
+      extractFileToDisk(zipFile.path, extractDir.path);
+
+      final jsonFile = File(path.join(extractDir.path, 'backup_data.json'));
+      if (!jsonFile.existsSync()) {
+        throw InventoryException('压缩包内未找到数据库备份数据文件(backup_data.json)');
+      }
+
+      final jsonBytes = await jsonFile.readAsBytes();
+      final decoded = jsonDecode(utf8.decode(jsonBytes));
+      if (decoded is! Map) {
+        throw InventoryException('Invalid backup data in zip.');
+      }
+      if (decoded['format'] != _backupFormat ||
+          decoded['version'] != _backupVersion) {
+        throw InventoryException('Unsupported backup format in zip.');
+      }
+      final schemaVersion = decoded['schemaVersion'];
+      if (schemaVersion is! int || schemaVersion > LocalDatabaseSchema.version) {
+        throw InventoryException('Backup schema is newer than this app.');
+      }
+      final tables = decoded['tables'];
+      if (tables is! Map) {
+        throw InventoryException('Invalid backup tables in zip.');
+      }
+
+      // 将压缩包内的 images/ 提取并迁移到应用本地存储目录
+      final appDocDir = await getApplicationDocumentsDirectory();
+      final targetImageDir = Directory(path.join(appDocDir.path, 'inbound_images'));
+      await targetImageDir.create(recursive: true);
+
+      final imagePathMap = <String, String>{};
+      final zipImagesDir = Directory(path.join(extractDir.path, 'images'));
+      if (zipImagesDir.existsSync()) {
+        final files = zipImagesDir.listSync();
+        final timestamp = DateTime.now().microsecondsSinceEpoch;
+        for (var i = 0; i < files.length; i++) {
+          final entity = files[i];
+          if (entity is File) {
+            final baseName = path.basename(entity.path);
+            final targetPath = path.join(targetImageDir.path, 'import_${timestamp}_${i}_$baseName');
+            await entity.copy(targetPath);
+            imagePathMap[baseName] = targetPath;
+          }
+        }
+      }
+
+      // 事务恢复数据表
+      await _db.transaction((txn) async {
+        for (final table in _clearTables) {
+          await txn.delete(table);
+        }
+        for (final table in _backupTables) {
+          for (final row in _backupRows(tables, table)) {
+            await txn.insert(
+              table,
+              _normalizeBackupRowWithBaseName(table, row, imagePathMap),
+            );
+          }
+        }
+      });
+    } finally {
+      try {
+        if (extractDir.existsSync()) {
+          extractDir.deleteSync(recursive: true);
+        }
+      } catch (_) {}
+    }
+  }
+
   Future<void> importBackupBytes(Uint8List bytes) async {
+    // 自动侦测：如果传入的是 ZIP 文件字节流，自动转至 ZIP 解压恢复
+    if (bytes.length >= 4 &&
+        bytes[0] == 0x50 &&
+        bytes[1] == 0x4B &&
+        bytes[2] == 0x03 &&
+        bytes[3] == 0x04) {
+      final tempDir = await getTemporaryDirectory();
+      final tempZip = File(path.join(tempDir.path, 'temp_restore_${DateTime.now().microsecondsSinceEpoch}.zip'));
+      await tempZip.writeAsBytes(bytes, flush: true);
+      try {
+        await importBackupFromZip(tempZip);
+      } finally {
+        try {
+          if (tempZip.existsSync()) tempZip.deleteSync();
+        } catch (_) {}
+      }
+      return;
+    }
+
     final decoded = jsonDecode(utf8.decode(bytes));
     if (decoded is! Map) {
       throw InventoryException('Invalid backup file.');
@@ -1083,14 +1264,52 @@ class LocalInventoryDatabase {
     final normalized = Map<String, Object?>.from(row);
     if (table == 'inbound_receipts') {
       final oldImagePath = normalized['image_path'];
-      normalized['image_path'] =
-          oldImagePath is String ? imagePathMap[oldImagePath] : null;
+      if (oldImagePath is String && oldImagePath.isNotEmpty) {
+        normalized['image_path'] = imagePathMap[oldImagePath] ??
+            (File(oldImagePath).existsSync() ? oldImagePath : null);
+      } else {
+        normalized['image_path'] = null;
+      }
     }
     if (table == 'outbound_attachments') {
       final oldImagePath = normalized['image_path'];
-      normalized['image_path'] = oldImagePath is String
-          ? imagePathMap[oldImagePath] ?? oldImagePath
-          : '';
+      if (oldImagePath is String && oldImagePath.isNotEmpty) {
+        normalized['image_path'] = imagePathMap[oldImagePath] ??
+            (File(oldImagePath).existsSync() ? oldImagePath : '');
+      } else {
+        normalized['image_path'] = '';
+      }
+    }
+    return normalized;
+  }
+
+  Map<String, Object?> _normalizeBackupRowWithBaseName(
+    String table,
+    Map<String, Object?> row,
+    Map<String, String> imagePathMap,
+  ) {
+    final normalized = Map<String, Object?>.from(row);
+    if (table == 'inbound_receipts') {
+      final oldImagePath = normalized['image_path'];
+      if (oldImagePath is String && oldImagePath.isNotEmpty) {
+        final bName = path.basename(oldImagePath);
+        normalized['image_path'] = imagePathMap[oldImagePath] ??
+            imagePathMap[bName] ??
+            (File(oldImagePath).existsSync() ? oldImagePath : null);
+      } else {
+        normalized['image_path'] = null;
+      }
+    }
+    if (table == 'outbound_attachments') {
+      final oldImagePath = normalized['image_path'];
+      if (oldImagePath is String && oldImagePath.isNotEmpty) {
+        final bName = path.basename(oldImagePath);
+        normalized['image_path'] = imagePathMap[oldImagePath] ??
+            imagePathMap[bName] ??
+            (File(oldImagePath).existsSync() ? oldImagePath : '');
+      } else {
+        normalized['image_path'] = '';
+      }
     }
     return normalized;
   }

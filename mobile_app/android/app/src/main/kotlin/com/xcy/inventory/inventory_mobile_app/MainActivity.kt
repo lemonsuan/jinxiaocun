@@ -59,14 +59,64 @@ class MainActivity : FlutterActivity() {
                 "saveToDownloads" -> {
                     val fileName = call.argument<String>("fileName").orEmpty()
                     val bytes = call.argument<ByteArray>("bytes")
-                    if (fileName.isBlank() || bytes == null) {
-                        result.error("INVALID_ARGS", "fileName or bytes is empty", null)
+                    val sourcePath = call.argument<String>("sourcePath")
+                    if (fileName.isBlank() || (bytes == null && sourcePath.isNullOrBlank())) {
+                        result.error("INVALID_ARGS", "fileName or bytes/sourcePath is empty", null)
                         return@setMethodCallHandler
                     }
-                    val ok = saveToDownloads(fileName, bytes)
+                    val ok = if (!sourcePath.isNullOrBlank()) {
+                        saveFileToDownloads(fileName, File(sourcePath))
+                    } else {
+                        saveToDownloads(fileName, bytes!!)
+                    }
                     result.success(ok)
                 }
                 else -> result.notImplemented()
+            }
+        }
+    }
+
+    private fun saveFileToDownloads(fileName: String, sourceFile: File): Boolean {
+        if (!sourceFile.exists()) return false
+        val resolver = contentResolver
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            val contentValues = ContentValues().apply {
+                val mimeType = when {
+                    fileName.endsWith(".jpg", ignoreCase = true) || fileName.endsWith(".jpeg", ignoreCase = true) -> "image/jpeg"
+                    fileName.endsWith(".png", ignoreCase = true) -> "image/png"
+                    fileName.endsWith(".zip", ignoreCase = true) -> "application/zip"
+                    fileName.endsWith(".json", ignoreCase = true) -> "application/json"
+                    else -> "application/octet-stream"
+                }
+                put(MediaStore.Downloads.DISPLAY_NAME, fileName)
+                put(MediaStore.Downloads.MIME_TYPE, mimeType)
+                put(MediaStore.Downloads.RELATIVE_PATH, Environment.DIRECTORY_DOWNLOADS)
+            }
+            val uri = resolver.insert(MediaStore.Downloads.EXTERNAL_CONTENT_URI, contentValues) ?: return false
+            return try {
+                resolver.openOutputStream(uri)?.use { outputStream ->
+                    FileInputStream(sourceFile).use { inputStream ->
+                        inputStream.copyTo(outputStream)
+                    }
+                    true
+                } ?: false
+            } catch (e: Exception) {
+                e.printStackTrace()
+                false
+            }
+        } else {
+            @Suppress("DEPRECATION")
+            val downloadsDir = Environment.getExternalStoragePublicDirectory(Environment.DIRECTORY_DOWNLOADS)
+            if (!downloadsDir.exists()) {
+                downloadsDir.mkdirs()
+            }
+            val destFile = File(downloadsDir, fileName)
+            return try {
+                sourceFile.copyTo(destFile, overwrite = true)
+                true
+            } catch (e: Exception) {
+                e.printStackTrace()
+                false
             }
         }
     }

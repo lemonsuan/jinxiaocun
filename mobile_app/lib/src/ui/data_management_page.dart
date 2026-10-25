@@ -107,8 +107,9 @@ class _DataManagementPageState extends State<DataManagementPage> {
     try {
       final dir = await _getBackupDir();
       final list = dir.listSync();
-      list.retainWhere(
-          (entity) => entity is File && entity.path.endsWith('.json'));
+      list.retainWhere((entity) =>
+          entity is File &&
+          (entity.path.endsWith('.json') || entity.path.endsWith('.zip')));
       list.sort((a, b) {
         return b.statSync().modified.compareTo(a.statSync().modified);
       });
@@ -121,10 +122,362 @@ class _DataManagementPageState extends State<DataManagementPage> {
     }
   }
 
-  Future<void> _exportBackup() async {
+  void _showExportOptionsDialog() {
+    showModalBottomSheet<void>(
+      context: context,
+      backgroundColor: Colors.white,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.zero,
+      ),
+      builder: (sheetContext) {
+        return SafeArea(
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 16),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    const Text(
+                      '选择导出备份方式',
+                      style: TextStyle(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w600,
+                        color: Color(0xFF1E293B),
+                        letterSpacing: 0.5,
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.close, size: 20, color: Color(0xFF94A3B8)),
+                      onPressed: () => Navigator.pop(sheetContext),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 4),
+                const Text(
+                  '选择适合当前场景的导出模式，导出的文件均可在本页随时一键导入覆盖恢复：',
+                  style: TextStyle(fontSize: 11, color: Color(0xFF64748B), height: 1.4),
+                ),
+                const SizedBox(height: 14),
+
+                // 选项 1: 纯业务数据备份 (推荐 · 极速稳妥)
+                _buildExportOptionTile(
+                  icon: Icons.bolt_outlined,
+                  iconColor: const Color(0xFF0F766E),
+                  iconBg: const Color(0xFFCCFBF1),
+                  title: '⚡ 纯业务数据备份 (推荐 · 极速稳妥)',
+                  subtitle: '备份所有商品、库存、入库单、出库单及流水台账。\n不打包几百兆大体积照片，体积仅几百KB，0.1秒秒速完成，绝不卡死！本机还原自动关联已有照片。',
+                  isRecommended: true,
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _exportLightDataBackup();
+                  },
+                ),
+                const SizedBox(height: 10),
+
+                // 选项 2: 全量归档包 (ZIP 流式压缩 · 换机无忧)
+                _buildExportOptionTile(
+                  icon: Icons.folder_zip_outlined,
+                  iconColor: const Color(0xFF2563EB),
+                  iconBg: const Color(0xFFDBEAFE),
+                  title: '📦 全量归档备份包 (含全部单据照片 · ZIP压缩)',
+                  subtitle: '将全部数据库记录与单据照片以流式方式打包为标准 ZIP 包。\n逐张安全写入，带实时进度条，不爆内存，最适合换新手机迁移。',
+                  isRecommended: false,
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _exportFullZipBackup();
+                  },
+                ),
+                const SizedBox(height: 10),
+
+                // 选项 3: 传统全量 JSON 备份 (旧版兼容模式)
+                _buildExportOptionTile(
+                  icon: Icons.history_outlined,
+                  iconColor: const Color(0xFF64748B),
+                  iconBg: const Color(0xFFF1F5F9),
+                  title: '📄 传统全量 JSON 备份 (旧版兼容模式)',
+                  subtitle: '采用旧版格式将数据与照片内嵌在单个 JSON 文件中。若照片积累过多可能会占用较大内存。',
+                  isRecommended: false,
+                  onTap: () {
+                    Navigator.pop(sheetContext);
+                    _exportLegacyBackup();
+                  },
+                ),
+                const SizedBox(height: 8),
+              ],
+            ),
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildExportOptionTile({
+    required IconData icon,
+    required Color iconColor,
+    required Color iconBg,
+    required String title,
+    required String subtitle,
+    required bool isRecommended,
+    required VoidCallback onTap,
+  }) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        decoration: BoxDecoration(
+          color: isRecommended ? const Color(0xFFF0FDF4) : Colors.white,
+          border: Border.all(
+            color: isRecommended
+                ? const Color(0xFF86EFAC)
+                : const Color(0xFFE2E8F0),
+            width: isRecommended ? 1.2 : 0.8,
+          ),
+        ),
+        padding: const EdgeInsets.all(12),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Container(
+              padding: const EdgeInsets.all(8),
+              decoration: BoxDecoration(
+                color: iconBg,
+                shape: BoxShape.rectangle,
+              ),
+              child: Icon(icon, color: iconColor, size: 20),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          title,
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontWeight: isRecommended
+                                ? FontWeight.bold
+                                : FontWeight.w600,
+                            color: const Color(0xFF1E293B),
+                          ),
+                        ),
+                      ),
+                      if (isRecommended)
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                              horizontal: 6, vertical: 2),
+                          decoration: const BoxDecoration(
+                            color: Color(0xFF0F766E),
+                          ),
+                          child: const Text(
+                            '推荐',
+                            style: TextStyle(
+                              color: Colors.white,
+                              fontSize: 10,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                        ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    subtitle,
+                    style: const TextStyle(
+                      fontSize: 11,
+                      color: Color(0xFF64748B),
+                      height: 1.4,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  // 1. 纯业务数据极速备份（轻量稳妥版，秒级完成，绝不卡死）
+  Future<void> _exportLightDataBackup() async {
     setState(() => _isLoading = true);
     try {
-      final bytes = await widget.database.exportBackupBytes();
+      final bytes = await widget.database.exportBackupBytes(includeImages: false);
+      final dir = await _getBackupDir();
+
+      final timestamp = DateTime.now()
+          .toIso8601String()
+          .replaceAll(':', '-')
+          .replaceAll('.', '-');
+      final fileName = 'inventory_data_$timestamp.json';
+      final file = File(p.join(dir.path, fileName));
+      await file.writeAsBytes(bytes, flush: true);
+
+      bool exportedToDownloads = false;
+      if (Platform.isAndroid) {
+        try {
+          final bool? success =
+              await const MethodChannel('inventory_app/system_utils')
+                  .invokeMethod<bool>('saveToDownloads', {
+            'fileName': fileName,
+            'sourcePath': file.path,
+            'bytes': bytes,
+          });
+          exportedToDownloads = success ?? false;
+        } catch (e) {
+          debugPrint('写入公共 Downloads 失败: $e');
+        }
+      }
+
+      if (mounted) {
+        String msg = exportedToDownloads
+            ? '⚡ 纯数据备份成功！已保存到系统 Download/ 目录并生成本地还原点'
+            : '⚡ 纯数据备份成功！已生成本地还原点: $fileName';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            duration: const Duration(seconds: 3),
+          ),
+        );
+      }
+      _loadBackupList();
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('纯数据备份导出失败: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  // 2. 全量归档备份包（ZIP 流式压缩 · 含照片 · 绝不爆内存）
+  Future<void> _exportFullZipBackup() async {
+    final dir = await _getBackupDir();
+    final timestamp = DateTime.now()
+        .toIso8601String()
+        .replaceAll(':', '-')
+        .replaceAll('.', '-');
+    final fileName = 'inventory_full_$timestamp.zip';
+    final targetFile = File(p.join(dir.path, fileName));
+
+    String progressStatus = '正在导出数据库核心数据...';
+    double progressValue = 0.0;
+    void Function(void Function())? dialogSetState;
+
+    showDialog<void>(
+      context: context,
+      barrierDismissible: false,
+      builder: (dialogCtx) {
+        return StatefulBuilder(
+          builder: (ctx, setDialogState) {
+            dialogSetState = setDialogState;
+            return PopScope(
+              canPop: false,
+              child: AlertDialog(
+                shape: const RoundedRectangleBorder(),
+                title: const Row(
+                  children: [
+                    Icon(Icons.folder_zip_outlined,
+                        color: Color(0xFF2563EB), size: 22),
+                    SizedBox(width: 8),
+                    Text('全量归档压缩备份',
+                        style: TextStyle(
+                            fontSize: 15, fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                content: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(progressStatus,
+                        style: const TextStyle(
+                            fontSize: 12, color: Color(0xFF475569))),
+                    const SizedBox(height: 12),
+                    LinearProgressIndicator(
+                      value: progressValue > 0 ? progressValue : null,
+                      backgroundColor: const Color(0xFFE2E8F0),
+                      color: const Color(0xFF2563EB),
+                      minHeight: 6,
+                    ),
+                    const SizedBox(height: 8),
+                    const Text('采用流式安全打包，逐张封装单据照片，杜绝内存溢出。请保持应用在前台...',
+                        style:
+                            TextStyle(fontSize: 11, color: Color(0xFF94A3B8))),
+                  ],
+                ),
+              ),
+            );
+          },
+        );
+      },
+    );
+
+    try {
+      await widget.database.exportBackupZipFile(
+        targetFile,
+        onProgress: (current, total, status) {
+          progressStatus = status;
+          progressValue = total > 0 ? (current / total) : 0.0;
+          if (dialogSetState != null) {
+            dialogSetState!(() {});
+          }
+        },
+      );
+
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+      }
+
+      bool exportedToDownloads = false;
+      if (Platform.isAndroid) {
+        try {
+          final bool? success =
+              await const MethodChannel('inventory_app/system_utils')
+                  .invokeMethod<bool>('saveToDownloads', {
+            'fileName': fileName,
+            'sourcePath': targetFile.path,
+          });
+          exportedToDownloads = success ?? false;
+        } catch (e) {
+          debugPrint('写入公共 Downloads 失败: $e');
+        }
+      }
+
+      if (mounted) {
+        String msg = exportedToDownloads
+            ? '📦 全量 ZIP 备份成功！已保存至 Download/ 目录并生成本地还原点'
+            : '📦 全量 ZIP 备份成功！已保存为本地还原点: $fileName';
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(msg),
+            duration: const Duration(seconds: 4),
+          ),
+        );
+      }
+      _loadBackupList();
+    } catch (e) {
+      if (mounted) {
+        Navigator.of(context, rootNavigator: true).pop();
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('全量压缩备份失败: $e')),
+        );
+      }
+    }
+  }
+
+  // 3. 传统全量 JSON 备份（旧版兼容模式）
+  Future<void> _exportLegacyBackup() async {
+    setState(() => _isLoading = true);
+    try {
+      final bytes = await widget.database.exportBackupBytes(includeImages: true);
       final dir = await _getBackupDir();
 
       final timestamp = DateTime.now()
@@ -142,6 +495,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
               await const MethodChannel('inventory_app/system_utils')
                   .invokeMethod<bool>('saveToDownloads', {
             'fileName': fileName,
+            'sourcePath': file.path,
             'bytes': bytes,
           });
           exportedToDownloads = success ?? false;
@@ -151,12 +505,9 @@ class _DataManagementPageState extends State<DataManagementPage> {
       }
 
       if (mounted) {
-        String msg = '备份导出成功！已保存为本地还原点';
-        if (exportedToDownloads) {
-          msg = '备份成功！已导出到系统「Download/」目录并生成本地还原点';
-        } else {
-          msg = '备份成功！已保存为本地还原点: $fileName';
-        }
+        String msg = exportedToDownloads
+            ? '传统全量备份成功！已保存到系统 Download/ 目录并生成本地还原点'
+            : '传统全量备份成功！已保存为本地还原点: $fileName';
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
             content: Text(msg),
@@ -172,7 +523,9 @@ class _DataManagementPageState extends State<DataManagementPage> {
         );
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
@@ -180,16 +533,17 @@ class _DataManagementPageState extends State<DataManagementPage> {
     try {
       final result = await FilePicker.pickFiles(
         type: FileType.custom,
-        allowedExtensions: ['json'],
+        allowedExtensions: ['json', 'zip'],
       );
       if (result == null || result.files.single.path == null) {
         return;
       }
       final file = File(result.files.single.path!);
-      final bytes = await file.readAsBytes();
-
       if (mounted) {
-        _showRestoreConfirmationDialog(bytes, result.files.single.name);
+        _showRestoreConfirmationDialog(
+          file: file,
+          fileName: result.files.single.name,
+        );
       }
     } catch (e) {
       if (mounted) {
@@ -200,17 +554,11 @@ class _DataManagementPageState extends State<DataManagementPage> {
     }
   }
 
-  Future<void> _restoreFromLocalFile(File file) async {
-    try {
-      final bytes = await file.readAsBytes();
-      _showRestoreConfirmationDialog(bytes, p.basename(file.path));
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('读取备份文件失败: $e')),
-        );
-      }
-    }
+  void _restoreFromLocalFile(File file) {
+    _showRestoreConfirmationDialog(
+      file: file,
+      fileName: p.basename(file.path),
+    );
   }
 
   Future<void> _deleteBackupFile(File file) async {
@@ -229,7 +577,11 @@ class _DataManagementPageState extends State<DataManagementPage> {
     }
   }
 
-  void _showRestoreConfirmationDialog(Uint8List bytes, String fileName) {
+  void _showRestoreConfirmationDialog({
+    File? file,
+    Uint8List? bytes,
+    required String fileName,
+  }) {
     final colorScheme = Theme.of(context).colorScheme;
     final messenger = ScaffoldMessenger.of(context);
 
@@ -291,7 +643,11 @@ class _DataManagementPageState extends State<DataManagementPage> {
 
                     setState(() => _isLoading = true);
                     try {
-                      await widget.database.importBackupBytes(bytes);
+                      if (file != null) {
+                        await widget.database.importBackupFromFile(file);
+                      } else if (bytes != null) {
+                        await widget.database.importBackupBytes(bytes);
+                      }
                       if (mounted) {
                         messenger.showSnackBar(
                           const SnackBar(content: Text('数据库覆盖恢复成功！数据已更新')),
@@ -567,6 +923,21 @@ class _DataManagementPageState extends State<DataManagementPage> {
                     final sizeStr = _formatFileSize(stat.size);
                     final timeStr = _formatDateTime(stat.modified);
                     final name = p.basename(file.path);
+                    final isZip = name.toLowerCase().endsWith('.zip');
+                    final isLightData = name.contains('_data_');
+                    final icon = isZip
+                        ? Icons.folder_zip_outlined
+                        : (isLightData
+                            ? Icons.bolt_outlined
+                            : Icons.insert_drive_file_outlined);
+                    final iconColor = isZip
+                        ? const Color(0xFF2563EB)
+                        : (isLightData
+                            ? const Color(0xFF0F766E)
+                            : const Color(0xFF64748B));
+                    final typeTag = isZip
+                        ? '全量ZIP (含照片)'
+                        : (isLightData ? '⚡ 极速纯数据' : '传统JSON');
 
                     return Container(
                       decoration: const BoxDecoration(
@@ -590,9 +961,9 @@ class _DataManagementPageState extends State<DataManagementPage> {
                                   );
                                 }
                               },
-                        leading: const Icon(
-                          Icons.insert_drive_file_outlined,
-                          color: Color(0xFF94A3B8),
+                        leading: Icon(
+                          icon,
+                          color: iconColor,
                           size: 22,
                         ),
                         title: Text(
@@ -608,7 +979,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
                         subtitle: Padding(
                           padding: const EdgeInsets.only(top: 6),
                           child: Text(
-                            '$timeStr  ·  $sizeStr',
+                            '$timeStr  ·  $sizeStr  ·  $typeTag',
                             style: const TextStyle(
                               fontSize: 10,
                               fontFamily: 'monospace',
@@ -690,7 +1061,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
                   letterSpacing: 1.5,
                 ),
               ),
-              onPressed: _isLoading ? null : _exportBackup,
+              onPressed: _isLoading ? null : _showExportOptionsDialog,
               child: const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
