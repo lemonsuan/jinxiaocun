@@ -1,7 +1,7 @@
 name: inventory_mobile_app
 description: Offline-first inventory receiving app.
 publish_to: "none"
-version: 1.0.4+6
+version: 1.0.5+7
 
 environment:
   sdk: ">=3.4.0 <4.0.0"
@@ -27,6 +27,9 @@ dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^4.0.0
+  # Host SQLite tests use the system library, without native-asset downloads.
+  sqflite_common_ffi: 2.3.6
+  sqlite3: ^2.9.4
 
 flutter:
   uses-material-design: true

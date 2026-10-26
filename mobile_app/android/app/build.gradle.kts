@@ -48,6 +48,11 @@ android {
 
     buildTypes {
         release {
+            // Flutter seeds build-type ABI filters; override them for the arm64 OCR runtime.
+            ndk {
+                abiFilters.clear()
+                abiFilters += listOf("arm64-v8a")
+            }
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
             signingConfig = signingConfigs.getByName("debug")
@@ -62,5 +67,11 @@ flutter {
 }
 
 dependencies {
-    // ML Kit removed — using PaddleOCR native engine instead
+    // Express intake shares one CameraX session for barcode analysis and still photos.
+    implementation("androidx.camera:camera-camera2:1.6.0")
+    implementation("androidx.camera:camera-lifecycle:1.6.0")
+    implementation("androidx.camera:camera-view:1.6.0")
+    implementation("androidx.exifinterface:exifinterface:1.4.1")
+    implementation("com.google.mlkit:barcode-scanning:17.3.0")
+    implementation("com.google.guava:guava:33.5.0-android")
 }

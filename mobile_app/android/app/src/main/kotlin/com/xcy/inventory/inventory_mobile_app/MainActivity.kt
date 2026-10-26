@@ -13,14 +13,27 @@ import java.io.File
 import java.io.FileInputStream
 import java.io.FileOutputStream
 import com.xcy.yuntuitui.inventory.ocr.OcrService
+import com.xcy.yuntuitui.inventory.camera.ExpressCameraFactory
 import io.flutter.embedding.android.FlutterActivity
 import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.util.concurrent.atomic.AtomicBoolean
 
 class MainActivity : FlutterActivity() {
+    private var expressCameraFactory: ExpressCameraFactory? = null
+
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == ExpressCameraFactory.PERMISSION_REQUEST) {
+            expressCameraFactory?.onCameraPermissionResult()
+        }
+    }
+
     override fun configureFlutterEngine(flutterEngine: FlutterEngine) {
         super.configureFlutterEngine(flutterEngine)
+        val factory = ExpressCameraFactory(this, flutterEngine.dartExecutor.binaryMessenger)
+        expressCameraFactory = factory
+        flutterEngine.platformViewsController.registry.registerViewFactory(ExpressCameraFactory.VIEW_TYPE, factory)
 
         MethodChannel(
             flutterEngine.dartExecutor.binaryMessenger,

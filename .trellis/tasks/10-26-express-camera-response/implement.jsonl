@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Flutter UI/service/storage/platform ownership"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Mobile checks, native OCR contracts and existing draft-first rule"}
+{"file": ".trellis/tasks/10-26-express-camera-response/research/camera-evidence.md", "reason": "Locked dependency evidence, early feedback and critical-path costs"}
+{"file": ".trellis/tasks/10-26-express-camera-response/prd.md", "reason": "Approved scope after final review and observable acceptance"}
+{"file": ".trellis/tasks/10-26-express-camera-response/design.md", "reason": "Continuous capture architecture, durable files, lifecycle and recovery"}
+{"file": ".trellis/tasks/10-26-express-camera-response/research/camera-bridge-contract.md", "reason": "Native/Dart fixed PlatformView and capture event contract"}

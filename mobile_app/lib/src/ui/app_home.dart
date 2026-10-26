@@ -12,6 +12,7 @@ import 'package:share_plus/share_plus.dart';
 import 'package:archive/archive_io.dart';
 
 import '../application/inventory_service.dart';
+import '../application/express_processing_queue.dart';
 import '../data/local_inventory_database.dart';
 import '../domain/models.dart';
 import '../domain/ocr_settings.dart';
@@ -112,6 +113,9 @@ class _AppHomeState extends State<AppHome> {
 
   @override
   void dispose() {
+    ExpressProcessingQueue.forDatabase(_database)
+        .listeners
+        .remove(_refreshWhenHomeVisible);
     _trackingController.dispose();
     _sellerOrderController.dispose();
     _rebateOrderController.dispose();
@@ -985,7 +989,12 @@ class _AppHomeState extends State<AppHome> {
                     MaterialPageRoute(
                       builder: (context) => DataManagementPage(
                         database: _database,
-                        onDatabaseRestored: _refreshData,
+                        onDatabaseRestored: () async {
+                          unawaited(
+                              ExpressProcessingQueue.forDatabase(_database)
+                                  .kick());
+                          await _refreshData();
+                        },
                       ),
                     ),
                   );
@@ -3273,6 +3282,9 @@ class _AppHomeState extends State<AppHome> {
   Future<void> _openDatabase() async {
     try {
       await _database.open();
+      final queue = ExpressProcessingQueue.forDatabase(_database);
+      queue.listeners.add(_refreshWhenHomeVisible);
+      unawaited(queue.kick());
       final ocrRowMergeTolerance = await _database.loadOcrRowMergeTolerance();
       await _loadShopInfo();
       await _refreshData();
@@ -3324,6 +3336,12 @@ class _AppHomeState extends State<AppHome> {
       ),
     );
     _refreshData();
+  }
+
+  void _refreshWhenHomeVisible() {
+    if (mounted && (ModalRoute.of(context)?.isCurrent ?? false)) {
+      unawaited(_refreshData());
+    }
   }
 
   Future<void> _refreshData() async {
@@ -5115,9 +5133,8 @@ class _DownloadReceiptPhotosDialogState
       } else {
         if (!mounted) return;
         final RenderBox? box = context.findRenderObject() as RenderBox?;
-        final sharePositionOrigin = box != null
-            ? (box.localToGlobal(Offset.zero) & box.size)
-            : null;
+        final sharePositionOrigin =
+            box != null ? (box.localToGlobal(Offset.zero) & box.size) : null;
         await SharePlus.instance.share(
           ShareParams(
             text: '拍照入库单压缩包（${widget.startDateStr} 至 ${widget.endDateStr}）',
@@ -5190,9 +5207,8 @@ class _DownloadReceiptPhotosDialogState
 
       if (!mounted) return;
       final RenderBox? box = context.findRenderObject() as RenderBox?;
-      final sharePositionOrigin = box != null
-          ? (box.localToGlobal(Offset.zero) & box.size)
-          : null;
+      final sharePositionOrigin =
+          box != null ? (box.localToGlobal(Offset.zero) & box.size) : null;
       await SharePlus.instance.share(
         ShareParams(
           text: '拍照入库单压缩包（${widget.startDateStr} 至 ${widget.endDateStr}）',

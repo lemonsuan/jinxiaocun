@@ -97,7 +97,7 @@ Android must not load or package app-local Paddle Lite or OpenCV for OCR. Xiaomi
 
 When Android OCR is implemented with PP-OCRv5 LiteRT, do not keep stale Paddle OCR `.nb` model assets, PaddleLite folders, or OpenCV folders in the Android app module. Verify the release APK has `ocr_det_fp16.tflite`, `ocr_rec_fp16.tflite`, `keys_v5.txt`, `libLiteRt.so`, `libLiteRtOpenClAccelerator.so`, and arm64 `libinventory_ocr.so`, with no `libpaddle_light_api_shared.so`, `PP-OCRv5_mobile`, or `SLANet` entries.
 
-The real Android OCR runtime is arm64-only. If Flutter/Gradle still configures `armeabi-v7a` or `x86_64`, those ABIs may compile a no-op JNI stub so the APK builds, but only `arm64-v8a` devices should be treated as OCR-capable.
+The real Android OCR runtime is arm64-only. Inspect the final APK native library directories: Flutter can seed build-type ABI filters that override `defaultConfig` filters, so an arm64 release must explicitly clear/select the release build-type filters; `--target-platform android-arm64` alone can leave other dependency ABIs packaged. If Flutter/Gradle still configures `armeabi-v7a` or `x86_64`, those ABIs may compile a no-op JNI stub so the APK builds, but only `arm64-v8a` devices should be treated as OCR-capable.
 
 When adding source files to the iOS local pod, rerun `pod install` from `mobile_app/ios`; otherwise Xcode may compile stale pod project files and fail at link time with missing C++ symbols.
 
@@ -141,3 +141,54 @@ Correct: keep native payload parsing under `src/platform` and product cleanup un
 Wrong: only returning grouped `rows` from native OCR, so users see an empty text box when grouping or product parsing fails.
 
 Correct: return `rawText` plus grouped `rows`, show `rawText` in the editable OCR review field, and treat parsed product rows as a convenience draft only.
+
+## Scenario: Continuous Express Camera and Trustworthy Capture Feedback
+
+### 1. Scope / Trigger
+
+Applies to Android express receiving, project-owned CameraX preview/capture, image processing and durable pending-receipt jobs. Keep ordinary receiving and existing stock/OCR business semantics compatible; do not widen this camera work into an inventory workflow change.
+
+### 2. Signatures
+
+Platform view: `inventory_app/express_camera`; per-view method channel: `inventory_app/express_camera/<viewId>`. Creation parameters include an absolute app-private `outputDirectory` and `torchEnabled: bool`. Commands are `capture`, `reset`, `setTorch`, `focus`, `pause`, `resume`, and `dispose`. `capture` binds an immutable `captureId`, locked `trackingNumber`, and normalized preview `crop` (`left`, `top`, `right`, `bottom`).
+
+Events: `onReady`, `onTracking`, `onCaptured`, `onError`. `onCaptured` carries `captureId`, `trackingNumber`, durable JPEG `imagePath`, `shutterToSavedMs`, and normalized saved-image crop. Attach the Dart event handler before requesting `resume` so an initial ready event cannot be missed.
+
+Durable job key: `app_settings.key = express_image_job:<receiptId>`, with JSON `receiptId`, `imagePath`, `token`, `crop`. `LocalInventoryDatabase.confirmInbound(..., expressCrop: CaptureCrop?, expressToken: String?)` inserts the receipt and job in one transaction. `nextExpressImageJob()` reconciles restored paths; `isExpressImageJobCurrent(job)` checks receipt status, source and exact encoded generation. `updateInboundOcrResult(..., expectedImagePath:, processedImagePath:, expectedExpressJobValue:)` guards late writes. `retryExpressImageJob(receiptId)` uses the live receipt source and a fresh token, including recovery from malformed metadata.
+
+### 3. Contracts
+
+- Keep one CameraX session for preview, barcode analysis and formal JPEG capture. Do not use a barcode analysis/preview frame as the inventory evidence photo. Stop barcode submissions while a tracking number is locked, without rebuilding the camera per receipt.
+- A shutter press means a capture request, not completion. Success flash, success vibration and “可以移开” require the saved-photo event. Do not describe the file-save callback as an exact sensor exposure callback. “已录入” additionally requires the SQLite receipt commit.
+- Show the complete locked tracking number in a fixed top region throughout capture and receipt saving; wrap long values. UI header, capture event and stored receipt must use the same immutable capture identity. Ignore stale/mismatched callbacks and reject duplicate shutter submissions.
+- Use the actual bound preview ViewPort/transform, current rotation and dimensions for crop mapping. If mapping cannot be validated, preserve the full photo rather than guessing a destructive crop. Match output encoding and extension; decode once and process off the UI isolate.
+- Close and durably save a photo before committing its pending receipt and allowing the next scan. Run crop/OCR with bounded workers and durable pending metadata; do not make full-history refresh part of each capture's critical path. A background result may commit only if the receipt, source reference and job generation are still current.
+- Replace image references only after the new file is completely saved. Delete only unreferenced files; preserve the original on failure. Recovery after restart/backup restore must resolve the receipt's current local image path, not an absolute path from another device.
+- Release and rebind camera resources on lifecycle events using actual completion signals, not fixed sleeps. Performance logs contain stage durations, not full tracking numbers, OCR text or image contents.
+
+### 4. Validation & Error Matrix
+
+- Permission denied/session binding failure -> recoverable error and explicit retry; no successful capture or automatic permission-request loop.
+- Capture/save failure -> keep the current tracking context retryable; no success event and no successful receipt claim.
+- Saved photo followed by receipt commit failure -> preserve retry context or safely remove an unreferenced file; do not unlock into a mismatched next receipt.
+- Stale native callback or background job after cancel/delete/manual replacement -> ignore it; do not overwrite current data.
+- Crop transform unavailable -> full-frame preservation. Processing/OCR failure -> keep accessible evidence and retryable state.
+- Background/rotation/resize -> invalidate old geometry and in-flight callbacks as appropriate; no permanently locked scanner or crop based on stale preview geometry.
+
+### 5. Good/Base/Bad Cases
+
+Good: lock tracking -> formal still capture -> durable photo success signal -> pending receipt commit -> next scan, while crop/OCR proceeds in a bounded background pipeline.
+
+Base: unsupported CameraX stream combination -> surface a recoverable camera error and allow ordinary receiving; do not silently substitute a low-resolution frame.
+
+Bad: flash white immediately on button press, then expose later; use fixed 500ms sleeps to guess camera release; process a PNG and retain a `.jpg` name; let an old job rewrite a user-edited receipt.
+
+### 6. Tests Required
+
+Test delayed success, capture/save failure, duplicate/mismatched callbacks, cancellation and next-tracking replacement; verify no success before the saved event. Cover JPEG signature/dimensions, EXIF orientation, crop edges, bounded processing and restart/stale-job behavior. Native changes require an Android build. Same-device release comparisons and immediate movement after the real success signal must be recorded separately from unit tests; no connected device means physical latency and blur acceptance remain pending.
+
+### 7. Wrong vs Correct
+
+Wrong: `onTap -> success flash -> await takePicture -> decode twice -> PNG overwrite -> sleep -> reopen scanner`.
+
+Correct: `onTap -> capturing -> saved-photo callback -> trustworthy completion feedback -> durable receipt -> next scan`, with one camera session and deferred, guarded image processing.

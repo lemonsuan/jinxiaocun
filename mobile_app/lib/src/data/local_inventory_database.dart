@@ -10,11 +10,13 @@ import 'package:image/image.dart' as img;
 
 import '../application/inventory_service.dart';
 import '../domain/models.dart';
+import '../domain/express_capture.dart';
 import '../domain/ocr_settings.dart';
 import '../domain/tracking_number_rules.dart';
 import 'local_database_schema.dart';
 
 class LocalInventoryDatabase {
+  LocalInventoryDatabase({Database? database}) : _database = database;
   static const String _backupFormat = 'inventory_mobile_app_backup';
   static const int _backupVersion = 1;
   static const List<String> _backupTables = [
@@ -487,7 +489,8 @@ class LocalInventoryDatabase {
     final jsonBytes = await exportBackupBytes(includeImages: false);
 
     final tempDir = await getTemporaryDirectory();
-    final tempJsonFile = File(path.join(tempDir.path, 'backup_data_${DateTime.now().microsecondsSinceEpoch}.json'));
+    final tempJsonFile = File(path.join(tempDir.path,
+        'backup_data_${DateTime.now().microsecondsSinceEpoch}.json'));
     await tempJsonFile.writeAsBytes(jsonBytes, flush: true);
 
     if (destinationZipFile.existsSync()) {
@@ -527,7 +530,8 @@ class LocalInventoryDatabase {
     int current = 0;
     for (final entry in imageFiles.entries) {
       current++;
-      onProgress?.call(current, totalImages, '正在流式压缩单据照片 ($current/$totalImages)...');
+      onProgress?.call(
+          current, totalImages, '正在流式压缩单据照片 ($current/$totalImages)...');
       encoder.addFile(entry.value, 'images/${entry.key}');
     }
 
@@ -563,7 +567,8 @@ class LocalInventoryDatabase {
   /// 从 ZIP 归档包中解压还原数据库与全部单据物理照片
   Future<void> importBackupFromZip(File zipFile) async {
     final tempDir = await getTemporaryDirectory();
-    final extractDir = Directory(path.join(tempDir.path, 'extract_${DateTime.now().microsecondsSinceEpoch}'));
+    final extractDir = Directory(path.join(
+        tempDir.path, 'extract_${DateTime.now().microsecondsSinceEpoch}'));
     await extractDir.create(recursive: true);
 
     try {
@@ -584,7 +589,8 @@ class LocalInventoryDatabase {
         throw InventoryException('Unsupported backup format in zip.');
       }
       final schemaVersion = decoded['schemaVersion'];
-      if (schemaVersion is! int || schemaVersion > LocalDatabaseSchema.version) {
+      if (schemaVersion is! int ||
+          schemaVersion > LocalDatabaseSchema.version) {
         throw InventoryException('Backup schema is newer than this app.');
       }
       final tables = decoded['tables'];
@@ -594,7 +600,8 @@ class LocalInventoryDatabase {
 
       // 将压缩包内的 images/ 提取并迁移到应用本地存储目录
       final appDocDir = await getApplicationDocumentsDirectory();
-      final targetImageDir = Directory(path.join(appDocDir.path, 'inbound_images'));
+      final targetImageDir =
+          Directory(path.join(appDocDir.path, 'inbound_images'));
       await targetImageDir.create(recursive: true);
 
       final imagePathMap = <String, String>{};
@@ -606,7 +613,8 @@ class LocalInventoryDatabase {
           final entity = files[i];
           if (entity is File) {
             final baseName = path.basename(entity.path);
-            final targetPath = path.join(targetImageDir.path, 'import_${timestamp}_${i}_$baseName');
+            final targetPath = path.join(
+                targetImageDir.path, 'import_${timestamp}_${i}_$baseName');
             await entity.copy(targetPath);
             imagePathMap[baseName] = targetPath;
           }
@@ -644,7 +652,8 @@ class LocalInventoryDatabase {
         bytes[2] == 0x03 &&
         bytes[3] == 0x04) {
       final tempDir = await getTemporaryDirectory();
-      final tempZip = File(path.join(tempDir.path, 'temp_restore_${DateTime.now().microsecondsSinceEpoch}.zip'));
+      final tempZip = File(path.join(tempDir.path,
+          'temp_restore_${DateTime.now().microsecondsSinceEpoch}.zip'));
       await tempZip.writeAsBytes(bytes, flush: true);
       try {
         await importBackupFromZip(tempZip);
@@ -803,6 +812,8 @@ class LocalInventoryDatabase {
     String? imagePath,
     bool isSettled = false,
     OcrStatus ocrStatus = OcrStatus.confirmed,
+    CaptureCrop? expressCrop,
+    String? expressToken,
   }) async {
     final normalizedTracking = trackingNumber.trim();
     final normalizedSellerOrder = _optionalText(sellerOrderNumber);
@@ -837,6 +848,22 @@ class LocalInventoryDatabase {
           'is_settled': isSettled ? 1 : 0,
           'created_at': now.toIso8601String(),
         });
+
+        if (expressToken != null && imagePath != null) {
+          final job = ExpressImageJob(
+              receiptId: receiptId,
+              imagePath: imagePath,
+              token: expressToken,
+              crop: expressCrop ?? CaptureCrop.full);
+          await txn.insert(
+              'app_settings',
+              {
+                'key': job.settingKey,
+                'value': job.encode(),
+                'updated_at': now.toIso8601String()
+              },
+              conflictAlgorithm: ConflictAlgorithm.replace);
+        }
 
         for (var index = 0; index < items.length; index += 1) {
           final item = items[index];
@@ -889,18 +916,34 @@ class LocalInventoryDatabase {
     required List<InboundDraftItem> items,
     required OcrStatus ocrStatus,
     String? sellerOrderNumber,
+    String? expectedImagePath,
+    String? processedImagePath,
+    String? expectedExpressJobValue,
   }) async {
     final now = DateTime.now();
     await _db.transaction((txn) async {
+      if (expectedExpressJobValue != null) {
+        final jobs = await txn.query('app_settings',
+            columns: ['value'],
+            where: 'key = ?',
+            whereArgs: ['express_image_job:$receiptId']);
+        if (jobs.isEmpty || jobs.single['value'] != expectedExpressJobValue) {
+          return;
+        }
+      }
       // 1. 防重幂等安全检查
       final receipts = await txn.query(
         'inbound_receipts',
-        columns: ['ocr_status', 'seller_order_number'],
+        columns: ['ocr_status', 'seller_order_number', 'image_path'],
         where: 'id = ?',
         whereArgs: [receiptId],
       );
       if (receipts.isEmpty) {
         return; // 单据不存在，直接退出
+      }
+      if (expectedImagePath != null &&
+          receipts.first['image_path'] != expectedImagePath) {
+        return;
       }
       final currentStatus = receipts.first['ocr_status'] as String?;
       if (currentStatus != OcrStatus.pending.name &&
@@ -911,7 +954,12 @@ class LocalInventoryDatabase {
       // 2. 更新主表状态
       final updateValues = <String, Object?>{
         'ocr_status': ocrStatus.name,
+        if (processedImagePath != null) 'image_path': processedImagePath,
       };
+      if (expectedExpressJobValue != null && ocrStatus == OcrStatus.confirmed) {
+        await txn.delete('app_settings',
+            where: 'key = ?', whereArgs: ['express_image_job:$receiptId']);
+      }
       // 如果提取出了订单号，且主表当前的订单号为空时才回填
       final currentSellerOrder =
           receipts.first['seller_order_number'] as String?;
@@ -957,6 +1005,110 @@ class LocalInventoryDatabase {
     });
   }
 
+  /// Loads one durable job at a time; the backlog stays in SQLite, not RAM.
+  Future<ExpressImageJob?> nextExpressImageJob() async {
+    final rows = await _db.rawQuery('''SELECT s.key, s.value, r.id, r.image_path
+      FROM app_settings s JOIN inbound_receipts r
+      ON s.key = 'express_image_job:' || r.id
+      WHERE r.ocr_status IN ('pending', 'processing')
+      ORDER BY r.created_at ASC LIMIT 1''');
+    if (rows.isEmpty) return null;
+    final row = rows.single;
+    try {
+      final old = ExpressImageJob.decode(row['value'] as String);
+      // Backup restore remaps receipt image paths; never use the old device path.
+      if (old.receiptId != row['id'] || old.settingKey != row['key']) {
+        throw const FormatException('Job identity mismatch');
+      }
+      final currentPath = row['image_path'] as String?;
+      if (currentPath == null || currentPath.isEmpty) {
+        throw const FormatException('Missing photo');
+      }
+      if (old.imagePath != currentPath) {
+        final updated = ExpressImageJob(
+            receiptId: row['id'] as String,
+            imagePath: currentPath,
+            token: '${DateTime.now().microsecondsSinceEpoch}',
+            crop: old.crop);
+        await _db.update('app_settings', {'value': updated.encode()},
+            where: 'key = ? AND value = ?',
+            whereArgs: [row['key'], row['value']]);
+        return updated;
+      }
+      if (old.encode() != row['value']) {
+        await _db.update('app_settings', {'value': old.encode()},
+            where: 'key = ? AND value = ?',
+            whereArgs: [row['key'], row['value']]);
+      }
+      return old;
+    } catch (_) {
+      await _db.update(
+          'inbound_receipts', {'ocr_status': OcrStatus.failed.name},
+          where: 'id = ? AND ocr_status IN (?, ?)',
+          whereArgs: [
+            row['id'],
+            OcrStatus.pending.name,
+            OcrStatus.processing.name
+          ]);
+      return nextExpressImageJob();
+    }
+  }
+
+  Future<bool> isExpressImageJobCurrent(ExpressImageJob job) async {
+    final rows = await _db.rawQuery('''SELECT r.id FROM inbound_receipts r
+      JOIN app_settings s ON s.key = 'express_image_job:' || r.id
+      WHERE r.id = ? AND r.image_path = ? AND s.value = ?
+      AND r.ocr_status IN ('pending', 'processing') LIMIT 1''',
+        [job.receiptId, job.imagePath, job.encode()]);
+    return rows.isNotEmpty;
+  }
+
+  Future<bool> retryExpressImageJob(String receiptId) async {
+    return _db.transaction((txn) async {
+      final rows = await txn.query('inbound_receipts',
+          where: 'id = ? AND ocr_status = ?',
+          whereArgs: [receiptId, OcrStatus.failed.name]);
+      final settings = await txn.query('app_settings',
+          where: 'key = ?', whereArgs: ['express_image_job:$receiptId']);
+      if (rows.isEmpty || settings.isEmpty) return false;
+      CaptureCrop crop = CaptureCrop.full;
+      try {
+        final old = ExpressImageJob.decode(settings.single['value'] as String);
+        if (old.receiptId == receiptId) crop = old.crop;
+      } catch (_) {
+        // Keep the full original when corrupt metadata cannot establish a safe crop.
+      }
+      final photo = rows.single['image_path'];
+      if (photo is! String || photo.isEmpty) return false;
+      final job = ExpressImageJob(
+          receiptId: receiptId,
+          imagePath: photo,
+          token: '${DateTime.now().microsecondsSinceEpoch}',
+          crop: crop);
+      await txn.update('app_settings', {'value': job.encode()},
+          where: 'key = ?', whereArgs: [job.settingKey]);
+      await txn.update(
+          'inbound_receipts', {'ocr_status': OcrStatus.pending.name},
+          where: 'id = ?', whereArgs: [receiptId]);
+      return true;
+    });
+  }
+
+  Future<bool> isImagePathReferenced(String imagePath) async {
+    final receipts = await _db.query('inbound_receipts',
+        columns: ['id'],
+        where: 'image_path = ?',
+        whereArgs: [imagePath],
+        limit: 1);
+    if (receipts.isNotEmpty) return true;
+    final attachments = await _db.query('outbound_attachments',
+        columns: ['id'],
+        where: 'image_path = ?',
+        whereArgs: [imagePath],
+        limit: 1);
+    return attachments.isNotEmpty;
+  }
+
   Future<void> setReceiptSettled(String receiptId, bool isSettled) async {
     final count = await _db.update(
       'inbound_receipts',
@@ -979,6 +1131,8 @@ class LocalInventoryDatabase {
 
     final now = DateTime.now();
     await _db.transaction((txn) async {
+      await txn.delete('app_settings',
+          where: 'key = ?', whereArgs: ['express_image_job:$receiptId']);
       final receiptRows = await txn.query(
         'inbound_receipts',
         columns: ['id'],
@@ -1054,6 +1208,8 @@ class LocalInventoryDatabase {
 
   Future<void> deleteInboundReceipt(String receiptId) async {
     await _db.transaction((txn) async {
+      await txn.delete('app_settings',
+          where: 'key = ?', whereArgs: ['express_image_job:$receiptId']);
       final receiptRows = await txn.query(
         'inbound_receipts',
         columns: ['id'],
@@ -1501,6 +1657,8 @@ class LocalInventoryDatabase {
   }) async {
     final now = DateTime.now();
     await _db.transaction((txn) async {
+      await txn.delete('app_settings',
+          where: 'key = ?', whereArgs: ['express_image_job:$receiptId']);
       // 1. 获取原入库单的创建时间，用于台账流水的生成
       final receiptRows = await txn.query(
         'inbound_receipts',

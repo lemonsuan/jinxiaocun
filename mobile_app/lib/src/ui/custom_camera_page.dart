@@ -1,9 +1,9 @@
-import 'dart:io';
-import 'dart:ui' as ui;
+import '../application/capture_image_processor.dart';
+import '../application/camera_preferences.dart';
+import '../domain/express_capture.dart';
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:path_provider/path_provider.dart';
 
 class CustomCameraPage extends StatefulWidget {
   final String title;
@@ -23,45 +23,14 @@ class _CustomCameraPageState extends State<CustomCameraPage>
   List<CameraDescription> _cameras = [];
   bool _isInitialized = false;
   bool _isTakingPicture = false;
-  
-  // 记忆闪光灯状态：静态变量保证流水线连续拍照时无缝继承；持久化文件保证App重启后依旧保留
-  static FlashMode _lastFlashMode = FlashMode.off;
-  static bool _hasLoadedPersisted = false;
-  FlashMode _flashMode = _lastFlashMode;
 
-  static Future<File> _getFlashPrefFile() async {
-    final dir = await getApplicationDocumentsDirectory();
-    return File('${dir.path}/camera_flash_pref.txt');
-  }
-
-  static Future<void> _loadPersistedFlashMode() async {
-    if (_hasLoadedPersisted) return;
-    try {
-      final file = await _getFlashPrefFile();
-      if (file.existsSync()) {
-        final content = (await file.readAsString()).trim();
-        if (content == 'torch') {
-          _lastFlashMode = FlashMode.torch;
-        } else if (content == 'off') {
-          _lastFlashMode = FlashMode.off;
-        }
-      }
-      _hasLoadedPersisted = true;
-    } catch (_) {}
-  }
-
-  static Future<void> _savePersistedFlashMode(FlashMode mode) async {
-    _lastFlashMode = mode;
-    try {
-      final file = await _getFlashPrefFile();
-      await file.writeAsString(mode == FlashMode.torch ? 'torch' : 'off');
-    } catch (_) {}
-  }
+  FlashMode _flashMode = FlashMode.off;
 
   String _statusMessage = '正在初始化相机...';
 
   // 快门定格动效与点击对焦状态
   bool _showShutterFlash = false;
+  bool _photoSaved = false;
   Offset? _focusPoint;
   bool _showFocusIndicator = false;
 
@@ -102,8 +71,9 @@ class _CustomCameraPageState extends State<CustomCameraPage>
   }
 
   Future<void> _initializeCamera() async {
-    await _loadPersistedFlashMode();
-    _flashMode = _lastFlashMode;
+    _flashMode =
+        await CameraPreferences.loadTorch() ? FlashMode.torch : FlashMode.off;
+    if (!mounted) return;
 
     setState(() {
       _isInitialized = false;
@@ -167,7 +137,7 @@ class _CustomCameraPageState extends State<CustomCameraPage>
         _flashMode == FlashMode.off ? FlashMode.torch : FlashMode.off;
     try {
       await _controller!.setFlashMode(nextMode);
-      _savePersistedFlashMode(nextMode);
+      await CameraPreferences.saveTorch(nextMode == FlashMode.torch);
       if (mounted) {
         setState(() {
           _flashMode = nextMode;
@@ -217,84 +187,41 @@ class _CustomCameraPageState extends State<CustomCameraPage>
   Future<void> _takePicture() async {
     if (_controller == null || !_isInitialized || _isTakingPicture) return;
 
-    // 快门触发轻触感
-    HapticFeedback.lightImpact();
-
     setState(() {
       _isTakingPicture = true;
-      _showShutterFlash = true;
-    });
-
-    // 瞬时快门切白动效 (70ms)，模拟单反/原生快门帘定格感
-    Future.delayed(const Duration(milliseconds: 70), () {
-      if (mounted) {
-        setState(() {
-          _showShutterFlash = false;
-        });
-      }
+      _showShutterFlash = false;
+      _photoSaved = false;
     });
 
     try {
       final XFile file = await _controller!.takePicture();
 
-      // 核心定格信号：硬件传感器真正曝光捕捉完成的一瞬间，立即触发强震动！
-      // 提示操作人员“已曝光完成，现在可以移开手机”
+      // The plugin returns after the photo is saved, not at button press.
       HapticFeedback.heavyImpact();
-
-      // 物理图片裁剪：只保留取景框范围内的图片内容
-      if (_logicalWidth > 0 && _logicalHeight > 0) {
-        final File rawFile = File(file.path);
-        if (rawFile.existsSync()) {
-          final Uint8List bytes = await rawFile.readAsBytes();
-
-          // 1. 获取物理图片的原始宽高
-          final ui.Codec codec = await ui.instantiateImageCodec(bytes);
-          final ui.FrameInfo frameInfo = await codec.getNextFrame();
-          final ui.Image image = frameInfo.image;
-
-          final double pWidth = image.width.toDouble();
-          final double pHeight = image.height.toDouble();
-          image.dispose(); // 尽早释放句柄
-
-          // 2. 根据比率计算取景框的逻辑大小和位置
-          final double boxWidth = _logicalWidth;
-          final double boxHeight = _logicalHeight * (0.65 / 0.82);
-          const double left = 0.0;
-          final double top = (_logicalHeight - boxHeight) / 2;
-
-          // 3. 计算 BoxFit.cover 模式下，物理图片映射至逻辑预览区的 scale 和 offset
-          final double lRatio = _logicalWidth / _logicalHeight;
-          final double pRatio = pWidth / pHeight;
-          double scale;
-          double offsetX = 0;
-          double offsetY = 0;
-
-          if (lRatio > pRatio) {
-            scale = _logicalWidth / pWidth;
-            offsetY = (_logicalHeight - pHeight * scale) / 2;
-          } else {
-            scale = _logicalHeight / pHeight;
-            offsetX = (_logicalWidth - pWidth * scale) / 2;
-          }
-
-          // 4. 将逻辑取景框边界精确映射到物理图片的像素坐标上
-          final double cropLeftPhys = (left - offsetX) / scale;
-          final double cropTopPhys = (top - offsetY) / scale;
-          final double cropWidthPhys = boxWidth / scale;
-          final double cropHeightPhys = boxHeight / scale;
-
-          final int x = cropLeftPhys.round().clamp(0, pWidth.toInt() - 1);
-          final int y = cropTopPhys.round().clamp(0, pHeight.toInt() - 1);
-          final int w = cropWidthPhys.round().clamp(1, pWidth.toInt() - x);
-          final int h = cropHeightPhys.round().clamp(1, pHeight.toInt() - y);
-
-          // 5. 底层裁剪并覆写图片
-          await _performPhysicalCrop(file.path, x, y, w, h);
-        }
-      }
-
       if (mounted) {
-        Navigator.of(context).pop(file);
+        setState(() {
+          _showShutterFlash = true;
+          _photoSaved = true;
+        });
+      }
+      Future.delayed(const Duration(milliseconds: 70), () {
+        if (mounted) setState(() => _showShutterFlash = false);
+      });
+      XFile result = file;
+      if (_logicalWidth > 0 && _logicalHeight > 0) {
+        const inset = (1 - (0.65 / 0.82)) / 2;
+        final processed = await CaptureImageProcessor().process(
+            file.path,
+            const CaptureCrop(0, inset, 1, 1 - inset),
+            '${DateTime.now().microsecondsSinceEpoch}',
+            previewAspect: _logicalWidth / _logicalHeight);
+        result = XFile(processed);
+        // Original remains recoverable if processing fails.
+      }
+      if (mounted) {
+        setState(() => _isTakingPicture = false);
+        await WidgetsBinding.instance.endOfFrame;
+        if (mounted) Navigator.of(context).pop(result);
       }
     } catch (e) {
       if (mounted) {
@@ -317,123 +244,97 @@ class _CustomCameraPageState extends State<CustomCameraPage>
     }
   }
 
-  // 使用 dart:ui 模块的 Skia 画布在物理层面上对图片进行像素裁剪，杜绝性能溢出
-  Future<void> _performPhysicalCrop(
-      String path, int x, int y, int width, int height) async {
-    try {
-      final File file = File(path);
-      if (!file.existsSync()) return;
-
-      final Uint8List bytes = await file.readAsBytes();
-      final ui.Codec codec = await ui.instantiateImageCodec(bytes);
-      final ui.FrameInfo frameInfo = await codec.getNextFrame();
-      final ui.Image image = frameInfo.image;
-
-      final ui.PictureRecorder recorder = ui.PictureRecorder();
-      final ui.Canvas canvas = ui.Canvas(recorder);
-
-      final Rect src = Rect.fromLTWH(
-          x.toDouble(), y.toDouble(), width.toDouble(), height.toDouble());
-      final Rect dst = Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble());
-      canvas.drawImageRect(image, src, dst, ui.Paint());
-
-      final ui.Picture picture = recorder.endRecording();
-      final ui.Image croppedImage = await picture.toImage(width, height);
-      final ByteData? byteData =
-          await croppedImage.toByteData(format: ui.ImageByteFormat.png);
-
-      if (byteData != null) {
-        await file.writeAsBytes(byteData.buffer.asUint8List(), flush: true);
-      }
-
-      image.dispose();
-      croppedImage.dispose();
-
-      // 清除该文件的 Flutter 图片缓存，促使 UI 重新从磁盘加载更新后的图片
-      PaintingBinding.instance.imageCache.evict(FileImage(file));
-    } catch (e) {
-      debugPrint('底层物理裁剪异常: $e');
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.black,
-      body: SafeArea(
-        child: Column(
-          children: [
-            _buildAppBar(),
-            Expanded(
-              child: _isInitialized && _controller != null
-                  ? LayoutBuilder(
-                      builder: (context, constraints) {
-                        return GestureDetector(
-                          behavior: HitTestBehavior.opaque,
-                          onTapDown: (details) => _onTapToFocus(
-                            details,
-                            constraints.maxWidth,
-                            constraints.maxHeight,
-                          ),
-                          child: Stack(
-                            fit: StackFit.expand,
-                            children: [
-                              CameraPreview(_controller!),
-                              _buildTargetOverlay(),
-                              if (_showFocusIndicator && _focusPoint != null)
-                                Positioned(
-                                  left: _focusPoint!.dx - 27,
-                                  top: _focusPoint!.dy - 27,
-                                  child: IgnorePointer(
-                                    child: Container(
-                                      width: 54,
-                                      height: 54,
-                                      decoration: BoxDecoration(
-                                        border: Border.all(
-                                          color: Colors.amber,
-                                          width: 1.5,
+    return PopScope(
+        canPop: !_isTakingPicture,
+        child: Scaffold(
+          backgroundColor: Colors.black,
+          body: SafeArea(
+            child: Column(
+              children: [
+                _buildAppBar(),
+                Expanded(
+                  child: _isInitialized && _controller != null
+                      ? LayoutBuilder(
+                          builder: (context, constraints) {
+                            return GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTapDown: (details) => _onTapToFocus(
+                                details,
+                                constraints.maxWidth,
+                                constraints.maxHeight,
+                              ),
+                              child: Stack(
+                                fit: StackFit.expand,
+                                children: [
+                                  CameraPreview(_controller!),
+                                  _buildTargetOverlay(),
+                                  if (_showFocusIndicator &&
+                                      _focusPoint != null)
+                                    Positioned(
+                                      left: _focusPoint!.dx - 27,
+                                      top: _focusPoint!.dy - 27,
+                                      child: IgnorePointer(
+                                        child: Container(
+                                          width: 54,
+                                          height: 54,
+                                          decoration: BoxDecoration(
+                                            border: Border.all(
+                                              color: Colors.amber,
+                                              width: 1.5,
+                                            ),
+                                            borderRadius:
+                                                BorderRadius.circular(2),
+                                          ),
                                         ),
-                                        borderRadius: BorderRadius.circular(2),
                                       ),
                                     ),
-                                  ),
-                                ),
-                              if (_showShutterFlash)
-                                IgnorePointer(
-                                  child: Container(
-                                    color: Colors.white.withOpacity(0.85),
-                                  ),
-                                ),
-                              if (_isTakingPicture && !_showShutterFlash)
-                                Container(
-                                  color: Colors.black.withOpacity(0.5),
-                                  child: const Center(
-                                    child: CircularProgressIndicator(
-                                      strokeWidth: 2.0,
-                                      color: Colors.white,
+                                  if (_showShutterFlash)
+                                    IgnorePointer(
+                                      child: Container(
+                                        color: Colors.white.withOpacity(0.85),
+                                      ),
                                     ),
-                                  ),
-                                ),
-                            ],
+                                  if (_isTakingPicture && !_showShutterFlash)
+                                    Container(
+                                      color: Colors.black.withOpacity(0.5),
+                                      child: Center(
+                                          child: Column(
+                                              mainAxisSize: MainAxisSize.min,
+                                              children: [
+                                            const CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: Colors.white),
+                                            const SizedBox(height: 12),
+                                            Text(
+                                                _photoSaved
+                                                    ? '已拍下，可以移开'
+                                                    : '正在拍摄或保存，请稍候',
+                                                style: const TextStyle(
+                                                    color: Colors.white)),
+                                          ])),
+                                    ),
+                                ],
+                              ),
+                            );
+                          },
+                        )
+                      : Center(
+                          child: Text(
+                            _statusMessage,
+                            style: const TextStyle(
+                                color: Color(0xFF94A3B8),
+                                fontSize: 13,
+                                letterSpacing: 0.5),
                           ),
-                        );
-                      },
-                    )
-                  : Center(
-                      child: Text(
-                        _statusMessage,
-                        style: const TextStyle(
-                            color: Color(0xFF94A3B8),
-                            fontSize: 13,
-                            letterSpacing: 0.5),
-                      ),
-                    ),
+                        ),
+                ),
+                _buildBottomActionBar(),
+              ],
             ),
-            _buildBottomActionBar(),
-          ],
-        ),
-      ),
-    );
+          ),
+        ));
   }
 
   Widget _buildAppBar() {
@@ -453,7 +354,7 @@ class _CustomCameraPageState extends State<CustomCameraPage>
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
+            onTap: _isTakingPicture ? null : () => Navigator.of(context).pop(),
             child: const Row(
               children: [
                 Icon(Icons.arrow_back_ios_new, size: 14, color: Colors.white),
@@ -662,7 +563,7 @@ class _CustomCameraPageState extends State<CustomCameraPage>
           ),
           _buildShutterButton(),
           GestureDetector(
-            onTap: () => Navigator.of(context).pop(),
+            onTap: _isTakingPicture ? null : () => Navigator.of(context).pop(),
             child: Container(
               width: 48,
               height: 48,

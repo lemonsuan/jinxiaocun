@@ -1,613 +1,464 @@
 import 'dart:async';
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:mobile_scanner/mobile_scanner.dart';
-import 'package:camera/camera.dart';
+import 'package:flutter/services.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:intl/intl.dart';
-import '../domain/models.dart';
+import '../application/camera_preferences.dart';
+import '../application/express_capture_state.dart';
+import '../application/express_receipt_committer.dart';
+import '../application/express_processing_queue.dart';
 import '../data/local_inventory_database.dart';
+import '../domain/express_capture.dart';
+import '../domain/models.dart';
 import '../ocr/pp_structure_post_processor.dart';
+import '../platform/express_camera_channel.dart';
 import '../platform/paddle_ocr_channel.dart';
-import 'custom_camera_page.dart';
 
 class ExpressInboundPage extends StatefulWidget {
-  const ExpressInboundPage({
-    super.key,
-    required this.database,
-    required this.paddleOcr,
-    required this.postProcessor,
-    required this.ocrRowMergeTolerance,
-    required this.onRefreshHomeData,
-  });
-
+  const ExpressInboundPage(
+      {super.key,
+      required this.database,
+      required this.paddleOcr,
+      required this.postProcessor,
+      required this.ocrRowMergeTolerance,
+      required this.onRefreshHomeData});
   final LocalInventoryDatabase database;
   final PaddleOcrChannel paddleOcr;
   final PpStructurePostProcessor postProcessor;
   final double ocrRowMergeTolerance;
   final VoidCallback onRefreshHomeData;
-
   @override
   State<ExpressInboundPage> createState() => _ExpressInboundPageState();
 }
 
-class _ExpressInboundPageState extends State<ExpressInboundPage> {
-  static const _notionText = Color(0xFF37352F);
-  static const _notionBorder = Color(0xFFEDEDEB);
-  static const _notionGreyText = Color(0xFF7C7B77);
-
-  static const List<BarcodeFormat> _linearBarcodeFormats = [
-    BarcodeFormat.code128,
-    BarcodeFormat.code39,
-    BarcodeFormat.code93,
-    BarcodeFormat.codabar,
-    BarcodeFormat.ean13,
-    BarcodeFormat.ean8,
-    BarcodeFormat.itf2of5,
-    BarcodeFormat.itf2of5WithChecksum,
-    BarcodeFormat.itf14,
-    BarcodeFormat.upcA,
-    BarcodeFormat.upcE,
-  ];
-
-  final MobileScannerController _controller = MobileScannerController(
-    formats: _linearBarcodeFormats,
-  );
-
-  List<InboundReceipt> _recentReceipts = [];
-  String? _currentTrackingNumber;
-  bool _isScanningLocked = false;
-  bool _isProcessing = false;
-  String? _message = '扫码器已就绪，请对准快递单条码';
+class _ExpressInboundPageState extends State<ExpressInboundPage>
+    with WidgetsBindingObserver {
+  final _capture = ExpressCaptureState();
+  ExpressCameraChannel? _camera;
+  late final ExpressProcessingQueue _queue;
+  List<InboundReceipt> _recent = [];
+  String? _directory;
+  String _message = '正在准备相机…';
+  bool _torch = false;
+  bool _leaving = false;
+  bool _active = true;
+  bool _showSaved = false;
+  final _committer = ExpressReceiptCommitter();
+  int _viewGeneration = 0;
+  Stopwatch? _cycle;
+  static const _crop = CaptureCrop(0.04, 0.12, 0.96, 0.88);
 
   @override
   void initState() {
     super.initState();
-    _loadRecentReceipts();
+    WidgetsBinding.instance.addObserver(this);
+    _queue = ExpressProcessingQueue.forDatabase(widget.database);
+    _queue.listeners.add(_refreshRecent);
+    unawaited(_prepare());
+    unawaited(_queue.kick());
+  }
+
+  Future<void> _prepare() async {
+    try {
+      final directory = Directory(
+          '${(await getApplicationDocumentsDirectory()).path}/inbound_images');
+      await directory.create(recursive: true);
+      final torch = await CameraPreferences.loadTorch();
+      if (!mounted) return;
+      setState(() {
+        _directory = directory.path;
+        _torch = torch;
+      });
+      await _refreshRecent();
+    } catch (e) {
+      _error('准备相机失败，请退出后重试');
+    }
+  }
+
+  Future<void> _refreshRecent() async {
+    final rows = await widget.database.loadRecentInboundReceipts(5);
+    if (mounted) setState(() => _recent = rows);
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _active = state == AppLifecycleState.resumed;
+    final camera = _camera;
+    if (camera == null) return;
+    unawaited(
+        (_active ? camera.resume() : camera.pause()).catchError((Object e) {
+      if (mounted) _error('相机暂不可用，请重试');
+    }));
   }
 
   @override
   void dispose() {
-    unawaited(_controller.dispose());
+    WidgetsBinding.instance.removeObserver(this);
+    _queue.listeners.remove(_refreshRecent);
+    unawaited(_camera?.dispose().catchError((Object _) {}) ?? Future.value());
     super.dispose();
   }
 
-  /// 从数据库加载最近5条入库记录
-  Future<void> _loadRecentReceipts() async {
-    final receipts = await widget.database.loadRecentInboundReceipts(5);
-    if (mounted) {
-      setState(() {
-        _recentReceipts = receipts;
-      });
-    }
-  }
-
-  // 保存图片至本地文档目录
-  Future<String> _storeInboundImage(XFile image) async {
-    final appDir = await getApplicationDocumentsDirectory();
-    final inboundDir = Directory('${appDir.path}/inbound_images');
-    if (!inboundDir.existsSync()) {
-      inboundDir.createSync(recursive: true);
-    }
-    final extension = image.path.split('.').last;
-    final filename =
-        'inbound_${DateTime.now().millisecondsSinceEpoch}.$extension';
-    final targetPath = '${inboundDir.path}/$filename';
-    await File(image.path).copy(targetPath);
-    return targetPath;
-  }
-
-  // 异步非阻塞商品清单识别与状态回填
-  Future<void> _runAsyncOcr(String receiptId, String imagePath) async {
-    try {
-      final recognition = await widget.paddleOcr.recognizeTable(
-        imagePath,
-        rowMergeTolerance: widget.ocrRowMergeTolerance,
-      );
-      final rows = recognition.rows;
-      final editableText = recognition.editableText;
-      final orderNumber =
-          widget.postProcessor.extractSellerOrderNumber(editableText);
-
-      var items = widget.postProcessor.processRows(rows);
-      if (items.isEmpty && editableText.isNotEmpty) {
-        items = widget.postProcessor.processPlainText(editableText);
-      }
-
-      // 事务回填数据
-      await widget.database.updateInboundOcrResult(
-        receiptId: receiptId,
-        items: items,
-        ocrStatus: OcrStatus.confirmed,
-        sellerOrderNumber: orderNumber,
-      );
-
-      widget.onRefreshHomeData();
-      await _loadRecentReceipts();
-    } catch (_) {
-      // 降级标记为识别失败
-      await widget.database.updateInboundOcrResult(
-        receiptId: receiptId,
-        items: const [],
-        ocrStatus: OcrStatus.failed,
-      );
-      widget.onRefreshHomeData();
-      await _loadRecentReceipts();
-    }
-  }
-
-  // 物理重置锁定状态
-  Future<void> _resetCurrentScan() async {
+  void _error(String text) {
+    if (!mounted) return;
     setState(() {
-      _currentTrackingNumber = null;
-      _isScanningLocked = false;
-      _isProcessing = false;
-      _message = '已重置扫码状态，扫码器已就绪';
+      _capture.failed();
+      _message = text;
+      _showSaved = false;
+    });
+  }
+
+  void _attach(int viewId) {
+    final camera = ExpressCameraChannel(viewId);
+    _camera = camera;
+    camera.onReady = () {
+      if (!mounted) return;
+      setState(() {
+        _capture.ready();
+        if (_capture.trackingNumber == null) _message = '对准快递条码，识别后拍摄清单';
+      });
+    };
+    camera.onTracking = (tracking) {
+      if (!mounted || !_active || !_capture.lock(tracking)) return;
+      _cycle = Stopwatch()..start();
+      setState(() {
+        _showSaved = false;
+        _message = '单号已锁定，请将清单放入框内后拍照';
+      });
+    };
+    camera.onCaptured = (photo) {
+      if (!_capture.accept(photo)) return;
+      // onCaptured is sent only after native JPEG save completion, never on shutter press.
+      HapticFeedback.heavyImpact();
+      if (mounted) {
+        setState(() {
+          _showSaved = true;
+          _message = '已拍下，可以移开 · 正在记录入库';
+        });
+      }
+      debugPrint('Express capture saved_ms=${photo.shutterToSavedMs}');
+      unawaited(_commit(photo));
+    };
+    camera.onError = (code, message, captureId) {
+      if (captureId != null && captureId != _capture.captureId) return;
+      _error(message);
+    };
+    camera.listen();
+    unawaited(camera.resume().catchError((Object _) => _error('启动相机失败，请重试')));
+  }
+
+  Future<void> _takePhoto() async {
+    final camera = _camera;
+    if (camera == null || !_active || _leaving) return;
+    final id = 'express_${DateTime.now().microsecondsSinceEpoch}';
+    if (!_capture.begin(id)) return;
+    setState(() {
+      _showSaved = false;
+      _message = '正在拍摄，请保持稳定…';
     });
     try {
-      await _controller.start();
-    } catch (e) {
-      debugPrint('扫码器重置启动失败: $e');
+      await camera.capture(id, _capture.trackingNumber!, _crop);
+    } catch (_) {
+      _error('拍摄失败，请保持手机稳定后重试');
     }
   }
 
-  // 大图预览照片
-  void _showReceiptImage(String imagePath, String trackingNumber) {
-    final file = File(imagePath);
-    if (!file.existsSync()) {
-      setState(() {
-        _message = '照片文件不存在';
+  Future<void> _commit(SavedExpressCapture photo) async {
+    try {
+      if (!await File(photo.imagePath).exists()) {
+        throw const FileSystemException('照片保存失败');
+      }
+      await _committer.saveOnce(photo.captureId, () async {
+        await widget.database.confirmInbound(
+            trackingNumber: photo.trackingNumber,
+            items: const [],
+            imagePath: photo.imagePath,
+            ocrStatus: OcrStatus.pending,
+            expressCrop: photo.crop,
+            expressToken: photo.captureId);
       });
+      _capture.committed();
+      debugPrint(
+          'Express receipt_committed_ms=${_cycle?.elapsedMilliseconds ?? 0}');
+      unawaited(_queue.kick());
+      // Arm local state before native reset can deliver a new barcode.
+      _capture.reset();
+      if (mounted) setState(() => _message = '已录入，继续扫描下一单 · 清单正在后台识别');
+      try {
+        await _camera?.reset();
+      } catch (_) {
+        _error('单据已保存，恢复扫码失败，请重试相机');
+      }
+      if (!mounted) return;
+      debugPrint(
+          'Express ready_for_next_ms=${_cycle?.elapsedMilliseconds ?? 0}');
+      unawaited(_refreshRecent());
+    } catch (e) {
+      _error('入库记录失败：$e\n照片已保留，可重试保存或取消本单');
+    }
+  }
+
+  Future<void> _reset() async {
+    if (_capture.busy || _leaving) return;
+    try {
+      final unused = _capture.savedCapture?.imagePath;
+      _capture.reset();
+      await _camera?.reset();
+      if (unused != null &&
+          !await widget.database.isImagePathReferenced(unused)) {
+        final file = File(unused);
+        if (await file.exists()) await file.delete();
+      }
+      if (mounted) {
+        setState(() {
+          _showSaved = false;
+          _message = '已取消，请扫描快递条码';
+        });
+      }
+    } catch (_) {
+      _error('恢复扫码失败，请重试');
+    }
+  }
+
+  Future<void> _leave() async {
+    if (_capture.busy || _leaving) return;
+    if (_capture.savedCapture != null &&
+        !_committer.isSaved(_capture.savedCapture!.captureId)) {
+      setState(() => _message = '照片尚未入库，请重试保存或取消本单后退出');
       return;
     }
-    Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        fullscreenDialog: true,
-        builder: (context) {
-          return Scaffold(
-            backgroundColor: Colors.black,
-            appBar: AppBar(
-              backgroundColor: Colors.black,
-              foregroundColor: Colors.white,
-              title: Text('单号: $trackingNumber',
-                  style: const TextStyle(fontSize: 14)),
-              elevation: 0,
-            ),
-            body: Center(
-              child: InteractiveViewer(
-                maxScale: 4.0,
-                child: Image.file(file),
-              ),
-            ),
-          );
-        },
-      ),
-    );
+    setState(() => _leaving = true);
+    await WidgetsBinding.instance.endOfFrame;
+    try {
+      await _camera?.dispose();
+    } finally {
+      widget.onRefreshHomeData();
+      if (mounted) Navigator.of(context).pop();
+    }
+  }
+
+  Future<void> _toggleTorch() async {
+    try {
+      await _camera?.setTorch(!_torch);
+      final value = !_torch;
+      await CameraPreferences.saveTorch(value);
+      if (mounted) setState(() => _torch = value);
+    } catch (_) {
+      if (mounted) setState(() => _message = '补光灯暂不可用');
+    }
+  }
+
+  Future<void> _retryCamera() async {
+    if (_capture.busy || _leaving) return;
+    if (_capture.savedCapture != null) {
+      setState(() {
+        _capture.phase = ExpressCapturePhase.saving;
+        _message = '正在重试保存单据…';
+      });
+      await _commit(_capture.savedCapture!);
+      return;
+    }
+    if (_capture.trackingNumber != null) {
+      await _takePhoto();
+      return;
+    }
+    try {
+      await _camera?.dispose();
+      _camera = null;
+      if (mounted) {
+        setState(() {
+          _capture.phase = ExpressCapturePhase.initializing;
+          _viewGeneration++;
+        });
+      }
+    } catch (_) {
+      _error('重启相机失败，请退出后重试');
+    }
+  }
+
+  Future<void> _showPhoto(InboundReceipt receipt) async {
+    final path = receipt.imagePath;
+    if (path == null || !await File(path).exists() || !mounted) return;
+    try {
+      await _camera?.pause();
+      if (!mounted) return;
+      await Navigator.of(context).push<void>(MaterialPageRoute(
+          builder: (_) => Scaffold(
+                backgroundColor: Colors.black,
+                appBar: AppBar(title: Text(receipt.trackingNumber)),
+                body: Center(
+                    child: InteractiveViewer(
+                        maxScale: 5, child: Image.file(File(path)))),
+              )));
+    } finally {
+      if (mounted && _active) await _camera?.resume();
+    }
   }
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text(
-          '扫码入库 (极速模式)',
-          style: TextStyle(
-            fontWeight: FontWeight.w400,
-            fontSize: 15,
-            letterSpacing: 1.0,
-            color: _notionText,
-          ),
-        ),
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        foregroundColor: _notionText,
-        centerTitle: true,
-      ),
-      body: Column(
-        children: [
-          // 头部说明指示区
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
-            child: Container(
-              width: double.infinity,
-              decoration: BoxDecoration(
-                color: const Color(0xFFF7F7F5),
-                border: Border.all(color: _notionBorder, width: 0.8),
-              ),
-              padding: const EdgeInsets.all(12),
-              child: const Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '⚡ 极速连续对账流水线说明：',
-                    style: TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                      color: _notionText,
-                    ),
-                  ),
-                  SizedBox(height: 6),
-                  Text(
-                    '1. 对准快递单条码扫码，系统自动识别单号并锁定。\n'
-                    '2. 锁死后自动跳转全屏内置相机，自动裁剪取景框内照片。\n'
-                    '3. 拍照完毕自动后台建立单据，并在 1 秒内重启扫码，直接扫描下一个。',
-                    style: TextStyle(
-                      fontSize: 11,
-                      color: _notionGreyText,
-                      height: 1.4,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const SizedBox(height: 8),
-
-          // 扫码取景框 (高 240)
+    final locked = _capture.trackingNumber != null;
+    return PopScope(
+      canPop: _leaving,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop) unawaited(_leave());
+      },
+      child: Scaffold(
+        backgroundColor: Colors.black,
+        appBar: AppBar(
+            backgroundColor: Colors.black,
+            foregroundColor: Colors.white,
+            title: const Text('极速入库'),
+            leading: IconButton(
+                onPressed: _capture.busy ? null : _leave,
+                icon: const Icon(Icons.arrow_back))),
+        body: SafeArea(
+            child: Column(children: [
           Container(
-            height: 240,
-            width: double.infinity,
-            decoration: BoxDecoration(
-              border: Border.all(color: Colors.black, width: 1.2),
-              color: Colors.black,
-            ),
-            child: Stack(
-              children: [
-                Positioned.fill(
-                  child: MobileScanner(
-                    controller: _controller,
-                    onDetect: (capture) async {
-                      if (_isScanningLocked || _isProcessing) return;
-                      final barcodes = capture.barcodes;
-                      for (final barcode in barcodes) {
-                        final raw = barcode.rawValue;
-                        if (raw != null && raw.isNotEmpty) {
-                          setState(() {
-                            _currentTrackingNumber = raw;
-                            _isScanningLocked = true;
-                            _message = '已识别单号：$raw，正在拉起拍照...';
-                          });
-
-                          // 立即暂停扫码器，腾出摄像头控制权给新相机页面
-                          await _controller.stop();
-
-                          if (!mounted) return;
-                          // 跳转到统一的 CustomCameraPage 拍照识别，享受取景框物理图像裁剪
-                          final image = await Navigator.of(context).push<XFile>(
-                            MaterialPageRoute(
-                              builder: (context) =>
-                                  const CustomCameraPage(title: '极速模式拍照识别'),
-                            ),
-                          );
-
-                          if (image == null) {
-                            // 用户中途取消了拍摄，重置状态
-                            if (mounted) {
-                              setState(() {
-                                _isScanningLocked = false;
-                                _currentTrackingNumber = null;
-                                _message = '已取消拍照，扫码已重启';
-                              });
-                            }
-                            // 给相机硬件转场释放留出足够物理缓冲时间
-                            await Future.delayed(
-                                const Duration(milliseconds: 500));
-                            await _controller.start();
-                            break;
-                          }
-
-                          // 拍照成功，进入入库处理与后台异步大模型流程
-                          if (mounted) {
-                            setState(() {
-                              _isProcessing = true;
-                              _message = '正在保存图片并记录入库...';
-                            });
-                          }
-
-                          try {
-                            final storedImagePath =
-                                await _storeInboundImage(image);
-
-                            // 本地快速创建待处理单据
-                            final receipt =
-                                await widget.database.confirmInbound(
-                              trackingNumber: raw,
-                              items: const [],
-                              imagePath: storedImagePath,
-                              ocrStatus: OcrStatus.pending,
-                            );
-
-                            // 后台开启异步大模型提取，完全不阻塞当前扫码流水线
-                            unawaited(
-                                _runAsyncOcr(receipt.id, storedImagePath));
-
-                            // 加载最近入库列表
-                            await _loadRecentReceipts();
-                            widget.onRefreshHomeData();
-
-                            if (mounted) {
-                              setState(() {
-                                _message = '快递 $raw 已录入，后台正在分析明细';
-                                _currentTrackingNumber = null;
-                                _isScanningLocked = false;
-                                _isProcessing = false;
-                              });
-                            }
-                          } catch (e) {
-                            if (mounted) {
-                              setState(() {
-                                _message = '入库记录失败: $e';
-                                _currentTrackingNumber = null;
-                                _isScanningLocked = false;
-                                _isProcessing = false;
-                              });
-                            }
-                          }
-
-                          // 等待页面滑出转场完全结束，相机硬件彻底释放后，再重启扫码
-                          await Future.delayed(
-                              const Duration(milliseconds: 500));
-                          await _controller.start();
-                          break;
-                        }
-                      }
-                    },
-                  ),
-                ),
-                // 仅在扫码锁定状态下，在顶部覆上一层黑色的锁定遮罩，不销毁扫码器本身
-                if (_isScanningLocked)
-                  Positioned.fill(
-                    child: Container(
-                      color: Colors.black.withOpacity(0.9),
-                      alignment: Alignment.center,
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const SizedBox(
-                            width: 24,
-                            height: 24,
-                            child: CircularProgressIndicator(
-                              strokeWidth: 1.8,
-                              valueColor:
-                                  AlwaysStoppedAnimation<Color>(Colors.white),
-                            ),
-                          ),
-                          const SizedBox(height: 16),
-                          Text(
-                            '已锁定单号：$_currentTrackingNumber',
-                            style: const TextStyle(
-                              color: Colors.white,
-                              fontSize: 12,
-                              fontFamily: 'monospace',
-                              fontWeight: FontWeight.bold,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                          const SizedBox(height: 6),
-                          const Text(
-                            '正在跳转到相机页面...',
-                            style: TextStyle(
-                              color: _notionGreyText,
-                              fontSize: 10,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-          ),
-
-          // 提示消息栏
-          if (_message != null)
-            Padding(
+              height: 100,
+              width: double.infinity,
+              color: const Color(0xFF202020),
               padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Text(
-                _message!,
-                style: const TextStyle(
-                  color: _notionText,
-                  fontSize: 12,
-                  fontFamily: 'monospace',
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-
-          // 物理重置按钮（仅在发生不可控阻塞或异常锁定时供人工救急）
-          if (_isScanningLocked)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 8),
-              child: TextButton.icon(
-                onPressed: _resetCurrentScan,
-                icon: const Icon(Icons.refresh, color: Colors.red, size: 13),
-                label: const Text(
-                  '放弃当前锁定并重置扫码',
-                  style: TextStyle(
-                    color: Colors.red,
-                    fontFamily: 'monospace',
-                    fontWeight: FontWeight.bold,
-                    fontSize: 11,
-                  ),
-                ),
-                style: TextButton.styleFrom(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
-                ),
-              ),
-            ),
-
-          // 分隔线
-          const Padding(
-            padding: EdgeInsets.symmetric(horizontal: 16),
-            child: Divider(height: 10, color: _notionBorder),
-          ),
-
-          // 最近入库列表标题
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-            child: Row(
-              children: [
-                const Text(
-                  '最近入库记录',
-                  style: TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.bold,
-                    color: _notionText,
-                    fontFamily: 'monospace',
-                  ),
-                ),
-                const SizedBox(width: 6),
-                Text(
-                  '(${_recentReceipts.length})',
-                  style: const TextStyle(
-                    fontSize: 11,
-                    color: _notionGreyText,
-                    fontFamily: 'monospace',
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 4),
-
-          // 最近 5 条入库列表
+              child: SingleChildScrollView(
+                  child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                    Text(locked ? '快递单号' : '请扫描快递条码',
+                        style: const TextStyle(
+                            color: Colors.white70, fontSize: 12)),
+                    if (locked)
+                      Text(_capture.trackingNumber!,
+                          softWrap: true,
+                          style: const TextStyle(
+                              color: Colors.white,
+                              fontWeight: FontWeight.bold,
+                              fontSize: 21)),
+                  ]))),
           Expanded(
-            child: _recentReceipts.isEmpty
-                ? const Center(
-                    child: Text(
-                      '暂无入库记录',
-                      style: TextStyle(
-                        fontSize: 13,
-                        fontFamily: 'monospace',
-                        color: _notionGreyText,
-                      ),
-                    ),
-                  )
-                : ListView.separated(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    itemCount: _recentReceipts.length,
-                    separatorBuilder: (_, __) =>
-                        const Divider(height: 1, color: _notionBorder),
-                    itemBuilder: (context, index) {
-                      final receipt = _recentReceipts[index];
-                      return _receiptTile(receipt, isFirst: index == 0);
-                    },
-                  ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _receiptTile(InboundReceipt receipt, {bool isFirst = false}) {
-    final timeStr = DateFormat('MM-dd HH:mm').format(receipt.createdAt);
-    final ocrLabel = switch (receipt.ocrStatus) {
-      OcrStatus.pending => '识别中',
-      OcrStatus.processing => '处理中',
-      OcrStatus.needsReview => '待审核',
-      OcrStatus.confirmed => '已识别',
-      OcrStatus.failed => '识别失败',
-    };
-    final ocrColor = switch (receipt.ocrStatus) {
-      OcrStatus.pending => const Color(0xFFFF9800),
-      OcrStatus.processing => const Color(0xFFFF9800),
-      OcrStatus.needsReview => const Color(0xFF2196F3),
-      OcrStatus.confirmed => const Color(0xFF4CAF50),
-      OcrStatus.failed => const Color(0xFFE53935),
-    };
-
-    final hasImage = receipt.imagePath != null && receipt.imagePath!.isNotEmpty;
-
-    return GestureDetector(
-      onTap: hasImage
-          ? () => _showReceiptImage(receipt.imagePath!, receipt.trackingNumber)
-          : null,
-      child: Container(
-        padding: const EdgeInsets.symmetric(vertical: 12, horizontal: 10),
-        decoration: BoxDecoration(
-          color: isFirst ? const Color(0xFFE8F5E9) : null,
-          border: isFirst
-              ? const Border(
-                  left: BorderSide(color: Color(0xFF4CAF50), width: 2.5))
-              : null,
-        ),
-        child: Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
-          children: [
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    receipt.trackingNumber,
-                    style: TextStyle(
-                      fontSize: 13,
-                      fontFamily: 'monospace',
-                      fontWeight: isFirst ? FontWeight.bold : FontWeight.w500,
-                      color: _notionText,
-                    ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                  const SizedBox(height: 3),
-                  Text(
-                    timeStr,
-                    style: const TextStyle(
-                      fontSize: 11,
-                      fontFamily: 'monospace',
-                      color: _notionGreyText,
-                    ),
-                  ),
-                ],
-              ),
-            ),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: ocrColor.withOpacity(0.1),
-                border:
-                    Border.all(color: ocrColor.withOpacity(0.4), width: 0.8),
-              ),
-              child: Text(
-                ocrLabel,
-                style: TextStyle(
-                  fontSize: 10,
-                  fontFamily: 'monospace',
-                  fontWeight: FontWeight.bold,
-                  color: ocrColor,
-                ),
-              ),
-            ),
-            const SizedBox(width: 8),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
-              decoration: BoxDecoration(
-                color: receipt.isSettled
-                    ? const Color(0xFFDCF5DC)
-                    : const Color(0xFFFDE8E8),
-                border: Border.all(
-                  color: receipt.isSettled
-                      ? const Color(0xFF4CAF50)
-                      : const Color(0xFFE53935),
-                  width: 0.8,
-                ),
-              ),
-              child: Text(
-                receipt.isSettled ? '已结' : '未结',
-                style: TextStyle(
-                  fontSize: 10,
-                  fontFamily: 'monospace',
-                  fontWeight: FontWeight.bold,
-                  color: receipt.isSettled
-                      ? const Color(0xFF2E7D32)
-                      : const Color(0xFFC62828),
-                ),
-              ),
-            ),
-          ],
-        ),
+              child: _directory == null
+                  ? const Center(child: CircularProgressIndicator())
+                  : !Platform.isAndroid
+                      ? const Center(
+                          child: Text('极速相机目前支持 Android，请使用普通入库',
+                              style: TextStyle(color: Colors.white)))
+                      : LayoutBuilder(
+                          builder: (context, size) => GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTapDown: (details) {
+                                if (_capture.busy) return;
+                                unawaited((_camera?.focus(
+                                            details.localPosition.dx /
+                                                size.maxWidth,
+                                            details.localPosition.dy /
+                                                size.maxHeight) ??
+                                        Future.value())
+                                    .catchError((Object _) {}));
+                              },
+                              child: Stack(fit: StackFit.expand, children: [
+                                AndroidView(
+                                    key: ValueKey(_viewGeneration),
+                                    viewType: ExpressCameraChannel.viewType,
+                                    creationParams: {
+                                      'outputDirectory': _directory,
+                                      'torchEnabled': _torch
+                                    },
+                                    creationParamsCodec:
+                                        const StandardMessageCodec(),
+                                    onPlatformViewCreated: _attach),
+                                IgnorePointer(
+                                    child: Align(
+                                        alignment: Alignment.center,
+                                        child: FractionallySizedBox(
+                                            widthFactor: locked ? .92 : .9,
+                                            heightFactor: locked ? .76 : .32,
+                                            child: Container(
+                                                decoration: BoxDecoration(
+                                                    border: Border.all(
+                                                        color: Colors.white,
+                                                        width: 2)))))),
+                                if (_showSaved)
+                                  const IgnorePointer(
+                                      child: Align(
+                                          alignment: Alignment.topCenter,
+                                          child: Padding(
+                                              padding: EdgeInsets.all(12),
+                                              child: Chip(
+                                                  avatar: Icon(
+                                                      Icons.check_circle,
+                                                      color: Colors.green),
+                                                  label: Text('已拍下，可以移开'))))),
+                              ])))),
+          SizedBox(
+              height: 64,
+              child: SingleChildScrollView(
+                  child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Text(_message,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                              color: Colors.white, fontSize: 13))))),
+          SizedBox(
+              height: 64,
+              child: Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+                  children: [
+                    IconButton(
+                        onPressed: _capture.busy ? null : _toggleTorch,
+                        color: Colors.white,
+                        icon: Icon(_torch ? Icons.flash_on : Icons.flash_off)),
+                    if (locked)
+                      FilledButton.icon(
+                          onPressed: _capture.busy
+                              ? null
+                              : (_capture.phase == ExpressCapturePhase.error
+                                  ? _retryCamera
+                                  : _takePhoto),
+                          icon: const Icon(Icons.camera_alt),
+                          label: Text(
+                              _capture.savedCapture != null ? '重试保存' : '拍照')),
+                    if (locked)
+                      TextButton(
+                          onPressed: _capture.busy ? null : _reset,
+                          child: const Text('取消本单')),
+                    if (!locked && _capture.phase == ExpressCapturePhase.error)
+                      TextButton(
+                          onPressed: _retryCamera, child: const Text('重试相机')),
+                  ])),
+          SizedBox(
+              height: 90,
+              child: locked
+                  ? const Center(
+                      child: Text('轻触画面对焦 · 照片保存后再提示完成',
+                          style:
+                              TextStyle(color: Colors.white70, fontSize: 12)))
+                  : ListView.builder(
+                      scrollDirection: Axis.horizontal,
+                      itemCount: _recent.length,
+                      itemBuilder: (context, index) {
+                        final receipt = _recent[index];
+                        final failed = receipt.ocrStatus == OcrStatus.failed;
+                        return Padding(
+                            padding: const EdgeInsets.all(6),
+                            child:
+                                Row(mainAxisSize: MainAxisSize.min, children: [
+                              ActionChip(
+                                  label: Text(
+                                      '${receipt.trackingNumber}\n${failed ? '识别失败' : receipt.ocrStatus == OcrStatus.confirmed ? '已识别' : '后台识别中'}'),
+                                  onPressed: receipt.imagePath == null
+                                      ? null
+                                      : () => _showPhoto(receipt)),
+                              if (failed)
+                                IconButton(
+                                    tooltip: '重试识别',
+                                    color: Colors.white,
+                                    icon: const Icon(Icons.refresh),
+                                    onPressed: () async {
+                                      await _queue.retry(receipt.id);
+                                      await _refreshRecent();
+                                    }),
+                            ]));
+                      })),
+        ])),
       ),
     );
   }
