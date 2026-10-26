@@ -476,3 +476,33 @@ Add a feature to filter and export photo inbound receipts within a selected date
 ### Next Steps
 
 - None - task complete
+
+
+## Session 15: 极速入库连续相机重写与OCR端侧选型调研
+<!-- trellis-session: v=2 fp=5260cf5a79f44064 -->
+
+**Date**: 2026-10-27
+**Task**: 极速入库连续相机重写与OCR端侧选型调研
+**Branch**: `codex/express-camera-response`
+
+### Summary
+
+实现持续扫码拍照会话、完整单号顶部展示、可信照片完成反馈和可恢复后台处理；40项测试通过，发布1.0.5+7 ARM64安装包已归档。官方最新OCR调研建议比较PP-OCRv6 small/tiny，未替换现有模型。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `68db83a` | feat(camera): 重写极速入库连续拍照并修正完成反馈与单号绑定 |
+
+### Testing
+
+- [OK] flutter test --no-pub: 40 passed; flutter analyze: 28 pre-existing issues, no new issues; ARM64 release build and APK contents/signature verified
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 连接真机完成连续20单、快门中位数/P95、提示后移动清晰度、弱光和CameraX三用例兼容性验收；任务保留in_progress
