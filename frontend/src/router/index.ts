@@ -47,6 +47,7 @@ const routes: RouteRecordRaw[] = [
         name: 'StockLedger',
         component: () => import('../views/StockLedger.vue')
       },
+      { path: 'logs', name: 'OperationLogs', component: () => import('../views/OperationLogs.vue') },
       {
         path: 'members',
         name: 'MemberManagement',
@@ -65,6 +66,7 @@ const router = createRouter({
 router.beforeEach((to, _from, next) => {
   const authStore = useAuthStore()
   
+  if (to.path === '/shop/members' && !['CREATOR', 'ADMIN'].includes(authStore.activeShopRole)) { next('/shop/stock'); return }
   if (to.meta.requireAuth) {
     if (!authStore.token) {
       next('/login')

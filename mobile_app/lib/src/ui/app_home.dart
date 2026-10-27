@@ -12,6 +12,8 @@ import 'package:share_plus/share_plus.dart';
 import 'package:archive/archive_io.dart';
 
 import '../application/inventory_service.dart';
+import '../application/shop_sync_service.dart';
+import 'shop_sync_page.dart';
 import '../application/express_processing_queue.dart';
 import '../data/local_inventory_database.dart';
 import '../domain/models.dart';
@@ -57,7 +59,26 @@ class AppHome extends StatefulWidget {
   State<AppHome> createState() => _AppHomeState();
 }
 
-class _AppHomeState extends State<AppHome> {
+class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
+  ShopSyncService? _shopSync;
+  ExpressProcessingQueue? _registeredQueue;
+  int _syncVersion = 0;
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    _shopSync?.setForeground(state == AppLifecycleState.resumed);
+  }
+
+  void _onSyncChanged() {
+    if (!mounted) return;
+    if (_shopSync!.dataVersion != _syncVersion &&
+        (ModalRoute.of(context)?.isCurrent ?? false)) {
+      _syncVersion = _shopSync!.dataVersion;
+      unawaited(_refreshData());
+    }
+    setState(() {});
+  }
+
   static const Color _notionBg = Color(0xFFF7F7F5);
   static const Color _notionText = Color(0xFF37352F);
   static const Color _notionGreyText = Color(0xFF7C7B77);
@@ -108,14 +129,16 @@ class _AppHomeState extends State<AppHome> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _openDatabase();
   }
 
   @override
   void dispose() {
-    ExpressProcessingQueue.forDatabase(_database)
-        .listeners
-        .remove(_refreshWhenHomeVisible);
+    WidgetsBinding.instance.removeObserver(this);
+    _shopSync?.removeListener(_onSyncChanged);
+    _shopSync?.dispose();
+    _registeredQueue?.listeners.remove(_refreshWhenHomeVisible);
     _trackingController.dispose();
     _sellerOrderController.dispose();
     _rebateOrderController.dispose();
@@ -807,7 +830,7 @@ class _AppHomeState extends State<AppHome> {
             ),
             const SizedBox(height: 4),
             Text(
-              _authMode == 'online' ? '数据将实时双向同步至云端服务器' : '数据完全保留在手机本地，无损安全',
+              _authMode == 'online' ? '新增、修改增量同步；删除仅影响本机' : '数据完全保留在手机本地，无损安全',
               style: const TextStyle(fontSize: 11, color: _notionGreyText),
             ),
           ],
@@ -963,6 +986,19 @@ class _AppHomeState extends State<AppHome> {
                 ],
               ),
               Divider(height: 1, color: Colors.grey.shade200),
+              if (_shopSync != null)
+                ListTile(
+                  leading: const Icon(Icons.cloud_sync_outlined),
+                  title: const Text('店铺同步'),
+                  subtitle: Text(
+                      '${_shopSync!.message}\n待同步 ${_shopSync!.pending} · 待确认 ${_shopSync!.conflicts}'),
+                  isThreeLine: true,
+                  onTap: () async {
+                    await Navigator.of(context).push(MaterialPageRoute(
+                        builder: (_) => ShopSyncPage(service: _shopSync!)));
+                    if (mounted) await _refreshData();
+                  },
+                ),
               ListTile(
                 contentPadding: EdgeInsets.zero,
                 leading: Container(
@@ -2477,8 +2513,11 @@ class _AppHomeState extends State<AppHome> {
                                   borderRadius: BorderRadius.zero),
                               title: const Text('删除单据',
                                   style: TextStyle(fontFamily: 'monospace')),
-                              content: const Text('确认要删除这笔入库单据及对应的库存吗？该操作不可撤销！',
-                                  style: TextStyle(fontFamily: 'monospace')),
+                              content: Text(
+                                  _authMode == 'online'
+                                      ? '仅在本机隐藏这笔入库单；其他手机和云端保留，店铺库存不变。可在店铺同步中恢复显示。'
+                                      : '确认要删除这笔入库单据及对应的库存吗？该操作不可撤销！',
+                                  style: const TextStyle(fontFamily: 'monospace')),
                               actions: [
                                 TextButton(
                                     onPressed: () => Navigator.pop(ctx, false),
@@ -3282,11 +3321,18 @@ class _AppHomeState extends State<AppHome> {
   Future<void> _openDatabase() async {
     try {
       await _database.open();
+      if (!mounted) return;
       final queue = ExpressProcessingQueue.forDatabase(_database);
+      _registeredQueue = queue;
       queue.listeners.add(_refreshWhenHomeVisible);
       unawaited(queue.kick());
       final ocrRowMergeTolerance = await _database.loadOcrRowMergeTolerance();
       await _loadShopInfo();
+      if (!mounted) return;
+      if (_authMode == 'online') {
+        _shopSync = ShopSyncService(_database)..addListener(_onSyncChanged);
+        _shopSync!.start();
+      }
       await _refreshData();
       if (!mounted) {
         return;
@@ -3375,11 +3421,14 @@ class _AppHomeState extends State<AppHome> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text('此操作属于敏感调试功能，请选择您要清除的数据类型：\n'),
+                  Text(_authMode == 'online'
+                      ? '仅隐藏本机库存和所选目录，云端及其他手机保留，店铺库存不变。\n'
+                      : '此操作属于敏感调试功能，请选择您要清除的数据类型：\n'),
                   CheckboxListTile(
                     activeColor: Colors.black,
-                    title: const Text('仅将所有商品库存归零/清空',
-                        style: TextStyle(fontSize: 13, color: Colors.black)),
+                    title: Text(
+                        _authMode == 'online' ? '隐藏本机库存列表' : '仅将所有商品库存归零/清空',
+                        style: const TextStyle(fontSize: 13, color: Colors.black)),
                     subtitle: const Text('仅重置当前库存量，不影响商品目录',
                         style: TextStyle(fontSize: 11, color: Colors.grey)),
                     value: clearStockOnly,
@@ -3396,8 +3445,9 @@ class _AppHomeState extends State<AppHome> {
                   ),
                   CheckboxListTile(
                     activeColor: Colors.black,
-                    title: const Text('连带删除商品库中的商品目录',
-                        style: TextStyle(fontSize: 13, color: Colors.black)),
+                    title: Text(
+                        _authMode == 'online' ? '同时隐藏本机商品目录' : '连带删除商品库中的商品目录',
+                        style: const TextStyle(fontSize: 13, color: Colors.black)),
                     subtitle: const Text('彻底清除所有的商品基础目录信息',
                         style: TextStyle(fontSize: 11, color: Colors.grey)),
                     value: deleteProducts,

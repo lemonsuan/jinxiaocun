@@ -24,6 +24,7 @@
 
     <!-- 数据表 -->
     <div v-else>
+      <div class="flex justify-end mb-4"><el-button @click="fetchMembers" :loading="loading">刷新成员与申请</el-button></div>
       <el-table 
         v-loading="loading" 
         :data="members" 
@@ -104,6 +105,7 @@
 import { ref, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import axios from '../utils/request'
+import { isAxiosError } from 'axios'
 import { useAuthStore } from '../store/auth'
 
 const authStore = useAuthStore()
@@ -127,10 +129,10 @@ const fetchMembers = async () => {
   loading.value = true
   noPermission.value = false
   try {
-    const res: any = await axios.get('/api/shops/members')
+    const res = await axios.get<never, MemberItem[]>('/api/shops/members')
     members.value = res
-  } catch (err: any) {
-    if (err.response && err.response.status === 403) {
+  } catch (err: unknown) {
+    if (isAxiosError(err) && err.response?.status === 403) {
       noPermission.value = true
     }
   } finally {

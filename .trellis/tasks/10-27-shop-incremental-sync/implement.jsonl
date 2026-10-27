@@ -1,0 +1,7 @@
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "Mobile layer ownership"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Existing camera/OCR contracts preserved"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "Ledger/transaction/legacy offline rules; explicitly extend online sharing"}
+{"file": ".trellis/tasks/10-27-shop-incremental-sync/research/wire-contract.md", "reason": "Canonical cross-agent API and persistence signatures"}
+{"file": ".trellis/tasks/10-27-shop-incremental-sync/research/audit.md", "reason": "Actual gaps and user override/autonomy"}
+{"file": ".trellis/tasks/10-27-shop-incremental-sync/prd.md", "reason": "Requirements and acceptance"}
+{"file": ".trellis/tasks/10-27-shop-incremental-sync/design.md", "reason": "Cross-layer architecture, compatibility and risks"}

@@ -19,9 +19,10 @@
       <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8 pb-4 border-b border-slate-200 gap-4">
         <div>
           <h1 class="text-xl font-bold text-slate-800">请选择要进入的店铺</h1>
-          <p class="text-xs text-slate-400 mt-1">进入店铺后，即可对其所属的商品、出入库和库存数据进行日常维护。</p>
+          <p class="text-xs text-slate-400 mt-1">查看已同步的商品、出入库、库存与凭证。手机上的本机删除不影响服务器留存。</p>
         </div>
-        <div class="flex gap-2 shrink-0">
+        <div class="flex gap-2 shrink-0 flex-wrap">
+          <el-button @click="fetchShops" :loading="loading">刷新审批状态</el-button>
           <el-button type="primary" @click="showCreateDialog = true" class="!bg-primary hover:!bg-primary-hover !border-none !rounded-sm !text-xs py-2 px-3">
             新建店铺
           </el-button>
@@ -70,10 +71,10 @@
               type="primary" 
               size="small"
               :disabled="item.status !== 'APPROVED'"
-              @click="enterShop(item.shop_id, item.shop_name)"
+              @click="enterShop(item.shop_id, item.shop_name, item.role)"
               class="!bg-primary hover:!bg-primary-hover disabled:!bg-slate-100 disabled:!text-slate-400 !border-none !rounded-sm !text-xs"
             >
-              进入管理 ➔
+              进入查看 ➔
             </el-button>
           </div>
         </div>
@@ -156,7 +157,7 @@ const joinRules = {
 const fetchShops = async () => {
   loading.value = true
   try {
-    const res: any = await axios.get('/api/shops/my-shops')
+    const res = await axios.get<never, ShopMembershipItem[]>('/api/shops/my-shops')
     myShops.value = res
   } catch (err) {
     // 错误已由 Axios 拦截器展示
@@ -169,8 +170,8 @@ onMounted(() => {
   fetchShops()
 })
 
-const enterShop = (shopId: string, shopName: string) => {
-  authStore.setActiveShop(shopId, shopName)
+const enterShop = (shopId: string, shopName: string, role: string) => {
+  authStore.setActiveShop(shopId, shopName, role)
   router.push('/shop')
 }
 
@@ -198,7 +199,7 @@ const handleJoinShop = async () => {
     if (!valid) return
     submitLoading.value = true
     try {
-      const res: any = await axios.post('/api/shops/join', { shop_id: joinForm.shop_id })
+      const res = await axios.post<never, { message?: string }>('/api/shops/join', { shop_id: joinForm.shop_id })
       ElMessage.success(res.message || '申请提交成功，请联系管理员审批！')
       showJoinDialog.value = false
       joinForm.shop_id = ''

@@ -7,6 +7,8 @@ class SyncModel(models.Model):
     增量同步基类，包含同步所需的 UUID 主键、软删除标记和更新时间戳
     """
     id = models.UUIDField(primary_key=True, default=uuid.uuid4, editable=False)
+    client_key = models.CharField(max_length=200, null=True, blank=True)
+    revision = models.PositiveBigIntegerField(default=0)
     shop = models.ForeignKey(Shop, on_delete=models.CASCADE, verbose_name="所属店铺")
     is_deleted = models.BooleanField(default=False, verbose_name="是否已删除")
     updated_at = models.DateTimeField(auto_now=True, verbose_name="更新时间")
@@ -31,12 +33,16 @@ class Product(SyncModel):
 class InboundReceipt(SyncModel):
     OCR_STATUS_CHOICES = [
         ('pending', '识别中'),
+        ('processing', '处理中'),
+        ('needsReview', '待复核'),
         ('confirmed', '已确认'),
         ('failed', '识别失败'),
     ]
 
     tracking_number = models.CharField(max_length=100, verbose_name="快递单号")
     seller_order_number = models.CharField(max_length=100, null=True, blank=True, verbose_name="商家订单号")
+    rebate_order_number = models.CharField(max_length=100, null=True, blank=True)
+    image_sha256 = models.CharField(max_length=64, null=True, blank=True)
     scheme_number = models.CharField(max_length=100, null=True, blank=True, verbose_name="计划单号")
     image_path = models.CharField(max_length=500, null=True, blank=True, verbose_name="单据图片路径")
     ocr_status = models.CharField(max_length=20, choices=OCR_STATUS_CHOICES, default='confirmed', verbose_name="OCR状态")
@@ -47,6 +53,7 @@ class InboundReceipt(SyncModel):
         verbose_name = "入库单"
         verbose_name_plural = "入库单"
         unique_together = ('shop', 'tracking_number')
+        constraints = [models.UniqueConstraint(fields=['shop', 'client_key'], name='inbound_shop_client_key')]
 
     def __str__(self):
         return f"入库单: {self.tracking_number} ({self.shop.name})"
@@ -60,6 +67,7 @@ class InboundItem(SyncModel):
     sale_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name="零售价")
 
     class Meta:
+        constraints = [models.UniqueConstraint(fields=['shop', 'client_key'], name='inbound_line_shop_client_key')]
         verbose_name = "入库商品明细"
         verbose_name_plural = "入库商品明细"
 
@@ -72,6 +80,7 @@ class OutboundOrder(SyncModel):
     created_at = models.DateTimeField(verbose_name="创建时间")
 
     class Meta:
+        constraints = [models.UniqueConstraint(fields=['shop', 'client_key'], name='outbound_shop_client_key')]
         verbose_name = "出库单"
         verbose_name_plural = "出库单"
 
@@ -86,6 +95,7 @@ class OutboundItem(SyncModel):
     sale_price = models.DecimalField(max_digits=10, decimal_places=2, null=True, blank=True, verbose_name="销售价")
 
     class Meta:
+        constraints = [models.UniqueConstraint(fields=['shop', 'client_key'], name='outbound_line_shop_client_key')]
         verbose_name = "出库商品明细"
         verbose_name_plural = "出库商品明细"
 
@@ -93,6 +103,7 @@ class OutboundItem(SyncModel):
         return f"{self.product_name} x {self.quantity}"
 
 class OutboundAttachment(SyncModel):
+    image_sha256 = models.CharField(max_length=64, null=True, blank=True)
     order = models.ForeignKey(OutboundOrder, on_delete=models.CASCADE, related_name='attachments', verbose_name="出库单")
     image_path = models.CharField(max_length=500, verbose_name="图片文件路径")
     created_at = models.DateTimeField(verbose_name="创建时间")
@@ -115,7 +126,7 @@ class StockLedger(SyncModel):
     product_name = models.CharField(max_length=200, verbose_name="商品名称")
     delta = models.IntegerField(verbose_name="库存变动量")
     reason = models.CharField(max_length=30, choices=REASON_CHOICES, verbose_name="变动原因")
-    source_id = models.CharField(max_length=100, verbose_name="关联单据ID")
+    source_id = models.CharField(max_length=200, verbose_name="关联单据ID")
     created_at = models.DateTimeField(verbose_name="创建时间")
 
     class Meta:
@@ -160,3 +171,41 @@ class InboundActionLog(models.Model):
 
     def __str__(self):
         return f"{self.user.username if self.user else '未知'} - {self.get_action_type_display()} - {self.tracking_number}"
+
+
+class ShopSyncState(models.Model):
+    shop = models.OneToOneField(Shop, on_delete=models.PROTECT, primary_key=True)
+    revision = models.PositiveBigIntegerField(default=0)
+
+
+class SyncChange(models.Model):
+    shop = models.ForeignKey(Shop, on_delete=models.PROTECT)
+    revision = models.PositiveBigIntegerField()
+    record = models.JSONField()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['shop', 'revision'], name='sync_shop_revision')]
+        ordering = ['revision']
+
+
+class SyncOperation(models.Model):
+    shop = models.ForeignKey(Shop, on_delete=models.PROTECT)
+    operation_id = models.CharField(max_length=200)
+    device_id = models.CharField(max_length=200)
+    request_hash = models.CharField(max_length=64)
+    result = models.JSONField()
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['shop', 'operation_id'], name='sync_shop_operation')]
+
+
+class PrivateMedia(models.Model):
+    shop = models.ForeignKey(Shop, on_delete=models.PROTECT)
+    sha256 = models.CharField(max_length=64)
+    size = models.PositiveIntegerField()
+    content_type = models.CharField(max_length=50)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['shop', 'sha256'], name='media_shop_sha')]

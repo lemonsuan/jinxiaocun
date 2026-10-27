@@ -1,7 +1,9 @@
 import jwt
 import datetime
 from django.conf import settings
+from django.core.exceptions import ValidationError
 from django.contrib.auth import authenticate
+from django.db import transaction
 from ninja import NinjaAPI, Schema
 from ninja.security import HttpBearer
 from ninja.errors import HttpError
@@ -44,7 +46,7 @@ class AuthBearer(HttpBearer):
         if not payload:
             return None
         try:
-            user = CustomUser.objects.get(id=payload['user_id'])
+            user = CustomUser.objects.get(id=payload['user_id'], is_active=True)
             # 将 user 绑定到 request.user 以便在 API 和 Django 内部流通
             request.user = user
             
@@ -59,13 +61,13 @@ class AuthBearer(HttpBearer):
                         status='APPROVED'
                     )
                     request.active_shop = membership.shop
-                except ShopMembership.DoesNotExist:
+                except (ShopMembership.DoesNotExist, ValidationError, ValueError):
                     raise HttpError(403, "你没有访问该店铺数据的权限或申请尚未被确认。")
             else:
                 request.active_shop = None
                 
             return user
-        except CustomUser.DoesNotExist:
+        except (CustomUser.DoesNotExist, ValidationError, ValueError, KeyError):
             return None
 
 auth_bearer = AuthBearer()
@@ -155,9 +157,10 @@ def my_shops(request):
     return res
 
 @api.post("/shops/create", response={200: ShopSchema, 400: dict}, auth=auth_bearer)
+@transaction.atomic
 def create_shop(request, data: CreateShopSchema):
     shop_name = data.name.strip()
-    if not shop_name:
+    if not shop_name or len(shop_name) > 100:
         return 400, {"message": "店铺名称不能为空。"}
         
     shop = Shop.objects.create(name=shop_name)
@@ -597,6 +600,14 @@ def update_member(request, data: MemberUpdateSchema):
     except ShopMembership.DoesNotExist:
         return 400, {"message": "未找到对应的成员记录"}
         
+    if data.role and data.role not in ('ADMIN', 'MEMBER'):
+        return 400, {'message': '无效角色，创建人不可转让。'}
+    if data.status and data.status not in ('PENDING', 'APPROVED', 'REJECTED'):
+        return 400, {'message': '无效成员状态。'}
+    if target_membership.role == 'CREATOR':
+        return 400, {'message': '不能修改店铺创建人。'}
+    if my_membership.role != 'CREATOR' and (target_membership.role == 'ADMIN' or data.role == 'ADMIN'):
+        return 400, {'message': '只有创建人可以变更管理员。'}
     # 防止管理员越权修改创建人
     if target_membership.role == 'CREATOR' and my_membership.role != 'CREATOR':
         return 400, {"message": "无法修改店铺创建人的角色或状态"}
@@ -970,3 +981,7 @@ def list_inbound_logs(request):
     if not request.active_shop:
         raise HttpError(400, "X-Active-Shop-ID is required")
     return list(InboundActionLog.objects.filter(shop=request.active_shop).select_related('user').order_by('-created_at'))
+
+
+from .sync_v2 import router as sync_v2_router
+api.add_router("", sync_v2_router, auth=auth_bearer)

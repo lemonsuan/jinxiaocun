@@ -176,3 +176,9 @@ Test delayed success, capture/save failure, duplicate/mismatched callbacks, canc
 Wrong: `onTap -> success flash -> await takePicture -> decode twice -> PNG overwrite -> sleep -> reopen scanner`.
 
 Correct: `onTap -> capturing -> saved-photo callback -> trustworthy completion feedback -> durable receipt -> next scan`, with one camera session and deferred, guarded image processing.
+
+## Online Shop Sync Verification
+
+See [Shared Shop Sync](../backend/shop-incremental-sync.md) for the shared executable contract. Check Flutter `ShopSyncService` against real SQLite persistence and an injected HTTP client; test lost responses, scope changes, pause/drain before local resolution, and individual bad images not starving valid records. Default tests must not contact a real backend. Use opt-in `shop_sync_live_test.dart` only against a disposable server with randomly created test accounts/shops. Visible pending/conflict/media failures must never read as all-complete.
+
+Register home timers/queue listeners only after initialization awaits confirm `mounted`; dispose the exact registered queue rather than creating one during disposal. Keep online deletion labels explicitly device-local. Web pictures must use authenticated blob requests and revoke them on scope change/unmount; never put tokens into URLs.

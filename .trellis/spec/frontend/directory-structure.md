@@ -61,3 +61,7 @@ Current reference files:
 * `mobile_app/lib/src/ui/app_home.dart`
 * `mobile_app/lib/src/data/local_inventory_database.dart`
 * `mobile_app/lib/src/ocr/pp_structure_post_processor.dart`
+
+## Online Read-only Viewer
+
+`frontend/` is the Vue/TypeScript browser console, separate from Flutter. Shared inventory list/detail rendering lives in `src/components/InventoryViewer.vue`; authenticated blob image ownership lives in `ProtectedImage.vue`. `src/api/view.ts` owns wire types. `store/auth.ts` and `utils/session-scope.ts` capture a generation so old responses cannot revive after A→B→A account/shop switches. Inventory views are read-only; shop membership approval remains writable. Run `npm --prefix frontend test` and `npm --prefix frontend run build`.

@@ -118,7 +118,7 @@ const handleSubmit = async () => {
     const url = isRegister.value ? '/api/auth/register' : '/api/auth/login'
     
     try {
-      const res: any = await axios.post(url, {
+      const res = await axios.post<never, { token: string; username: string }>(url, {
         username: form.username,
         password: form.password,
         email: form.email

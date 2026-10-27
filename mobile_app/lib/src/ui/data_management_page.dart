@@ -25,6 +25,7 @@ class DataManagementPage extends StatefulWidget {
 
 class _DataManagementPageState extends State<DataManagementPage> {
   bool _isLoading = false;
+  bool _online = false;
   List<FileSystemEntity> _backupFiles = [];
 
   // 清理数据复选框状态
@@ -40,6 +41,9 @@ class _DataManagementPageState extends State<DataManagementPage> {
   void initState() {
     super.initState();
     _loadBackupList();
+    widget.database.loadAuthMode().then((mode) {
+      if (mounted) setState(() => _online = mode == 'online');
+    });
   }
 
   Future<void> _startCompression({bool force = false}) async {
@@ -150,7 +154,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
                       ),
                     ),
                     IconButton(
-                      icon: const Icon(Icons.close, size: 20, color: Color(0xFF94A3B8)),
+                      icon: const Icon(Icons.close,
+                          size: 20, color: Color(0xFF94A3B8)),
                       onPressed: () => Navigator.pop(sheetContext),
                     ),
                   ],
@@ -158,7 +163,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
                 const SizedBox(height: 4),
                 const Text(
                   '选择适合当前场景的导出模式，导出的文件均可在本页随时一键导入覆盖恢复：',
-                  style: TextStyle(fontSize: 11, color: Color(0xFF64748B), height: 1.4),
+                  style: TextStyle(
+                      fontSize: 11, color: Color(0xFF64748B), height: 1.4),
                 ),
                 const SizedBox(height: 14),
 
@@ -168,7 +174,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
                   iconColor: const Color(0xFF0F766E),
                   iconBg: const Color(0xFFCCFBF1),
                   title: '⚡ 纯业务数据备份 (推荐 · 极速稳妥)',
-                  subtitle: '备份所有商品、库存、入库单、出库单及流水台账。\n不打包几百兆大体积照片，体积仅几百KB，0.1秒秒速完成，绝不卡死！本机还原自动关联已有照片。',
+                  subtitle:
+                      '备份所有商品、库存、入库单、出库单及流水台账。\n不打包几百兆大体积照片，体积仅几百KB，0.1秒秒速完成，绝不卡死！本机还原自动关联已有照片。',
                   isRecommended: true,
                   onTap: () {
                     Navigator.pop(sheetContext);
@@ -183,7 +190,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
                   iconColor: const Color(0xFF2563EB),
                   iconBg: const Color(0xFFDBEAFE),
                   title: '📦 全量归档备份包 (含全部单据照片 · ZIP压缩)',
-                  subtitle: '将全部数据库记录与单据照片以流式方式打包为标准 ZIP 包。\n逐张安全写入，带实时进度条，不爆内存，最适合换新手机迁移。',
+                  subtitle:
+                      '将全部数据库记录与单据照片以流式方式打包为标准 ZIP 包。\n逐张安全写入，带实时进度条，不爆内存，最适合换新手机迁移。',
                   isRecommended: false,
                   onTap: () {
                     Navigator.pop(sheetContext);
@@ -306,7 +314,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
   Future<void> _exportLightDataBackup() async {
     setState(() => _isLoading = true);
     try {
-      final bytes = await widget.database.exportBackupBytes(includeImages: false);
+      final bytes =
+          await widget.database.exportBackupBytes(includeImages: false);
       final dir = await _getBackupDir();
 
       final timestamp = DateTime.now()
@@ -477,7 +486,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
   Future<void> _exportLegacyBackup() async {
     setState(() => _isLoading = true);
     try {
-      final bytes = await widget.database.exportBackupBytes(includeImages: true);
+      final bytes =
+          await widget.database.exportBackupBytes(includeImages: true);
       final dir = await _getBackupDir();
 
       final timestamp = DateTime.now()
@@ -582,6 +592,11 @@ class _DataManagementPageState extends State<DataManagementPage> {
     Uint8List? bytes,
     required String fileName,
   }) {
+    if (_online) {
+      ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('请切换到独立离线店铺还原备份，避免覆盖共享店铺或待同步数据。')));
+      return;
+    }
     final colorScheme = Theme.of(context).colorScheme;
     final messenger = ScaffoldMessenger.of(context);
 
@@ -690,10 +705,13 @@ class _DataManagementPageState extends State<DataManagementPage> {
 
     final List<String> targetDescriptions = [];
     if (_clearTextSelected) {
-      targetDescriptions.add('已结算的文本数据 (包含入库单、商品明细、库存和流水记录)');
+      targetDescriptions.add(_online
+          ? '本机已结算单据显示（保留云端及其他手机数据和店铺库存）'
+          : '已结算的文本数据 (包含入库单、商品明细、库存和流水记录)');
     }
     if (_clearImagesSelected) {
-      targetDescriptions.add('已结算单据关联的物理图片文件');
+      targetDescriptions
+          .add(_online ? '本机已结算单据图片显示（原图片保留用于同步）' : '已结算单据关联的物理图片文件');
     }
 
     showDialog(
@@ -719,13 +737,14 @@ class _DataManagementPageState extends State<DataManagementPage> {
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  const Text(
-                    '⚠️ 警告：此操作不可逆！',
-                    style: TextStyle(
+                  Text(
+                    _online ? '仅清理本机显示，可在店铺同步中恢复' : '⚠️ 警告：此操作不可逆！',
+                    style: const TextStyle(
                         fontWeight: FontWeight.bold, color: Colors.redAccent),
                   ),
                   const SizedBox(height: 12),
-                  const Text('您将要永久清空以下勾选的数据：', style: TextStyle(fontSize: 13)),
+                  Text(_online ? '将在本机隐藏以下内容：' : '您将要永久清空以下勾选的数据：',
+                      style: const TextStyle(fontSize: 13)),
                   const SizedBox(height: 8),
                   ...targetDescriptions.map((desc) => Padding(
                         padding: const EdgeInsets.only(bottom: 6, left: 4),
@@ -1128,8 +1147,9 @@ class _DataManagementPageState extends State<DataManagementPage> {
           const SizedBox(height: 12),
           CheckboxListTile(
             title: const Text('已结算文本数据', style: TextStyle(fontSize: 12)),
-            subtitle: const Text('物理清除已勾选结算的入库明细及流水，释放数据库',
-                style: TextStyle(fontSize: 10)),
+            subtitle: Text(
+                _online ? '仅隐藏本机单据，其他手机、云端和库存保留' : '物理清除已勾选结算的入库明细及流水，释放数据库',
+                style: const TextStyle(fontSize: 10)),
             value: _clearTextSelected,
             onChanged: _isLoading
                 ? null
@@ -1143,9 +1163,11 @@ class _DataManagementPageState extends State<DataManagementPage> {
             activeColor: Colors.black,
           ),
           CheckboxListTile(
-            title: const Text('已结算物理图片', style: TextStyle(fontSize: 12)),
-            subtitle: const Text('物理删除已结算单据对应的拍照文件，释放手机存储',
-                style: TextStyle(fontSize: 10)),
+            title: Text(_online ? '已结算图片显示' : '已结算物理图片',
+                style: const TextStyle(fontSize: 12)),
+            subtitle: Text(
+                _online ? '仅隐藏本机图片显示，保留图片供后续同步' : '物理删除已结算单据对应的拍照文件，释放手机存储',
+                style: const TextStyle(fontSize: 10)),
             value: _clearImagesSelected,
             onChanged: _isLoading
                 ? null

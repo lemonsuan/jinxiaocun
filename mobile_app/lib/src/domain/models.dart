@@ -1,6 +1,6 @@
 enum OcrStatus { pending, processing, needsReview, confirmed, failed }
 
-enum LedgerReason { inbound, outbound }
+enum LedgerReason { inbound, outbound, adjustment }
 
 class InboundDraftItem {
   const InboundDraftItem({

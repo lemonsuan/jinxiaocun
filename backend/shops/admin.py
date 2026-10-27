@@ -25,16 +25,8 @@ class ShopMembershipInline(TabularInline):
         return request.user.is_staff
 
     def _is_shop_manager(self, request, obj):
-        if request.user.is_superuser:
-            return True
-        if obj is None:
-            return request.user.is_staff
-        return ShopMembership.objects.filter(
-            user=request.user,
-            shop=obj,
-            role__in=['CREATOR', 'ADMIN'],
-            status='APPROVED'
-        ).exists()
+        # Non-superuser member management uses the scoped API with creator protection.
+        return request.user.is_superuser
 
     def has_add_permission(self, request, obj=None):
         return self._is_shop_manager(request, obj)
@@ -69,13 +61,13 @@ class ProductInline(TabularInline):
         ).exists()
 
     def has_add_permission(self, request, obj=None):
-        return self._is_shop_manager(request, obj)
+        return False
 
     def has_change_permission(self, request, obj=None):
-        return self._is_shop_manager(request, obj)
+        return False
 
     def has_delete_permission(self, request, obj=None):
-        return self._is_shop_manager(request, obj)
+        return False
 
 class InboundReceiptInline(TabularInline):
     model = InboundReceipt
@@ -102,13 +94,13 @@ class InboundReceiptInline(TabularInline):
         ).exists()
 
     def has_add_permission(self, request, obj=None):
-        return self._is_shop_manager(request, obj)
+        return False
 
     def has_change_permission(self, request, obj=None):
-        return self._is_shop_manager(request, obj)
+        return False
 
     def has_delete_permission(self, request, obj=None):
-        return self._is_shop_manager(request, obj)
+        return False
 
 class OutboundOrderInline(TabularInline):
     model = OutboundOrder
@@ -135,13 +127,13 @@ class OutboundOrderInline(TabularInline):
         ).exists()
 
     def has_add_permission(self, request, obj=None):
-        return self._is_shop_manager(request, obj)
+        return False
 
     def has_change_permission(self, request, obj=None):
-        return self._is_shop_manager(request, obj)
+        return False
 
     def has_delete_permission(self, request, obj=None):
-        return self._is_shop_manager(request, obj)
+        return False
 
 class WarehouseStockInline(TabularInline):
     model = WarehouseStock
@@ -230,37 +222,17 @@ class ShopMembershipAdmin(ModelAdmin):
         ).values_list('shop_id', flat=True)
         return qs.filter(shop_id__in=managed_shop_ids)
 
+    def has_add_permission(self, request):
+        return request.user.is_superuser
+
     def has_change_permission(self, request, obj=None):
-        if not request.user.is_superuser and obj is not None:
-            try:
-                my_membership = ShopMembership.objects.get(
-                    user=request.user,
-                    shop=obj.shop,
-                    status='APPROVED'
-                )
-                if my_membership.role == 'MEMBER':
-                    return False
-                if my_membership.role == 'ADMIN' and obj.role in ['CREATOR', 'ADMIN'] and obj.user != request.user:
-                    return False
-            except ShopMembership.DoesNotExist:
-                return False
-        return super().has_change_permission(request, obj)
+        return request.user.is_superuser
 
     def has_delete_permission(self, request, obj=None):
-        if not request.user.is_superuser and obj is not None:
-            try:
-                my_membership = ShopMembership.objects.get(
-                    user=request.user,
-                    shop=obj.shop,
-                    status='APPROVED'
-                )
-                if my_membership.role == 'MEMBER':
-                    return False
-                if my_membership.role == 'ADMIN' and obj.role in ['CREATOR', 'ADMIN']:
-                    return False
-            except ShopMembership.DoesNotExist:
-                return False
-        return super().has_delete_permission(request, obj)
+        return request.user.is_superuser
+
+    def get_actions(self, request):
+        return super().get_actions(request) if request.user.is_superuser else {}
 
     @action(description="同意所选加入申请")
     def approve_applications(self, request, queryset):

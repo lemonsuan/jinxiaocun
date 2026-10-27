@@ -39,6 +39,43 @@ class _LoginPageState extends State<LoginPage> {
   List<_ShopItem> _shops = [];
   bool _showShopSelector = false; // 是否正处于店铺选择子界面
   bool _isCreatingShop = false;
+  bool _isRefreshingShops = false;
+  bool _isJoiningShop = false;
+  bool _isEnteringShop = false;
+  String? _authenticatedServer;
+  int _requestEpoch = 0;
+  final _joinShopIdController = TextEditingController();
+  bool get _shopBusy =>
+      _isCreatingShop ||
+      _isRefreshingShops ||
+      _isJoiningShop ||
+      _isEnteringShop;
+
+  String _normalizedServer() =>
+      _serverUrlController.text.trim().replaceFirst(RegExp(r'/+$'), '');
+
+  bool _validServer(String value) {
+    final uri = Uri.tryParse(value);
+    return uri != null &&
+        ['http', 'https'].contains(uri.scheme) &&
+        uri.host.isNotEmpty &&
+        uri.userInfo.isEmpty &&
+        !uri.hasQuery &&
+        !uri.hasFragment &&
+        !uri.path.split('/').contains('api');
+  }
+
+  String _responseMessage(dynamic body, String fallback) {
+    if (body is Map) {
+      final message = body['detail'] ?? body['message'];
+      if (message is String && message.isNotEmpty) return message;
+    }
+    return fallback;
+  }
+
+  void _showError(String message) {
+    if (mounted) setState(() => _errorMessage = message);
+  }
 
   @override
   void initState() {
@@ -55,6 +92,8 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   void dispose() {
+    _requestEpoch++;
+    _joinShopIdController.dispose();
     _serverUrlController.dispose();
     _usernameController.dispose();
     _passwordController.dispose();
@@ -67,190 +106,214 @@ class _LoginPageState extends State<LoginPage> {
   // ─── HTTP 业务请求方法 ──────────────────────────────────────────
 
   Future<void> _submitAuth() async {
-    final baseUrl = _serverUrlController.text.trim();
+    if (_isLoading) return;
+    final baseUrl = _normalizedServer();
     final username = _usernameController.text.trim();
-    final password = _passwordController.text.trim();
-
-    if (baseUrl.isEmpty || username.isEmpty || password.isEmpty) {
-      setState(() {
-        _errorMessage = '请填写完整的连接参数及账号密码';
-      });
+    final password = _passwordController.text;
+    if (!_validServer(baseUrl)) {
+      _showError(
+          '请输入有效的 http:// 或 https:// 服务器地址，不含 /api、查询参数或账号信息。真机请填写服务器局域网 IP。');
       return;
     }
-
-    // 注册专属前端强校验
+    if (username.isEmpty || password.isEmpty) {
+      _showError('请填写账号和密码');
+      return;
+    }
     if (_isSignUp) {
-      final confirmPassword = _confirmPasswordController.text.trim();
-      final phone = _phoneController.text.trim();
-
-      if (confirmPassword.isEmpty) {
-        setState(() {
-          _errorMessage = '请再次输入密码以确认';
-        });
+      if (password != _confirmPasswordController.text) {
+        _showError('两次输入的密码不一致，请重新检查');
         return;
       }
-      if (password != confirmPassword) {
-        setState(() {
-          _errorMessage = '两次输入的密码不一致，请重新检查';
-        });
-        return;
-      }
-      if (phone.isEmpty) {
-        setState(() {
-          _errorMessage = '请输入您的手机号';
-        });
+      if (_phoneController.text.trim().isEmpty) {
+        _showError('请输入您的手机号');
         return;
       }
     }
-
+    final epoch = ++_requestEpoch;
     setState(() {
       _isLoading = true;
       _errorMessage = null;
     });
-
     try {
       final endpoint = _isSignUp ? '/api/auth/register' : '/api/auth/login';
-
-      final Map<String, dynamic> requestBody = {
-        'username': username,
-        'password': password,
-      };
-      if (_isSignUp) {
-        requestBody['phone'] = _phoneController.text.trim();
-      }
-
       final response = await http
           .post(
             Uri.parse('$baseUrl$endpoint'),
             headers: {'Content-Type': 'application/json'},
-            body: jsonEncode(requestBody),
+            body: jsonEncode({
+              'username': username,
+              'password': password,
+              if (_isSignUp) 'phone': _phoneController.text.trim(),
+            }),
           )
           .timeout(const Duration(seconds: 12));
-
+      if (!mounted || epoch != _requestEpoch) return;
       final body = jsonDecode(utf8.decode(response.bodyBytes));
-
-      if (response.statusCode == 200) {
-        final token = body['token'] as String;
-        final resUsername = body['username'] as String;
-        _tempToken = token;
-        _tempUsername = resUsername;
-
-        // 保存服务器基地址
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        _tempToken = body['token'] as String;
+        _tempUsername = body['username'] as String;
+        _authenticatedServer = baseUrl;
         await _database.saveSyncServerUrl(baseUrl);
-
-        // 鉴权成功后，立刻拉取该用户的店铺列表
-        await _fetchShops(baseUrl, token);
+        if (!mounted || epoch != _requestEpoch) return;
+        setState(() {
+          _shops = [];
+          _showShopSelector = true;
+        });
+        await _fetchShops();
       } else {
-        setState(() {
-          _errorMessage = body['message'] ?? '鉴权失败，请检查账号密码。';
-        });
+        _showError(_responseMessage(body, '鉴权失败，请检查账号密码。'));
       }
-    } catch (e) {
-      setState(() {
-        _errorMessage = '连接超时或服务器无法访问，请确保基地址配置正确。';
-      });
+    } catch (_) {
+      if (epoch == _requestEpoch) {
+        _showError('连接超时或服务器无法访问。真机请使用服务器局域网 IP，并确认手机与服务器网络互通。');
+      }
     } finally {
-      if (mounted) {
-        setState(() {
-          _isLoading = false;
-        });
-      }
+      if (mounted && epoch == _requestEpoch) setState(() => _isLoading = false);
     }
   }
 
-  Future<void> _fetchShops(String baseUrl, String token) async {
+  Future<bool> _fetchShops() async {
+    final token = _tempToken;
+    final baseUrl = _authenticatedServer;
+    final epoch = _requestEpoch;
+    if (token == null || baseUrl == null) return false;
+    setState(() {
+      _isRefreshingShops = true;
+      _errorMessage = null;
+    });
     try {
       final response = await http.get(
         Uri.parse('$baseUrl/api/shops/my-shops'),
-        headers: {
-          'Authorization': 'Bearer $token',
-          'Content-Type': 'application/json',
-        },
+        headers: {'Authorization': 'Bearer $token'},
       ).timeout(const Duration(seconds: 10));
-
-      if (response.statusCode == 200) {
-        final List<dynamic> list = jsonDecode(utf8.decode(response.bodyBytes));
-        final items = list.map((e) => _ShopItem.fromJson(e)).toList();
-
-        setState(() {
-          _shops = items;
-          _showShopSelector = true; // 开启店铺选择视图
-        });
-      } else {
-        setState(() {
-          _errorMessage = '拉取关联店铺列表失败。';
-        });
+      if (!mounted || epoch != _requestEpoch) return false;
+      final body = jsonDecode(utf8.decode(response.bodyBytes));
+      if (response.statusCode == 200 && body is List) {
+        final items = body
+            .map((item) =>
+                _ShopItem.fromJson(Map<String, dynamic>.from(item as Map)))
+            .toList();
+        setState(() => _shops = items);
+        return true;
       }
-    } catch (e) {
-      setState(() {
-        _errorMessage = '店铺数据通信失败，请检查网络。';
-      });
+      _showError(_responseMessage(body, '获取店铺失败，请刷新重试或重新登录。'));
+    } catch (_) {
+      if (epoch == _requestEpoch) _showError('店铺数据通信失败，请检查网络后刷新。');
+    } finally {
+      if (mounted && epoch == _requestEpoch) {
+        setState(() => _isRefreshingShops = false);
+      }
+    }
+    return false;
+  }
+
+  Future<void> _joinShop() async {
+    if (_shopBusy) return;
+    final id = _joinShopIdController.text.trim();
+    if (!RegExp(
+            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')
+        .hasMatch(id)) {
+      _showError('请输入管理员提供的完整店铺 ID（UUID）');
+      return;
+    }
+    final epoch = _requestEpoch;
+    setState(() {
+      _isJoiningShop = true;
+      _errorMessage = null;
+    });
+    try {
+      final response = await http
+          .post(
+            Uri.parse('$_authenticatedServer/api/shops/join'),
+            headers: {
+              'Authorization': 'Bearer $_tempToken',
+              'Content-Type': 'application/json'
+            },
+            body: jsonEncode({'shop_id': id}),
+          )
+          .timeout(const Duration(seconds: 10));
+      if (!mounted || epoch != _requestEpoch) return;
+      final body = jsonDecode(utf8.decode(response.bodyBytes));
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        _joinShopIdController.clear();
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('申请已提交，请联系店铺管理员审批，然后刷新审批状态。')));
+        await _fetchShops();
+      } else {
+        _showError(_responseMessage(body, '申请加入失败，请检查店铺 ID。'));
+      }
+    } catch (_) {
+      if (epoch == _requestEpoch) _showError('网络异常，申请可能已提交，请刷新店铺列表确认。');
+    } finally {
+      if (mounted && epoch == _requestEpoch) {
+        setState(() => _isJoiningShop = false);
+      }
     }
   }
 
   Future<void> _createAndEnterShop() async {
+    if (_shopBusy) return;
     final shopName = _newShopNameController.text.trim();
-    if (shopName.isEmpty) return;
-
+    if (shopName.isEmpty) {
+      _showError('请输入店铺名称');
+      return;
+    }
+    final epoch = _requestEpoch;
     setState(() {
       _isCreatingShop = true;
+      _errorMessage = null;
     });
-
     try {
-      final baseUrl = _serverUrlController.text.trim();
-      final token = _tempToken!;
-
       final response = await http
           .post(
-            Uri.parse('$baseUrl/api/shops/create'),
+            Uri.parse('$_authenticatedServer/api/shops/create'),
             headers: {
-              'Authorization': 'Bearer $token',
-              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $_tempToken',
+              'Content-Type': 'application/json'
             },
             body: jsonEncode({'name': shopName}),
           )
           .timeout(const Duration(seconds: 10));
-
+      if (!mounted || epoch != _requestEpoch) return;
       final body = jsonDecode(utf8.decode(response.bodyBytes));
-
-      if (response.statusCode == 200) {
-        final newShopId = body['id'] as String;
-        // 创建店铺成功，自动激活并登入
-        await _enterShop(newShopId, shopName);
+      if (response.statusCode == 200 || response.statusCode == 201) {
+        await _enterShop(body['id'] as String, shopName);
       } else {
-        if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text(body['message'] ?? '创建店铺失败')),
-          );
-        }
+        _showError(_responseMessage(body, '创建店铺失败'));
       }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('网络连接异常，无法创建店铺')),
-        );
-      }
+    } catch (_) {
+      if (epoch == _requestEpoch) _showError('网络异常，请刷新店铺列表确认是否已创建。');
     } finally {
-      if (mounted) {
-        setState(() {
-          _isCreatingShop = false;
-        });
+      if (mounted && epoch == _requestEpoch) {
+        setState(() => _isCreatingShop = false);
       }
     }
   }
 
   Future<void> _enterShop(String shopId, String shopName) async {
-    // 写入本地数据库，代表在线同步版登录并选择店铺成功！
-    await _database.saveAuthMode('online');
-    await _database.saveSyncServerUrl(_serverUrlController.text.trim());
-    await _database.saveAuthToken(_tempToken!);
-    await _database.saveActiveShopId(shopId);
-    await _database.saveActiveShopName(shopName);
-
-    if (mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const AppHome()),
-      );
+    if (_isEnteringShop) return;
+    setState(() => _isEnteringShop = true);
+    try {
+      // Recheck approval immediately before activating the persistent workspace.
+      if (!await _fetchShops() || !mounted) return;
+      if (!_shops
+          .any((shop) => shop.shopId == shopId && shop.status == 'APPROVED')) {
+        _showError('此店铺尚未审批通过或权限已变更，请联系管理员。');
+        return;
+      }
+      await _database.saveAuthMode('online');
+      await _database.saveSyncServerUrl(_authenticatedServer!);
+      await _database.saveAuthToken(_tempToken!);
+      await _database.saveActiveShopId(shopId);
+      await _database.saveActiveShopName(shopName);
+      if (mounted) {
+        Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (context) => const AppHome()));
+      }
+    } catch (_) {
+      _showError('无法打开店铺，请重试。已有本机数据已保留。');
+    } finally {
+      if (mounted) setState(() => _isEnteringShop = false);
     }
   }
 
@@ -351,7 +414,7 @@ class _LoginPageState extends State<LoginPage> {
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               // 服务器地址
-              const Text('服务器 API 基地址',
+              const Text('服务器地址（不含 /api）',
                   style: TextStyle(
                       fontSize: 11,
                       fontFamily: 'monospace',
@@ -368,6 +431,10 @@ class _LoginPageState extends State<LoginPage> {
                 ),
                 style: const TextStyle(fontSize: 13, fontFamily: 'monospace'),
               ),
+              const SizedBox(height: 6),
+              const Text(
+                  '真机请填写服务器局域网 IP（如 http://192.168.1.10:8000）；10.0.2.2 仅适用于 Android 模拟器。',
+                  style: TextStyle(fontSize: 11, color: _notionGreyText)),
               const SizedBox(height: 16),
 
               // 用户名
@@ -493,12 +560,14 @@ class _LoginPageState extends State<LoginPage> {
           mainAxisAlignment: MainAxisAlignment.spaceBetween,
           children: [
             TextButton(
-              onPressed: () {
-                setState(() {
-                  _isSignUp = !_isSignUp;
-                  _errorMessage = null;
-                });
-              },
+              onPressed: _isLoading
+                  ? null
+                  : () {
+                      setState(() {
+                        _isSignUp = !_isSignUp;
+                        _errorMessage = null;
+                      });
+                    },
               child: Text(
                 _isSignUp ? '已有账号？立即登录' : '没有账号？立即注册',
                 style: const TextStyle(
@@ -523,7 +592,7 @@ class _LoginPageState extends State<LoginPage> {
               shape:
                   const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
             ),
-            onPressed: _enterOfflineMode,
+            onPressed: _isLoading ? null : _enterOfflineMode,
             icon: const Icon(Icons.storefront_outlined, size: 16),
             label: const Text(
               '放弃登录，返回本地默认店铺',
@@ -563,12 +632,18 @@ class _LoginPageState extends State<LoginPage> {
               ),
             ),
             TextButton(
-              onPressed: () {
-                setState(() {
-                  _showShopSelector = false;
-                  _tempToken = null;
-                });
-              },
+              onPressed: _shopBusy
+                  ? null
+                  : () {
+                      setState(() {
+                        _requestEpoch++;
+                        _showShopSelector = false;
+                        _tempToken = null;
+                        _authenticatedServer = null;
+                        _shops = [];
+                        _errorMessage = null;
+                      });
+                    },
               child: const Text('返回登录',
                   style: TextStyle(color: _notionGreyText, fontSize: 12)),
             ),
@@ -579,6 +654,18 @@ class _LoginPageState extends State<LoginPage> {
           '欢迎回来，$_tempUsername。请选择进入的店铺多租户工作区：',
           style: const TextStyle(fontSize: 12, color: _notionGreyText),
         ),
+        const SizedBox(height: 12),
+        OutlinedButton.icon(
+          onPressed: _shopBusy ? null : _fetchShops,
+          icon: const Icon(Icons.refresh, size: 16),
+          label: Text(_isRefreshingShops ? '正在刷新…' : '刷新店铺与审批状态'),
+        ),
+        if (_errorMessage != null)
+          Padding(
+            padding: const EdgeInsets.only(top: 12),
+            child: Text(_errorMessage!,
+                style: const TextStyle(color: Colors.redAccent, fontSize: 12)),
+          ),
         const SizedBox(height: 20),
 
         // 已经批准的店铺列表
@@ -606,7 +693,9 @@ class _LoginPageState extends State<LoginPage> {
                         const TextStyle(fontSize: 11, color: _notionGreyText)),
                 trailing: const Icon(Icons.arrow_forward_ios,
                     size: 12, color: _notionText),
-                onTap: () => _enterShop(shop.shopId, shop.shopName),
+                onTap: _shopBusy
+                    ? null
+                    : () => _enterShop(shop.shopId, shop.shopName),
               ),
             ),
             const SizedBox(height: 8),
@@ -654,7 +743,7 @@ class _LoginPageState extends State<LoginPage> {
             ),
             child: const Center(
               child: Text(
-                '您当前还没有绑定任何商铺\n请在下方输入商铺名以创建全新店铺工作区',
+                '您当前还没有可进入的店铺\n可申请加入现有店铺，或创建全新店铺工作区',
                 textAlign: TextAlign.center,
                 style: TextStyle(
                     fontSize: 12, color: _notionGreyText, height: 1.5),
@@ -664,6 +753,32 @@ class _LoginPageState extends State<LoginPage> {
         ],
         const SizedBox(height: 20),
 
+        Container(
+          padding: const EdgeInsets.all(16),
+          decoration: BoxDecoration(
+              color: Colors.white, border: Border.all(color: _notionBorder)),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+            const Text('加入已有店铺',
+                style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            TextField(
+                controller: _joinShopIdController,
+                decoration: const InputDecoration(
+                    hintText: '输入管理员提供的店铺 ID',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.zero),
+                    isDense: true),
+                style: const TextStyle(fontSize: 12)),
+            const SizedBox(height: 8),
+            const Text('审批通过后才能进入。待审批的店铺不会读取或上传本机数据。',
+                style: TextStyle(fontSize: 11, color: _notionGreyText)),
+            const SizedBox(height: 8),
+            OutlinedButton(
+                onPressed: _shopBusy ? null : _joinShop,
+                child: Text(_isJoiningShop ? '正在提交…' : '提交加入申请')),
+          ]),
+        ),
+        const SizedBox(height: 16),
         // 创建全新店铺容器
         Container(
           decoration: BoxDecoration(
@@ -704,7 +819,7 @@ class _LoginPageState extends State<LoginPage> {
                         borderRadius: BorderRadius.zero),
                     elevation: 0,
                   ),
-                  onPressed: _isCreatingShop ? null : _createAndEnterShop,
+                  onPressed: _shopBusy ? null : _createAndEnterShop,
                   child: _isCreatingShop
                       ? const SizedBox(
                           width: 16,

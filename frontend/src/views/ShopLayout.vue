@@ -8,7 +8,7 @@
         <span class="text-xl">🏪</span>
         <div class="overflow-hidden">
           <h2 class="font-bold text-slate-800 text-sm truncate">{{ authStore.activeShopName }}</h2>
-          <p class="text-[10px] text-slate-400 truncate">当前管理工坊</p>
+          <p class="text-[10px] text-slate-400 truncate">店铺在线查看</p>
         </div>
       </div>
 
@@ -47,7 +47,7 @@
       <header class="h-16 bg-white border-b border-slate-200 px-8 flex justify-between items-center shadow-[0_1px_3px_rgba(0,0,0,0.01)] shrink-0">
         <!-- 路由标题面包屑 -->
         <div>
-          <span class="text-xs text-slate-400">店铺管理</span>
+          <span class="text-xs text-slate-400">在线查看</span>
           <span class="text-xs text-slate-300 mx-2">/</span>
           <span class="text-xs text-slate-700 font-medium">{{ currentActiveTitle }}</span>
         </div>
@@ -62,7 +62,7 @@
 
       <!-- 主要子页面视图区 -->
       <main class="flex-1 overflow-y-auto p-8">
-        <router-view />
+        <router-view :key="authStore.activeShopId + $route.path" />
       </main>
     </div>
   </div>
@@ -85,21 +85,22 @@ const router = useRouter()
 const route = useRoute()
 const authStore = useAuthStore()
 
-const menuItems = [
+const menuItems = computed(() => [
   { path: '/shop/stock', title: '即时库存看板', icon: Box },
-  { path: '/shop/products', title: '商品清单维护', icon: Goods },
-  { path: '/shop/inbound', title: '商品入库记账', icon: Download },
-  { path: '/shop/outbound', title: '商品出库记账', icon: Upload },
+  { path: '/shop/products', title: '商品清单', icon: Goods },
+  { path: '/shop/inbound', title: '入库记录', icon: Download },
+  { path: '/shop/outbound', title: '出库记录', icon: Upload },
   { path: '/shop/ledger', title: '库存异动日志', icon: Memo },
+  { path: '/shop/logs', title: '操作记录', icon: Memo },
   { path: '/shop/members', title: '店员成员审批', icon: UserFilled },
-]
+].filter(item => item.path !== '/shop/members' || ['CREATOR', 'ADMIN'].includes(authStore.activeShopRole)))
 
 const isRouteActive = (path: string) => {
   return route.path.startsWith(path)
 }
 
 const currentActiveTitle = computed(() => {
-  const item = menuItems.find(i => route.path.startsWith(i.path))
+  const item = menuItems.value.find(i => route.path.startsWith(i.path))
   return item ? item.title : '概览'
 })
 

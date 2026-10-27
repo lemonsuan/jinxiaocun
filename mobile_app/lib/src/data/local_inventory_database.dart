@@ -3,6 +3,7 @@ import 'dart:io';
 import 'dart:typed_data';
 
 import 'package:path/path.dart' as path;
+import 'package:crypto/crypto.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:archive/archive_io.dart';
 import 'package:sqflite/sqflite.dart';
@@ -14,9 +15,25 @@ import '../domain/express_capture.dart';
 import '../domain/ocr_settings.dart';
 import '../domain/tracking_number_rules.dart';
 import 'local_database_schema.dart';
+import 'sync_database_schema.dart';
+
+part 'local_inventory_sync.dart';
+part 'local_inventory_scope.dart';
 
 class LocalInventoryDatabase {
-  LocalInventoryDatabase({Database? database}) : _database = database;
+  LocalInventoryDatabase(
+      {Database? database, Directory? directory, DatabaseFactory? factory})
+      : _database = database,
+        _directory = directory,
+        _factory = factory;
+  final Directory? _directory;
+  final DatabaseFactory? _factory;
+  Database? _configuration;
+  String? _openedScope;
+  bool _openedOnline = false;
+  bool _syncReady = false;
+  Object get processingScope => _database ?? this;
+  Database get _settings => _configuration ?? _db;
   static const String _backupFormat = 'inventory_mobile_app_backup';
   static const int _backupVersion = 1;
   static const List<String> _backupTables = [
@@ -62,37 +79,19 @@ class LocalInventoryDatabase {
     if (_database != null) {
       return;
     }
-    final directory = await getApplicationDocumentsDirectory();
-    final dbPath = path.join(directory.path, 'inventory_app.db');
-    _database = await openDatabase(
-      dbPath,
-      version: LocalDatabaseSchema.version,
-      onCreate: (db, version) async {
-        for (final statement in LocalDatabaseSchema.createStatements) {
-          await db.execute(statement);
-        }
-      },
-      onUpgrade: (db, oldVersion, newVersion) async {
-        for (var version = oldVersion + 1;
-            version <= newVersion;
-            version += 1) {
-          for (final statement
-              in LocalDatabaseSchema.migrationStatements[version] ??
-                  const <String>[]) {
-            await db.execute(statement);
-          }
-        }
-      },
-    );
+    await _openScoped();
   }
 
   Future<void> close() async {
     await _database?.close();
+    await _configuration?.close();
+    _configuration = null;
+    _syncReady = false;
     _database = null;
   }
 
   Future<double> loadOcrRowMergeTolerance() async {
-    final rows = await _db.query(
+    final rows = await _settings.query(
       'app_settings',
       columns: ['value'],
       where: 'key = ?',
@@ -109,7 +108,7 @@ class LocalInventoryDatabase {
 
   Future<void> saveOcrRowMergeTolerance(double value) async {
     final normalized = OcrSettings.normalizeRowMergeTolerance(value);
-    await _db.insert(
+    await _settings.insert(
       'app_settings',
       {
         'key': _ocrRowMergeToleranceKey,
@@ -121,7 +120,7 @@ class LocalInventoryDatabase {
   }
 
   Future<String> loadAuthMode() async {
-    final rows = await _db.query(
+    final rows = await _settings.query(
       'app_settings',
       columns: ['value'],
       where: 'key = ?',
@@ -135,7 +134,7 @@ class LocalInventoryDatabase {
   }
 
   Future<void> saveAuthMode(String value) async {
-    await _db.insert(
+    await _settings.insert(
       'app_settings',
       {
         'key': _authModeKey,
@@ -147,7 +146,7 @@ class LocalInventoryDatabase {
   }
 
   Future<String> loadSyncServerUrl() async {
-    final rows = await _db.query(
+    final rows = await _settings.query(
       'app_settings',
       columns: ['value'],
       where: 'key = ?',
@@ -161,7 +160,7 @@ class LocalInventoryDatabase {
   }
 
   Future<void> saveSyncServerUrl(String value) async {
-    await _db.insert(
+    await _settings.insert(
       'app_settings',
       {
         'key': _syncServerUrlKey,
@@ -173,7 +172,7 @@ class LocalInventoryDatabase {
   }
 
   Future<String> loadAuthToken() async {
-    final rows = await _db.query(
+    final rows = await _settings.query(
       'app_settings',
       columns: ['value'],
       where: 'key = ?',
@@ -187,7 +186,7 @@ class LocalInventoryDatabase {
   }
 
   Future<void> saveAuthToken(String value) async {
-    await _db.insert(
+    await _settings.insert(
       'app_settings',
       {
         'key': _authTokenKey,
@@ -199,7 +198,7 @@ class LocalInventoryDatabase {
   }
 
   Future<void> clearAuthCredentials() async {
-    await _db.delete(
+    await _settings.delete(
       'app_settings',
       where: 'key = ? OR key = ? OR key = ? OR key = ?',
       whereArgs: [
@@ -212,7 +211,7 @@ class LocalInventoryDatabase {
   }
 
   Future<String> loadActiveShopId() async {
-    final rows = await _db.query(
+    final rows = await _settings.query(
       'app_settings',
       columns: ['value'],
       where: 'key = ?',
@@ -226,7 +225,7 @@ class LocalInventoryDatabase {
   }
 
   Future<void> saveActiveShopId(String value) async {
-    await _db.insert(
+    await _settings.insert(
       'app_settings',
       {
         'key': _activeShopIdKey,
@@ -238,7 +237,7 @@ class LocalInventoryDatabase {
   }
 
   Future<String> loadActiveShopName() async {
-    final rows = await _db.query(
+    final rows = await _settings.query(
       'app_settings',
       columns: ['value'],
       where: 'key = ?',
@@ -252,7 +251,7 @@ class LocalInventoryDatabase {
   }
 
   Future<void> saveActiveShopName(String value) async {
-    await _db.insert(
+    await _settings.insert(
       'app_settings',
       {
         'key': _activeShopNameKey,
@@ -264,7 +263,7 @@ class LocalInventoryDatabase {
   }
 
   Future<String> loadGeminiApiKey() async {
-    final rows = await _db.query(
+    final rows = await _settings.query(
       'app_settings',
       columns: ['value'],
       where: 'key = ?',
@@ -278,7 +277,7 @@ class LocalInventoryDatabase {
   }
 
   Future<void> saveGeminiApiKey(String value) async {
-    await _db.insert(
+    await _settings.insert(
       'app_settings',
       {
         'key': _geminiApiKey,
@@ -290,7 +289,7 @@ class LocalInventoryDatabase {
   }
 
   Future<String> loadGeminiApiUrl() async {
-    final rows = await _db.query(
+    final rows = await _settings.query(
       'app_settings',
       columns: ['value'],
       where: 'key = ?',
@@ -304,7 +303,7 @@ class LocalInventoryDatabase {
   }
 
   Future<void> saveGeminiApiUrl(String value) async {
-    await _db.insert(
+    await _settings.insert(
       'app_settings',
       {
         'key': _geminiApiUrl,
@@ -316,7 +315,7 @@ class LocalInventoryDatabase {
   }
 
   Future<String> loadGeminiModel() async {
-    final rows = await _db.query(
+    final rows = await _settings.query(
       'app_settings',
       columns: ['value'],
       where: 'key = ?',
@@ -330,7 +329,7 @@ class LocalInventoryDatabase {
   }
 
   Future<void> saveGeminiModel(String value) async {
-    await _db.insert(
+    await _settings.insert(
       'app_settings',
       {
         'key': _geminiModelKey,
@@ -342,7 +341,7 @@ class LocalInventoryDatabase {
   }
 
   Future<String> loadAiApiFormat() async {
-    final rows = await _db.query(
+    final rows = await _settings.query(
       'app_settings',
       columns: ['value'],
       where: 'key = ?',
@@ -356,7 +355,7 @@ class LocalInventoryDatabase {
   }
 
   Future<void> saveAiApiFormat(String value) async {
-    await _db.insert(
+    await _settings.insert(
       'app_settings',
       {
         'key': _aiApiFormatKey,
@@ -368,7 +367,7 @@ class LocalInventoryDatabase {
   }
 
   Future<String> loadOcrMode() async {
-    final rows = await _db.query(
+    final rows = await _settings.query(
       'app_settings',
       columns: ['value'],
       where: 'key = ?',
@@ -382,7 +381,7 @@ class LocalInventoryDatabase {
   }
 
   Future<void> saveOcrMode(String value) async {
-    await _db.insert(
+    await _settings.insert(
       'app_settings',
       {
         'key': _ocrModeKey,
@@ -394,7 +393,7 @@ class LocalInventoryDatabase {
   }
 
   Future<String> loadSelfHostedOcrUrl() async {
-    final rows = await _db.query(
+    final rows = await _settings.query(
       'app_settings',
       columns: ['value'],
       where: 'key = ?',
@@ -408,7 +407,7 @@ class LocalInventoryDatabase {
   }
 
   Future<void> saveSelfHostedOcrUrl(String value) async {
-    await _db.insert(
+    await _settings.insert(
       'app_settings',
       {
         'key': _selfHostedOcrUrlKey,
@@ -422,7 +421,9 @@ class LocalInventoryDatabase {
   Future<Uint8List> exportBackupBytes({bool includeImages = true}) async {
     final tableRows = <String, List<Map<String, Object?>>>{};
     for (final table in _backupTables) {
-      tableRows[table] = await _db.query(table);
+      tableRows[table] = table == 'app_settings'
+          ? await _db.query(table, where: "key LIKE 'express_image_job:%'")
+          : await _backupBusinessRows(table);
     }
 
     final images = <Map<String, String>>[];
@@ -566,6 +567,7 @@ class LocalInventoryDatabase {
 
   /// 从 ZIP 归档包中解压还原数据库与全部单据物理照片
   Future<void> importBackupFromZip(File zipFile) async {
+    await _guardBackupRestore();
     final tempDir = await getTemporaryDirectory();
     final extractDir = Directory(path.join(
         tempDir.path, 'extract_${DateTime.now().microsecondsSinceEpoch}'));
@@ -599,7 +601,7 @@ class LocalInventoryDatabase {
       }
 
       // 将压缩包内的 images/ 提取并迁移到应用本地存储目录
-      final appDocDir = await getApplicationDocumentsDirectory();
+      final appDocDir = _directory ?? await getApplicationDocumentsDirectory();
       final targetImageDir =
           Directory(path.join(appDocDir.path, 'inbound_images'));
       await targetImageDir.create(recursive: true);
@@ -626,8 +628,14 @@ class LocalInventoryDatabase {
         for (final table in _clearTables) {
           await txn.delete(table);
         }
+        await _resetRestoredSync(txn);
         for (final table in _backupTables) {
           for (final row in _backupRows(tables, table)) {
+            if (table == 'app_settings' &&
+                !(row['key'] as String? ?? '')
+                    .startsWith('express_image_job:')) {
+              continue;
+            }
             await txn.insert(
               table,
               _normalizeBackupRowWithBaseName(table, row, imagePathMap),
@@ -645,6 +653,7 @@ class LocalInventoryDatabase {
   }
 
   Future<void> importBackupBytes(Uint8List bytes) async {
+    await _guardBackupRestore();
     // 自动侦测：如果传入的是 ZIP 文件字节流，自动转至 ZIP 解压恢复
     if (bytes.length >= 4 &&
         bytes[0] == 0x50 &&
@@ -687,8 +696,13 @@ class LocalInventoryDatabase {
       for (final table in _clearTables) {
         await txn.delete(table);
       }
+      await _resetRestoredSync(txn);
       for (final table in _backupTables) {
         for (final row in _backupRows(tables, table)) {
+          if (table == 'app_settings' &&
+              !(row['key'] as String? ?? '').startsWith('express_image_job:')) {
+            continue;
+          }
           await txn.insert(
             table,
             _normalizeBackupRow(table, row, imagePathMap),
@@ -699,8 +713,11 @@ class LocalInventoryDatabase {
   }
 
   Future<List<WarehouseStock>> loadStockTotals() async {
+    await _ensureSync();
     final rows = await _db.query(
       'warehouse_stock',
+      where:
+          "product_code NOT IN (SELECT id FROM sync_hidden WHERE kind = 'stock')",
       orderBy: 'product_name COLLATE NOCASE ASC',
     );
     return rows.map((row) {
@@ -713,8 +730,11 @@ class LocalInventoryDatabase {
   }
 
   Future<List<InboundReceipt>> loadInboundHistory() async {
+    await _ensureSync();
     final receiptRows = await _db.query(
       'inbound_receipts',
+      where:
+          "id NOT IN (SELECT id FROM sync_hidden WHERE kind = 'inbound' UNION SELECT id FROM sync_abandoned WHERE kind='inbound')",
       orderBy: 'created_at DESC',
     );
     final receipts = <InboundReceipt>[];
@@ -746,8 +766,11 @@ class LocalInventoryDatabase {
 
   /// 轻量查询最近 [limit] 条入库单（不加载商品明细）
   Future<List<InboundReceipt>> loadRecentInboundReceipts(int limit) async {
+    await _ensureSync();
     final receiptRows = await _db.query(
       'inbound_receipts',
+      where:
+          "id NOT IN (SELECT id FROM sync_hidden WHERE kind = 'inbound' UNION SELECT id FROM sync_abandoned WHERE kind='inbound')",
       orderBy: 'created_at DESC',
       limit: limit,
     );
@@ -768,8 +791,11 @@ class LocalInventoryDatabase {
   }
 
   Future<List<OutboundOrder>> loadOutboundHistory() async {
+    await _ensureSync();
     final orderRows = await _db.query(
       'outbound_orders',
+      where:
+          "id NOT IN (SELECT id FROM sync_hidden WHERE kind = 'outbound' UNION SELECT id FROM sync_abandoned WHERE kind='outbound')",
       orderBy: 'created_at DESC',
     );
     final orders = <OutboundOrder>[];
@@ -1207,6 +1233,10 @@ class LocalInventoryDatabase {
   }
 
   Future<void> deleteInboundReceipt(String receiptId) async {
+    if (await _isOnlineWorkspace()) {
+      await _hide('inbound', receiptId);
+      return;
+    }
     await _db.transaction((txn) async {
       await txn.delete('app_settings',
           where: 'key = ?', whereArgs: ['express_image_job:$receiptId']);
@@ -1351,7 +1381,7 @@ class LocalInventoryDatabase {
     if (rawImages is! List) {
       throw InventoryException('Invalid backup images.');
     }
-    final directory = await getApplicationDocumentsDirectory();
+    final directory = _directory ?? await getApplicationDocumentsDirectory();
     final imageDirectory =
         Directory(path.join(directory.path, 'inbound_images'));
     await imageDirectory.create(recursive: true);
@@ -1616,8 +1646,10 @@ class LocalInventoryDatabase {
   }
 
   Future<List<ProductCatalogItem>> loadProductCatalog() async {
+    await _ensureSync();
     final rows = await _db.query(
       'products',
+      where: "code NOT IN (SELECT id FROM sync_hidden WHERE kind = 'product')",
       orderBy: 'name COLLATE NOCASE ASC',
     );
     return rows.map((row) {
@@ -1765,6 +1797,11 @@ class LocalInventoryDatabase {
 
   /// 全局重新生成库存和台账
   Future<void> rebuildInventoryStockAndLedger() async {
+    if (await _isOnlineWorkspace()) {
+      await _ensureSync();
+      await _db.transaction((txn) => _reconcileStock(txn));
+      return;
+    }
     await _db.transaction((txn) async {
       // 1. 物理清空已有的台账和库存
       await txn.delete('stock_ledger');
@@ -1979,6 +2016,10 @@ class LocalInventoryDatabase {
   }
 
   Future<void> clearSettledTextData() async {
+    if (await _isOnlineWorkspace()) {
+      await _hideSettled();
+      return;
+    }
     await _db.transaction((txn) async {
       final rows = await txn.query(
         'inbound_receipts',
@@ -2027,6 +2068,10 @@ class LocalInventoryDatabase {
   }
 
   Future<void> clearSettledImagesData() async {
+    if (await _isOnlineWorkspace()) {
+      await _hideSettled();
+      return;
+    }
     await _db.transaction((txn) async {
       final rows = await txn.query(
         'inbound_receipts',
@@ -2055,10 +2100,19 @@ class LocalInventoryDatabase {
   }
 
   Future<void> clearWarehouseStock() async {
+    if (await _isOnlineWorkspace()) {
+      await _hideTable('stock', 'warehouse_stock', 'product_code');
+      return;
+    }
     await _db.delete('warehouse_stock');
   }
 
   Future<void> clearStockAndProducts() async {
+    if (await _isOnlineWorkspace()) {
+      await _hideTable('stock', 'warehouse_stock', 'product_code');
+      await _hideTable('product', 'products', 'code');
+      return;
+    }
     await _db.transaction((txn) async {
       await txn.delete('warehouse_stock');
       await txn.delete('products');

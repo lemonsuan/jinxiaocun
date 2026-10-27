@@ -49,9 +49,10 @@ class ExpressProcessingQueue {
         onError: (e, _) =>
             debugPrint('Express queue paused: ${e.runtimeType}'));
   }
-  static ExpressProcessingQueue? _instance;
+  static final Expando<ExpressProcessingQueue> _instances = Expando();
   static ExpressProcessingQueue forDatabase(LocalInventoryDatabase database) =>
-      _instance ??= ExpressProcessingQueue._(database);
+      _instances[database.processingScope] ??=
+          ExpressProcessingQueue._(database);
   final LocalInventoryDatabase database;
   final _processor = CaptureImageProcessor();
   final _ocr = PaddleOcrChannel();

@@ -15,13 +15,13 @@ class TenantBaseAdmin(ModelAdmin):
         return request.user.is_staff
 
     def has_add_permission(self, request):
-        return request.user.is_staff
+        return False
 
     def has_change_permission(self, request, obj=None):
-        return request.user.is_staff
+        return False
 
     def has_delete_permission(self, request, obj=None):
-        return request.user.is_staff
+        return False
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)

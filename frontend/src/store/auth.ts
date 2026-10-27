@@ -7,14 +7,26 @@ export const useAuthStore = defineStore('auth', () => {
   const activeShopId = ref(localStorage.getItem('shop_active_id') || '')
   const activeShopName = ref(localStorage.getItem('shop_active_name') || '')
 
+  const scopeVersion = ref(0)
+  const activeShopRole = ref(localStorage.getItem('shop_active_role') || '')
+  const clearShop = () => {
+    scopeVersion.value++
+    activeShopId.value = ''; activeShopName.value = ''; activeShopRole.value = ''
+    for (const key of ['shop_active_id', 'shop_active_name', 'shop_active_role']) localStorage.removeItem(key)
+  }
+
   const setLoginInfo = (userToken: string, name: string) => {
+    clearShop()
     token.value = userToken
     username.value = name
     localStorage.setItem('shop_token', userToken)
     localStorage.setItem('shop_username', name)
   }
 
-  const setActiveShop = (shopId: string, shopName: string) => {
+  const setActiveShop = (shopId: string, shopName: string, role = '') => {
+    scopeVersion.value++
+    activeShopRole.value = role
+    localStorage.setItem('shop_active_role', role)
     activeShopId.value = shopId
     activeShopName.value = shopName
     localStorage.setItem('shop_active_id', shopId)
@@ -22,6 +34,7 @@ export const useAuthStore = defineStore('auth', () => {
   }
 
   const logout = () => {
+    clearShop()
     token.value = ''
     username.value = ''
     activeShopId.value = ''
@@ -37,6 +50,9 @@ export const useAuthStore = defineStore('auth', () => {
     username,
     activeShopId,
     activeShopName,
+    activeShopRole,
+    scopeVersion,
+    clearShop,
     setLoginInfo,
     setActiveShop,
     logout

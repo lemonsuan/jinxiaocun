@@ -1,56 +1,35 @@
-import axios from 'axios'
+import axios, { CanceledError } from 'axios'
 import { ElMessage } from 'element-plus'
+import { sameScope, type SessionScope } from './session-scope'
+import { useAuthStore } from '../store/auth'
 
-const service = axios.create({
-  baseURL: '', // 走 Vite 代理
-  timeout: 10000
+const scopes = new WeakMap<object, SessionScope>()
+const service = axios.create({ baseURL: '', timeout: 15000 })
+service.interceptors.request.use(config => {
+  const auth = useAuthStore()
+  scopes.set(config, { token: auth.token, activeShopId: auth.activeShopId, scopeVersion: auth.scopeVersion })
+  if (auth.token) config.headers.Authorization = `Bearer ${auth.token}`
+  if (auth.activeShopId) config.headers['X-Active-Shop-ID'] = auth.activeShopId
+  return config
 })
-
-// 请求拦截器
-service.interceptors.request.use(
-  (config) => {
-    const token = localStorage.getItem('shop_token')
-    if (token) {
-      config.headers['Authorization'] = `Bearer ${token}`
-    }
-    
-    const activeShopId = localStorage.getItem('shop_active_id')
-    if (activeShopId) {
-      config.headers['X-Active-Shop-ID'] = activeShopId
-    }
-    
-    return config
-  },
-  (error) => {
-    return Promise.reject(error)
+function isCurrent(config: object | undefined) {
+  return !!config && sameScope(scopes.get(config), useAuthStore())
+}
+service.interceptors.response.use(response => {
+  if (!isCurrent(response.config)) throw new CanceledError('店铺或登录状态已变更')
+  return response.data
+}, error => {
+  if (axios.isCancel(error)) return Promise.reject(error)
+  if (error.config && !isCurrent(error.config)) return Promise.reject(new CanceledError('店铺或登录状态已变更'))
+  const status = error.response?.status
+  const detail = error.response?.data?.detail || error.response?.data?.message
+  if (status === 401) {
+    useAuthStore().logout()
+    ElMessage.error('登录已过期，请重新登录')
+    window.location.hash = '/login'
+  } else {
+    ElMessage.error(typeof detail === 'string' ? detail : status === 403 ? '没有访问当前店铺的权限' : '请求失败，请检查连接后重试')
   }
-)
-
-// 响应拦截器
-service.interceptors.response.use(
-  (response) => {
-    return response.data
-  },
-  (error) => {
-    const status = error.response ? error.response.status : null
-    const message = error.response?.data?.message || '服务器连接异常'
-    
-    if (status === 401) {
-      // 未登录或登录过期
-      localStorage.removeItem('shop_token')
-      localStorage.removeItem('shop_username')
-      localStorage.removeItem('shop_active_id')
-      ElMessage.error('登录已过期，请重新登录')
-      if (window.location.hash !== '#/login' && window.location.pathname !== '/login') {
-        window.location.href = '/#/login'
-      }
-    } else if (status === 403) {
-      ElMessage.error(message || '您没有权限操作此资源')
-    } else {
-      ElMessage.error(message)
-    }
-    return Promise.reject(error)
-  }
-)
-
+  return Promise.reject(error)
+})
 export default service

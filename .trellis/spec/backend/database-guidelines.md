@@ -16,7 +16,7 @@ Questions to answer:
 - How do you handle transactions?
 -->
 
-The MVP uses local SQLite through Flutter `sqflite`. SQLite is the single-device source of truth; cloud sync, if added later, is a backup/copy layer and must not decide local stock availability.
+Offline workspaces use local SQLite through Flutter `sqflite`. Online shared shops use retained Django/PostgreSQL documents and derived stock as the shared authority; SQLite combines accepted server snapshots with pending local deltas. See [Shared Shop Incremental Sync](./shop-incremental-sync.md).
 
 ## Scenario: Local Inventory Ledger
 
