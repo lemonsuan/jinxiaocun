@@ -21,10 +21,47 @@ class AiInboundExtractionResult {
 
 /// 通用 AI 提取服务类（先调用本地离线 OCR，再使用配置的云端大模型提取）
 class AiInboundExtractor {
-  AiInboundExtractor(this._database);
+  AiInboundExtractor(this._database, {http.Client? client}) : _client = client;
+
+  final http.Client? _client;
 
   final LocalInventoryDatabase _database;
   final PaddleOcrChannel _paddleOcr = PaddleOcrChannel();
+
+  /// 完全本地或已离开的工作区不允许发起远程识别请求。
+  Future<void> ensureRemoteAvailable() async {
+    await _remoteContext();
+  }
+
+  Future<Map<String, Object?>> _remoteContext() async {
+    final context = await _database.loadSyncContext();
+    if (context == null) {
+      throw const RemoteAiUnavailable(
+          '当前为完全本地模式或工作区已切换，云端 AI 与自建 OCR 不可用，请使用本机 OCR。');
+    }
+    return context;
+  }
+
+  Future<void> _checkContext(Map<String, Object?> expected) async {
+    final current = await _remoteContext();
+    if (['server_url', 'shop_id', 'device_id', 'token']
+        .any((key) => current[key] != expected[key])) {
+      throw const RemoteAiUnavailable('工作区或登录状态已变化，本次远程识别已取消，请重新操作。');
+    }
+  }
+
+  Future<http.Response> _postRemote(Map<String, Object?> context, Uri uri,
+      {required Map<String, String> headers,
+      required String body,
+      required Duration timeout}) async {
+    // 配置读取及本机 OCR 都有异步等待，真正发送前必须再次确认原工作区。
+    await _checkContext(context);
+    final post = _client?.post ?? http.post;
+    final response =
+        await post(uri, headers: headers, body: body).timeout(timeout);
+    await _checkContext(context);
+    return response;
+  }
 
   String _normalizeUrl(String baseUrl, String endpoint) {
     var url = baseUrl.trim();
@@ -73,6 +110,12 @@ class AiInboundExtractor {
   }
 
   Future<AiInboundExtractionResult> extract(String ocrText) async {
+    final context = await _remoteContext();
+    return _extract(ocrText, context);
+  }
+
+  Future<AiInboundExtractionResult> _extract(
+      String ocrText, Map<String, Object?> context) async {
     final config = await _loadConfig();
     final aiFormat = config['aiFormat']!;
     final apiKey = config['apiKey']!;
@@ -91,28 +134,28 @@ class AiInboundExtractor {
 
     if (aiFormat == 'gemini' || aiFormat == 'anthropic') {
       final requestUrl = _normalizeUrl(apiUrl, 'messages');
-      final response = await http
-          .post(
-            Uri.parse(requestUrl),
-            headers: {
-              'Content-Type': 'application/json; charset=utf-8',
-              'x-api-key': apiKey,
-              'anthropic-version': '2023-06-01',
-            },
-            body: jsonEncode({
-              'model': model,
-              'max_tokens': 2048,
-              'system': systemPrompt,
-              'messages': [
-                {
-                  'role': 'user',
-                  'content': userPrompt,
-                }
-              ],
-              'temperature': 0.0,
-            }),
-          )
-          .timeout(const Duration(seconds: 30));
+      final response = await _postRemote(
+        context,
+        Uri.parse(requestUrl),
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'x-api-key': apiKey,
+          'anthropic-version': '2023-06-01',
+        },
+        body: jsonEncode({
+          'model': model,
+          'max_tokens': 2048,
+          'system': systemPrompt,
+          'messages': [
+            {
+              'role': 'user',
+              'content': userPrompt,
+            }
+          ],
+          'temperature': 0.0,
+        }),
+        timeout: const Duration(seconds: 30),
+      );
 
       if (response.statusCode != 200) {
         throw Exception(
@@ -123,24 +166,24 @@ class AiInboundExtractor {
       content = data['content'][0]['text'].toString().trim();
     } else {
       final requestUrl = _normalizeUrl(apiUrl, 'chat/completions');
-      final response = await http
-          .post(
-            Uri.parse(requestUrl),
-            headers: {
-              'Content-Type': 'application/json; charset=utf-8',
-              'Authorization': 'Bearer $apiKey',
-            },
-            body: jsonEncode({
-              'model': model,
-              'messages': [
-                {'role': 'system', 'content': systemPrompt},
-                {'role': 'user', 'content': userPrompt},
-              ],
-              'temperature': 0.0,
-              'response_format': {'type': 'json_object'},
-            }),
-          )
-          .timeout(const Duration(seconds: 30));
+      final response = await _postRemote(
+        context,
+        Uri.parse(requestUrl),
+        headers: {
+          'Content-Type': 'application/json; charset=utf-8',
+          'Authorization': 'Bearer $apiKey',
+        },
+        body: jsonEncode({
+          'model': model,
+          'messages': [
+            {'role': 'system', 'content': systemPrompt},
+            {'role': 'user', 'content': userPrompt},
+          ],
+          'temperature': 0.0,
+          'response_format': {'type': 'json_object'},
+        }),
+        timeout: const Duration(seconds: 30),
+      );
 
       if (response.statusCode != 200) {
         throw Exception(
@@ -156,6 +199,7 @@ class AiInboundExtractor {
 
   /// 先通过本地离线/自建 OCR 获取文本，再由配置的大模型进行结构化清洗提取
   Future<AiInboundExtractionResult> extractFromImage(String imagePath) async {
+    final context = await _remoteContext();
     final ocrMode = await _database.loadOcrMode();
     String ocrText = '';
 
@@ -173,13 +217,13 @@ class AiInboundExtractor {
       final base64String = base64Encode(bytes);
 
       final uri = Uri.parse(url.trim());
-      final response = await http
-          .post(
-            uri,
-            headers: {'Content-Type': 'application/json; charset=utf-8'},
-            body: jsonEncode({'image': base64String}),
-          )
-          .timeout(const Duration(seconds: 45));
+      final response = await _postRemote(
+        context,
+        uri,
+        headers: {'Content-Type': 'application/json; charset=utf-8'},
+        body: jsonEncode({'image': base64String}),
+        timeout: const Duration(seconds: 45),
+      );
 
       if (response.statusCode != 200) {
         throw Exception(
@@ -214,7 +258,8 @@ class AiInboundExtractor {
       }
     }
 
-    return extract(ocrText);
+    await _checkContext(context);
+    return _extract(ocrText, context);
   }
 
   AiInboundExtractionResult _parseJsonToResult(String content) {
@@ -286,4 +331,12 @@ class AiInboundExtractor {
       items: items,
     );
   }
+}
+
+/// 网络策略不满足时保留原单据，不把拒绝联网当作识别结果。
+class RemoteAiUnavailable implements Exception {
+  const RemoteAiUnavailable(this.message);
+  final String message;
+  @override
+  String toString() => message;
 }

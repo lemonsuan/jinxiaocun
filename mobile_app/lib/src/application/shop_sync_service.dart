@@ -9,7 +9,7 @@ import 'package:path_provider/path_provider.dart';
 
 import '../data/local_inventory_database.dart';
 
-/// One bounded, retryable pipeline for an immutable opened shop database.
+/// 为已打开且固定的店铺数据库执行有界、可重试的增量同步。
 class ShopSyncService extends ChangeNotifier {
   ShopSyncService(this.database, {http.Client? client, this.mediaDirectory})
       : _client = client ?? http.Client();
@@ -18,9 +18,13 @@ class ShopSyncService extends ChangeNotifier {
   final Future<Directory> Function()? mediaDirectory;
   Timer? _timer;
   Future<void>? _running;
+  Future<void>? _queuedManual;
+  bool _runningAutomatically = false;
   bool _disposed = false;
-  bool _paused = false;
+  int _pauseDepth = 0;
+  bool get _paused => _pauseDepth > 0;
   bool _foreground = true;
+  Map<String, Object?>? _authenticationBlockedContext;
   bool syncing = false;
   String message = '等待同步';
   DateTime? lastSuccess;
@@ -31,28 +35,64 @@ class ShopSyncService extends ChangeNotifier {
 
   void start() {
     _timer ??= Timer.periodic(const Duration(seconds: 15), (_) {
-      if (_foreground) unawaited(sync());
+      if (_foreground) unawaited(sync(automatic: true));
     });
-    unawaited(sync());
+    unawaited(sync(automatic: true));
   }
 
   void setForeground(bool value) {
     _foreground = value;
-    if (value) unawaited(sync());
+    if (value) unawaited(sync(automatic: true));
   }
 
-  Future<void> sync() =>
-      _running ??= _cycle().whenComplete(() => _running = null);
+  /// 手动同步允许重新验证原凭据，自动触发则遵守认证暂停状态。
+  Future<void> sync({bool automatic = false}) {
+    final running = _running;
+    if (running != null) {
+      if (!automatic &&
+          _runningAutomatically &&
+          _authenticationBlockedContext != null) {
+        // 自动检查可能直接跳过失效凭据，不能吞掉此时到来的手动重试。
+        return _queuedManual ??= _retryManuallyAfter(running)
+            .whenComplete(() => _queuedManual = null);
+      }
+      return running;
+    }
+    _runningAutomatically = automatic;
+    return _running = _cycle(automatic: automatic).whenComplete(() {
+      _running = null;
+      _runningAutomatically = false;
+    });
+  }
+
+  Future<void> _retryManuallyAfter(Future<void> running) async {
+    await running;
+    if (!_disposed) await sync();
+  }
+
+  /// 暂停新请求并等待当前请求结束；迟到响应会被作用域检查拒绝。
+  Future<void> pauseAndDrain() async {
+    _pauseDepth++;
+    await _running;
+  }
+
+  /// 每次暂停对应一次恢复，嵌套的本机操作不会解除设置页的暂停。
+  void resume() {
+    if (_pauseDepth == 0) return;
+    _pauseDepth--;
+    if (!_paused && !_disposed && _foreground) {
+      unawaited(sync(automatic: true));
+    }
+  }
 
   Future<void> localChange(Future<void> Function() action) async {
-    _paused = true;
+    await pauseAndDrain();
     try {
-      await _running;
       if (_disposed) return;
       await action();
       dataVersion++;
     } finally {
-      _paused = false;
+      resume();
     }
     await sync();
   }
@@ -112,11 +152,17 @@ class ShopSyncService extends ChangeNotifier {
   }
 
   void _checkStatus(int status) {
-    if (status == 401) throw const HttpException('登录已过期，请重新登录；本机数据已保留');
-    if (status == 403) throw const HttpException('没有店铺访问权限，请检查审批状态');
+    if (status == 401) {
+      throw const _AuthenticationRequired('登录已过期，请在设置中重新认证；本机数据已保留');
+    }
+    if (status == 403) {
+      throw const _AuthenticationRequired('没有店铺访问权限，请在设置中检查审批或重新认证；本机数据已保留');
+    }
     if (status < 200 || status >= 300) {
       throw HttpException('服务器返回 $status，请稍后重试');
     }
+    // 成功鉴权已证明凭据恢复，后续非认证错误仍应允许自动重试。
+    _authenticationBlockedContext = null;
   }
 
   Future<String?> _upload(Map<String, Object?> context, Object? value) async {
@@ -188,10 +234,22 @@ class ShopSyncService extends ChangeNotifier {
     await database.applySyncPushResults(results.cast<Map>());
   }
 
-  Future<void> _cycle() async {
+  Future<void> _cycle({required bool automatic}) async {
     if (_disposed || !_foreground || _paused) return;
     final context = await database.loadSyncContext();
     if (context == null) return;
+    final blocked = _authenticationBlockedContext;
+    final sameRejectedCredentials = blocked != null &&
+        ['server_url', 'shop_id', 'device_id', 'token']
+            .every((key) => context[key] == blocked[key]);
+    if (automatic && sameRejectedCredentials) {
+      // 暂停的是服务器请求，本机新增和冲突数量仍需及时显示。
+      pending = await database.pendingSyncCount();
+      conflicts = await database.syncConflictCount();
+      _notify();
+      return;
+    }
+    if (!sameRejectedCredentials) _authenticationBlockedContext = null;
     syncing = true;
     message = '正在增量同步';
     _notify();
@@ -247,16 +305,21 @@ class ShopSyncService extends ChangeNotifier {
         if (!more) break;
       }
       await _downloadMedia(context);
+      _authenticationBlockedContext = null;
       if (mediaProblems.isEmpty) {
         message = '本轮增量已处理；删除仅影响本机';
       } else {
         message =
             '仍有 ${mediaProblems.length} 笔图片待处理；其他正常记录已同步。${mediaProblems.take(3).join('；')}';
       }
+    } on _AuthenticationRequired catch (error) {
+      // 只暂停本轮捕获的凭据；新登录或新工作区下次自动触发即可恢复。
+      _authenticationBlockedContext = Map<String, Object?>.from(context);
+      message = '同步已暂停：${error.message}';
     } on _ScopeChanged {
       message = '同步已暂停';
     } catch (error) {
-      message = '同步未完成：$error';
+      message = _failureMessage(error);
     } finally {
       if (!_disposed) {
         pending = await database.pendingSyncCount();
@@ -275,6 +338,25 @@ class ShopSyncService extends ChangeNotifier {
     }
   }
 
+  String _failureMessage(Object error) {
+    if (error is SocketException || error is http.ClientException) {
+      return '当前离线，可继续使用本机数据；恢复网络后自动同步';
+    }
+    if (error is TimeoutException) {
+      return '连接超时，可继续使用本机数据；稍后自动重试';
+    }
+    if (error is FormatException) {
+      return '同步数据或图片校验失败，本机内容已保留，请稍后重试';
+    }
+    if (error is FileSystemException) {
+      return '本机图片暂时无法读取，原单据已保留，请检查图片后重试';
+    }
+    if (error is HttpException) {
+      return '服务器暂时无法完成同步，本机数据已保留，请稍后重试';
+    }
+    return '同步暂未完成，本机数据已保留，请稍后重试';
+  }
+
   Future<void> _downloadMedia(Map<String, Object?> context) async {
     final references = await database.pendingSyncMediaDownloads(limit: 10);
     if (references.isEmpty) return;
@@ -288,7 +370,7 @@ class ShopSyncService extends ChangeNotifier {
       if (!RegExp(r'^[a-f0-9]{64}$').hasMatch(digest)) {
         throw const FormatException('图片摘要无效');
       }
-      // Scope in filename prevents shared cache paths across shops/servers.
+      // 文件名包含工作区摘要，避免不同店铺或服务器复用图片路径。
       final scope = sha256.convert(
           utf8.encode('${context['server_url']}|${context['shop_id']}'));
       final file = File('${root.path}/$scope-$digest');
@@ -345,4 +427,10 @@ class ShopSyncService extends ChangeNotifier {
 
 class _ScopeChanged implements Exception {
   const _ScopeChanged();
+}
+
+/// 服务器明确拒绝认证后暂停自动重试，避免定时器反复使用失效凭据。
+class _AuthenticationRequired implements Exception {
+  const _AuthenticationRequired(this.message);
+  final String message;
 }

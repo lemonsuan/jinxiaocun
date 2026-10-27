@@ -6,7 +6,19 @@ import '../data/local_inventory_database.dart';
 import 'app_home.dart';
 
 class LoginPage extends StatefulWidget {
-  const LoginPage({super.key});
+  const LoginPage(
+      {super.key,
+      this.database,
+      this.client,
+      this.selectionOnly = false,
+      this.initialServerUrl,
+      this.initialUsername});
+
+  final LocalInventoryDatabase? database;
+  final http.Client? client;
+  final bool selectionOnly;
+  final String? initialServerUrl;
+  final String? initialUsername;
 
   @override
   State<LoginPage> createState() => _LoginPageState();
@@ -18,7 +30,10 @@ class _LoginPageState extends State<LoginPage> {
   static const Color _notionGreyText = Color(0xFF7C7B77);
   static const Color _notionBorder = Color(0xFFEDEDEB);
 
-  final LocalInventoryDatabase _database = LocalInventoryDatabase();
+  late final LocalInventoryDatabase _database =
+      widget.database ?? LocalInventoryDatabase();
+  http.Client? _ownedClient;
+  http.Client get _client => widget.client ?? (_ownedClient ??= http.Client());
 
   final TextEditingController _serverUrlController =
       TextEditingController(text: 'http://10.0.2.2:8000');
@@ -36,6 +51,7 @@ class _LoginPageState extends State<LoginPage> {
   // 鉴权成功后暂存的数据，用于店铺选择界面
   String? _tempToken;
   String? _tempUsername;
+  String _tempAccountId = '';
   List<_ShopItem> _shops = [];
   bool _showShopSelector = false; // 是否正处于店铺选择子界面
   bool _isCreatingShop = false;
@@ -80,19 +96,30 @@ class _LoginPageState extends State<LoginPage> {
   @override
   void initState() {
     super.initState();
-    _database.open().then((_) {
-      // 预载本地已存的服务器地址以方便用户
-      _database.loadSyncServerUrl().then((savedUrl) {
-        if (savedUrl.isNotEmpty && mounted) {
-          _serverUrlController.text = savedUrl;
-        }
-      });
-    });
+    _usernameController.text = widget.initialUsername ?? '';
+    if (widget.initialServerUrl != null) {
+      _serverUrlController.text = widget.initialServerUrl!;
+    }
+    _loadSavedServer();
+  }
+
+  Future<void> _loadSavedServer() async {
+    try {
+      await _database.open();
+      final savedUrl = await _database.loadSyncServerUrl();
+      if (savedUrl.isNotEmpty && mounted && widget.initialServerUrl == null) {
+        _serverUrlController.text = savedUrl;
+      }
+    } catch (_) {
+      // 原业务库损坏时也保留登录表单，避免恢复入口产生未处理异常。
+      _showError('无法读取原工作区配置，可返回设置选择其他已保存工作区，或继续在线登录。');
+    }
   }
 
   @override
   void dispose() {
     _requestEpoch++;
+    _ownedClient?.close();
     _joinShopIdController.dispose();
     _serverUrlController.dispose();
     _usernameController.dispose();
@@ -136,7 +163,7 @@ class _LoginPageState extends State<LoginPage> {
     });
     try {
       final endpoint = _isSignUp ? '/api/auth/register' : '/api/auth/login';
-      final response = await http
+      final response = await _client
           .post(
             Uri.parse('$baseUrl$endpoint'),
             headers: {'Content-Type': 'application/json'},
@@ -152,8 +179,8 @@ class _LoginPageState extends State<LoginPage> {
       if (response.statusCode == 200 || response.statusCode == 201) {
         _tempToken = body['token'] as String;
         _tempUsername = body['username'] as String;
+        _tempAccountId = '${body['user_id'] ?? ''}';
         _authenticatedServer = baseUrl;
-        await _database.saveSyncServerUrl(baseUrl);
         if (!mounted || epoch != _requestEpoch) return;
         setState(() {
           _shops = [];
@@ -182,7 +209,7 @@ class _LoginPageState extends State<LoginPage> {
       _errorMessage = null;
     });
     try {
-      final response = await http.get(
+      final response = await _client.get(
         Uri.parse('$baseUrl/api/shops/my-shops'),
         headers: {'Authorization': 'Bearer $token'},
       ).timeout(const Duration(seconds: 10));
@@ -222,7 +249,7 @@ class _LoginPageState extends State<LoginPage> {
       _errorMessage = null;
     });
     try {
-      final response = await http
+      final response = await _client
           .post(
             Uri.parse('$_authenticatedServer/api/shops/join'),
             headers: {
@@ -264,7 +291,7 @@ class _LoginPageState extends State<LoginPage> {
       _errorMessage = null;
     });
     try {
-      final response = await http
+      final response = await _client
           .post(
             Uri.parse('$_authenticatedServer/api/shops/create'),
             headers: {
@@ -294,22 +321,22 @@ class _LoginPageState extends State<LoginPage> {
     if (_isEnteringShop) return;
     setState(() => _isEnteringShop = true);
     try {
-      // Recheck approval immediately before activating the persistent workspace.
+      // 在线首次进入时复查审批；历史离线入口由工作区设置单独选择。
       if (!await _fetchShops() || !mounted) return;
       if (!_shops
           .any((shop) => shop.shopId == shopId && shop.status == 'APPROVED')) {
         _showError('此店铺尚未审批通过或权限已变更，请联系管理员。');
         return;
       }
-      await _database.saveAuthMode('online');
-      await _database.saveSyncServerUrl(_authenticatedServer!);
-      await _database.saveAuthToken(_tempToken!);
-      await _database.saveActiveShopId(shopId);
-      await _database.saveActiveShopName(shopName);
-      if (mounted) {
-        Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (context) => const AppHome()));
-      }
+      await _database.rememberAuthenticatedWorkspace(
+        serverUrl: _authenticatedServer!,
+        token: _tempToken!,
+        shopId: shopId,
+        shopName: shopName,
+        accountId: _tempAccountId,
+        accountName: _tempUsername ?? '',
+      );
+      _finishSelection();
     } catch (_) {
       _showError('无法打开店铺，请重试。已有本机数据已保留。');
     } finally {
@@ -317,22 +344,28 @@ class _LoginPageState extends State<LoginPage> {
     }
   }
 
-  // 固定的本地默认店铺 ID 常量，用于合并离线版本与云端店铺的底层租户架构，消除双版本复杂性
-  static const String _defaultLocalShopId =
-      '00000000-0000-0000-0000-000000000000';
+  void _finishSelection() {
+    if (!mounted) return;
+    if (widget.selectionOnly) {
+      Navigator.of(context).pop(true);
+    } else {
+      Navigator.of(context)
+          .pushReplacement(MaterialPageRoute(builder: (_) => const AppHome()));
+    }
+  }
 
   Future<void> _enterOfflineMode() async {
-    // 免密进入离线模式：自动激活“默认本地店铺 ID”，实现全数据流统一归档
-    await _database.saveAuthMode('offline');
-    await _database.saveActiveShopId(_defaultLocalShopId);
-    await _database.saveActiveShopName('本地默认店铺');
-    await _database.saveAuthToken('');
-    await _database.saveSyncServerUrl('');
-
-    if (mounted) {
-      Navigator.of(context).pushReplacement(
-        MaterialPageRoute(builder: (context) => const AppHome()),
-      );
+    if (_isEnteringShop) return;
+    setState(() => _isEnteringShop = true);
+    try {
+      final local = (await _database.loadSavedWorkspaces())
+          .firstWhere((entry) => entry.isLocal);
+      await _database.activateSavedWorkspace(local.id);
+      _finishSelection();
+    } catch (_) {
+      _showError('无法进入本地模式，原工作区已保留。');
+    } finally {
+      if (mounted) setState(() => _isEnteringShop = false);
     }
   }
 
@@ -340,25 +373,31 @@ class _LoginPageState extends State<LoginPage> {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: _notionBg,
-      body: SafeArea(
-        child: Center(
-          child: SingleChildScrollView(
-            padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 400),
-              child: AnimatedSwitcher(
-                duration: const Duration(milliseconds: 250),
-                child: _showShopSelector
-                    ? _buildShopSelectorView()
-                    : _buildAuthView(),
+    return PopScope(
+        canPop: !_isEnteringShop,
+        child: Scaffold(
+          appBar: widget.selectionOnly
+              ? AppBar(title: const Text('在线登录或添加店铺'))
+              : null,
+          backgroundColor: _notionBg,
+          body: SafeArea(
+            child: Center(
+              child: SingleChildScrollView(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 32),
+                child: ConstrainedBox(
+                  constraints: const BoxConstraints(maxWidth: 400),
+                  child: AnimatedSwitcher(
+                    duration: const Duration(milliseconds: 250),
+                    child: _showShopSelector
+                        ? _buildShopSelectorView()
+                        : _buildAuthView(),
+                  ),
+                ),
               ),
             ),
           ),
-        ),
-      ),
-    );
+        ));
   }
 
   // 1. 登录/注册主视图
@@ -595,7 +634,7 @@ class _LoginPageState extends State<LoginPage> {
             onPressed: _isLoading ? null : _enterOfflineMode,
             icon: const Icon(Icons.storefront_outlined, size: 16),
             label: const Text(
-              '放弃登录，返回本地默认店铺',
+              '改用完全本地模式',
               style: TextStyle(
                   fontWeight: FontWeight.bold,
                   fontSize: 13,

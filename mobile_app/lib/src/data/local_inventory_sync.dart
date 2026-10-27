@@ -46,12 +46,9 @@ extension InventorySyncPersistence on LocalInventoryDatabase {
 
   Future<Map<String, Object?>?> loadSyncContext() async {
     if (!await _isOnlineWorkspace()) return null;
-    final selected = await _selectedScope();
-    if (_openedScope != null && selected != _openedScope) return null;
-    final token = await loadAuthToken();
-    final shop = await loadActiveShopId();
-    if (token.isEmpty || shop.isEmpty) return null;
-    var device = await _setting('sync_device_id');
+    // 一次读取整套选择，避免切换事务前后的不同字段被拼到同一请求。
+    var config = await _authSnapshot();
+    var device = config['sync_device_id'] ?? '';
     if (device.isEmpty) {
       device =
           'device-${DateTime.now().microsecondsSinceEpoch}-${sha256.convert(utf8.encode(_db.path)).toString().substring(0, 12)}';
@@ -60,13 +57,22 @@ extension InventorySyncPersistence on LocalInventoryDatabase {
           {
             'key': 'sync_device_id',
             'value': device,
-            'updated_at': DateTime.now().toIso8601String()
+            'updated_at': DateTime.now().toIso8601String(),
           },
           conflictAlgorithm: ConflictAlgorithm.ignore);
-      device = await _setting('sync_device_id');
+      // 首次创建设备标识也重新读取同一份配置快照，再检查已打开的工作区。
+      config = await _authSnapshot();
+      device = config['sync_device_id'] ?? '';
     }
+    if (config[LocalInventoryDatabase._authModeKey] != 'online') return null;
+    final server = _InventoryScope._server(
+        config[LocalInventoryDatabase._syncServerUrlKey] ?? '');
+    final token = config[LocalInventoryDatabase._authTokenKey] ?? '';
+    final shop = config[LocalInventoryDatabase._activeShopIdKey] ?? '';
+    if (token.isEmpty || shop.isEmpty || device.isEmpty) return null;
+    if (_openedScope != null && '$server\n$shop' != _openedScope) return null;
     return {
-      'server_url': _InventoryScope._server(await loadSyncServerUrl()),
+      'server_url': server,
       'token': token,
       'shop_id': shop,
       'device_id': device

@@ -21,6 +21,7 @@ class _AiConfigPageState extends State<AiConfigPage> {
   static const Color _notionBorder = Color(0xFFEDEDEB);
 
   bool _isLoading = true;
+  bool _localOnly = true;
   bool _obscureApiKey = true;
 
   // 配置状态
@@ -51,6 +52,7 @@ class _AiConfigPageState extends State<AiConfigPage> {
   Future<void> _loadSettings() async {
     setState(() => _isLoading = true);
     try {
+      final localOnly = await widget.database.loadSyncContext() == null;
       final ocrMode = await widget.database.loadOcrMode();
       final selfHostedOcrUrl = await widget.database.loadSelfHostedOcrUrl();
       final aiApiFormat = await widget.database.loadAiApiFormat();
@@ -60,6 +62,7 @@ class _AiConfigPageState extends State<AiConfigPage> {
 
       if (mounted) {
         setState(() {
+          _localOnly = localOnly;
           _ocrMode = ocrMode;
           _selfHostedOcrUrlController.text = selfHostedOcrUrl;
           _aiApiFormat = aiApiFormat;
@@ -176,7 +179,13 @@ class _AiConfigPageState extends State<AiConfigPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  // Section 1: OCR 设置
+                  if (_localOnly)
+                    const Padding(
+                      padding: EdgeInsets.only(bottom: 16),
+                      child: Text(
+                          '当前为完全本地模式，使用本机 OCR，不会请求云端 AI 或自建 OCR。以下远程配置仅保存供切换到店铺模式后使用。'),
+                    ),
+                  // 第一部分：OCR 设置
                   _buildSectionTitle('OCR 识别源设置'),
                   const SizedBox(height: 8),
                   Container(

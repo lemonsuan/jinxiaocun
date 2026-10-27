@@ -534,7 +534,7 @@ void main() {
       expect(pushed, false);
       expect(pulled, false);
       expect(sync.lastSuccess, isNull);
-      expect(sync.message, contains(failure == '401' ? '登录已过期' : 'offline'));
+      expect(sync.message, contains(failure == '401' ? '登录已过期' : '当前离线'));
       expect(
           (await db.pendingSyncRecords())
               .where((row) => row['kind'] == 'inbound'),
@@ -542,4 +542,245 @@ void main() {
       expect(await db.loadSyncCursor(), 0);
     });
   }
+
+  test('设置页暂停排空迟到请求，生命周期恢复和本机操作不会提前联网', () async {
+    final db = await online('settings-pause');
+    final requested = Completer<void>();
+    final delayed = Completer<http.Response>();
+    var requests = 0;
+    final sync = service(db, MockClient((request) async {
+      requests++;
+      if (requests == 1) {
+        requested.complete();
+        return delayed.future;
+      }
+      return emptyPull();
+    }));
+    final running = sync.sync();
+    await requested.future;
+    final draining = sync.pauseAndDrain();
+    delayed.complete(json({
+      'changes': [
+        {
+          'kind': 'product',
+          'id': 'STALE',
+          'revision': 1,
+          'data': {'code': 'STALE', 'name': '旧请求'}
+        }
+      ],
+      'cursor': 1,
+      'has_more': false,
+      'server_revision': 1,
+    }));
+    await draining;
+    await running;
+    expect(await db.loadSyncCursor(), 0);
+    expect(await db.loadProductCatalog(), isEmpty);
+    sync.setForeground(false);
+    sync.setForeground(true);
+    await sync.sync();
+    var localChanged = false;
+    await sync.localChange(() async {
+      localChanged = true;
+    });
+    expect(localChanged, true);
+    expect(requests, 1);
+    sync.resume();
+    await sync.sync();
+    expect(requests, 2);
+  });
+
+  test('嵌套暂停需要逐次恢复，切到后台后恢复也不会联网', () async {
+    final db = await online('nested-pause');
+    var requests = 0;
+    final sync = service(db, MockClient((_) async {
+      requests++;
+      return emptyPull();
+    }));
+    await sync.pauseAndDrain();
+    await sync.pauseAndDrain();
+    sync.resume();
+    await sync.sync();
+    expect(requests, 0);
+    sync.resume();
+    await sync.sync();
+    expect(requests, 1);
+    // 此处交由tearDown释放服务，避免重复调用dispose。
+    await sync.pauseAndDrain();
+    sync.setForeground(false);
+    sync.resume();
+    await sync.sync();
+    expect(requests, 1);
+  });
+
+  for (final status in [401, 403]) {
+    test('$status后自动入口暂停同凭据，手动可重试，新令牌自动恢复', () async {
+      final db = await online('auth-paused-$status');
+      await inbound(db);
+      var requests = 0;
+      var rejected = true;
+      final usedTokens = <String?>[];
+      final sync = service(db, MockClient((request) async {
+        requests++;
+        usedTokens.add(request.headers['Authorization']);
+        if (rejected) return json({'detail': '拒绝访问'}, status);
+        if (request.url.path.endsWith('/push')) return ack(ops(request));
+        return emptyPull();
+      }));
+      await sync.sync();
+      expect(requests, 1);
+      expect(sync.message, contains('同步已暂停'));
+      final queued = await db.pendingSyncOperations();
+      expect(queued, isNotEmpty);
+
+      sync.start();
+      await sync.sync(automatic: true);
+      sync.setForeground(false);
+      sync.setForeground(true);
+      await sync.sync(automatic: true);
+      await sync.pauseAndDrain();
+      sync.resume();
+      await sync.sync(automatic: true);
+      expect(requests, 1);
+      expect(await db.loadActiveShopId(), 'shop-a');
+      expect(await db.loadAuthToken(), 'token');
+      expect((await db.loadInboundHistory()).single.items.single.quantity, 5);
+      expect(
+          (await db.pendingSyncOperations()).map((row) => row['operation_id']),
+          queued.map((row) => row['operation_id']));
+
+      // 管理员可能重新批准同一个令牌，明确手动操作仍能发起验证。
+      await sync.sync();
+      expect(requests, 2);
+      rejected = false;
+      await db.saveAuthToken('renewed-token');
+      sync.setForeground(true);
+      await sync.sync(automatic: true);
+      expect(requests, 4);
+      expect(usedTokens.sublist(2), everyElement('Bearer renewed-token'));
+      expect(await db.pendingSyncOperations(), isEmpty);
+      expect(sync.message, contains('本轮增量已处理'));
+      // 成功后恢复后续自动增量拉取，而不是永久停用同步。
+      sync.setForeground(true);
+      await sync.sync(automatic: true);
+      expect(requests, 5);
+      expect(await db.loadActiveShopId(), 'shop-a');
+    });
+  }
+
+  test('403后管理员恢复同一凭据，手动成功即恢复自动同步', () async {
+    final db = await online('approval-restored');
+    var requests = 0;
+    var approved = false;
+    final sync = service(db, MockClient((_) async {
+      requests++;
+      return approved ? emptyPull() : json({'detail': '待审批'}, 403);
+    }));
+    await sync.sync();
+    approved = true;
+    sync.setForeground(true);
+    await sync.sync(automatic: true);
+    expect(requests, 1);
+    await sync.sync();
+    expect(requests, 2);
+    sync.setForeground(true);
+    await sync.sync(automatic: true);
+    expect(requests, 3);
+    expect(await db.loadAuthToken(), 'token');
+  });
+
+  test('旧令牌迟到401不会阻塞新令牌的自动同步', () async {
+    final db = await online('late-auth-rejection');
+    final requested = Completer<void>();
+    final delayed = Completer<http.Response>();
+    var requests = 0;
+    final sync = service(db, MockClient((request) async {
+      requests++;
+      if (requests == 1) {
+        requested.complete();
+        return delayed.future;
+      }
+      expect(request.headers['Authorization'], 'Bearer renewed-token');
+      return emptyPull();
+    }));
+    final running = sync.sync();
+    await requested.future;
+    await db.saveAuthToken('renewed-token');
+    delayed.complete(json({'detail': '旧令牌失效'}, 401));
+    await running;
+    sync.setForeground(true);
+    await sync.sync(automatic: true);
+    expect(requests, 2);
+    expect(sync.message, contains('本轮增量已处理'));
+    expect(await db.loadAuthToken(), 'renewed-token');
+  });
+  test('认证暂停仍更新本机待同步数量，不重复发出请求', () async {
+    final db = await online('blocked-local-count');
+    var requests = 0;
+    final sync = service(db, MockClient((_) async {
+      requests++;
+      return json({'detail': '过期'}, 401);
+    }));
+    await sync.sync();
+    expect(sync.pending, 0);
+    await inbound(db);
+    await sync.sync(automatic: true);
+    expect(requests, 1);
+    expect(sync.pending, await db.pendingSyncCount());
+    expect(sync.pending, greaterThan(0));
+    expect(sync.message, contains('登录已过期'));
+  });
+
+  test('手动重试撞上认证自动跳过时仍实际发送一次请求', () async {
+    final db = await online('blocked-manual-race');
+    var requests = 0;
+    var approved = false;
+    final sync = service(db, MockClient((_) async {
+      requests++;
+      return approved ? emptyPull() : json({'detail': '待审批'}, 403);
+    }));
+    await sync.sync();
+    approved = true;
+    final automatic = sync.sync(automatic: true);
+    final manual = sync.sync();
+    await Future.wait([automatic, manual]);
+    expect(requests, 2);
+    expect(sync.lastSuccess, isNotNull);
+    expect(sync.message, contains('本轮增量已处理'));
+  });
+
+  test('手动鉴权已恢复后解析失败不继续锁住自动同步', () async {
+    final db = await online('auth-restored-malformed');
+    var requests = 0;
+    final sync = service(db, MockClient((_) async {
+      requests++;
+      if (requests == 1) return json({'detail': '过期'}, 401);
+      if (requests == 2) return http.Response('not-json', 200);
+      return emptyPull();
+    }));
+    await sync.sync();
+    await sync.sync();
+    expect(sync.message, contains('校验失败'));
+    await sync.sync(automatic: true);
+    expect(requests, 3);
+    expect(sync.lastSuccess, isNotNull);
+  });
+
+  test('网络异常只显示简短中文，不泄露接口地址和内部异常', () async {
+    final db = await online('friendly-offline');
+    final sync = service(db, MockClient((_) async {
+      throw http.ClientException(
+          'SocketException: http://private.test/api/sync?cursor=9');
+    }));
+    await sync.sync();
+    expect(sync.message, '当前离线，可继续使用本机数据；恢复网络后自动同步');
+    for (final internal in [
+      'ClientException',
+      'SocketException',
+      'http://',
+      'cursor='
+    ]) {
+      expect(sync.message, isNot(contains(internal)));
+    }
+  });
 }

@@ -25,7 +25,7 @@ import 'scanner_page.dart';
 import 'product_price_page.dart';
 import 'data_management_page.dart';
 import 'ai_config_page.dart';
-import 'login_page.dart';
+import 'workspace_settings_page.dart';
 import 'express_inbound_page.dart';
 import 'custom_camera_page.dart';
 import 'ai_rebuild_warehouse_page.dart';
@@ -63,6 +63,7 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
   ShopSyncService? _shopSync;
   ExpressProcessingQueue? _registeredQueue;
   int _syncVersion = 0;
+  bool _openingWorkspaceSettings = false;
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
@@ -1078,30 +1079,20 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
                   ),
                 ),
                 title: Text(
-                  _authMode == 'online' ? '切换商铺与账户' : '连接云端同步版',
+                  _openingWorkspaceSettings ? '正在准备切换…' : '工作区与账户',
                   style: const TextStyle(
                       fontSize: 14,
                       fontFamily: 'monospace',
                       fontWeight: FontWeight.bold),
                 ),
-                subtitle: Text(
-                  _authMode == 'online'
-                      ? '安全注销当前登录凭证并重新选择店铺'
-                      : '登录云端账户以开启多端工作区协同',
-                  style: const TextStyle(
+                subtitle: const Text(
+                  '切换已保存店铺或本地模式，下次启动默认进入',
+                  style: TextStyle(
                       fontSize: 11,
                       fontFamily: 'monospace',
                       color: Colors.grey),
                 ),
-                onTap: () async {
-                  await _database.clearAuthCredentials();
-                  if (mounted) {
-                    Navigator.of(context).pushReplacement(
-                      MaterialPageRoute(
-                          builder: (context) => const LoginPage()),
-                    );
-                  }
-                },
+                onTap: _openWorkspaceSettings,
               ),
             ],
           ),
@@ -2517,7 +2508,8 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
                                   _authMode == 'online'
                                       ? '仅在本机隐藏这笔入库单；其他手机和云端保留，店铺库存不变。可在店铺同步中恢复显示。'
                                       : '确认要删除这笔入库单据及对应的库存吗？该操作不可撤销！',
-                                  style: const TextStyle(fontFamily: 'monospace')),
+                                  style:
+                                      const TextStyle(fontFamily: 'monospace')),
                               actions: [
                                 TextButton(
                                     onPressed: () => Navigator.pop(ctx, false),
@@ -3307,6 +3299,32 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
     return storedFile.path;
   }
 
+  Future<void> _openWorkspaceSettings() async {
+    if (_openingWorkspaceSettings) return;
+    setState(() => _openingWorkspaceSettings = true);
+    try {
+      await _shopSync?.pauseAndDrain();
+      if (!mounted) return;
+      final changed = await Navigator.of(context).push<bool>(MaterialPageRoute(
+          builder: (_) => WorkspaceSettingsPage(database: _database)));
+      if (!mounted) return;
+      if (changed == true) {
+        Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const AppHome()));
+      } else {
+        _shopSync?.resume();
+      }
+    } catch (error) {
+      _shopSync?.resume();
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('无法切换工作区，原数据已保留：$error')));
+      }
+    } finally {
+      if (mounted) setState(() => _openingWorkspaceSettings = false);
+    }
+  }
+
   Future<void> _loadShopInfo() async {
     final shopName = await _database.loadActiveShopName();
     final authMode = await _database.loadAuthMode();
@@ -3428,7 +3446,8 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
                     activeColor: Colors.black,
                     title: Text(
                         _authMode == 'online' ? '隐藏本机库存列表' : '仅将所有商品库存归零/清空',
-                        style: const TextStyle(fontSize: 13, color: Colors.black)),
+                        style:
+                            const TextStyle(fontSize: 13, color: Colors.black)),
                     subtitle: const Text('仅重置当前库存量，不影响商品目录',
                         style: TextStyle(fontSize: 11, color: Colors.grey)),
                     value: clearStockOnly,
@@ -3447,7 +3466,8 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
                     activeColor: Colors.black,
                     title: Text(
                         _authMode == 'online' ? '同时隐藏本机商品目录' : '连带删除商品库中的商品目录',
-                        style: const TextStyle(fontSize: 13, color: Colors.black)),
+                        style:
+                            const TextStyle(fontSize: 13, color: Colors.black)),
                     subtitle: const Text('彻底清除所有的商品基础目录信息',
                         style: TextStyle(fontSize: 11, color: Colors.grey)),
                     value: deleteProducts,

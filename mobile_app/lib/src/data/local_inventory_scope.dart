@@ -51,8 +51,10 @@ extension _InventoryScope on LocalInventoryDatabase {
           'updated_at': DateTime.now().toIso8601String()
         },
         conflictAlgorithm: ConflictAlgorithm.ignore);
-    _openedScope = await _selectedScope();
-    _openedOnline = (await loadAuthMode()) == 'online';
+    // 库文件与共享/本地语义取自同一份快照，切换时也不能混用两套选择。
+    final selection = await _authSnapshot();
+    _openedScope = _scopeFromSnapshot(selection);
+    _openedOnline = selection[LocalInventoryDatabase._authModeKey] == 'online';
     final dbPath = path.join(directory.path,
         'inventory_${sha256.convert(utf8.encode(_openedScope!))}.db');
     final legacyScope = await _setting('legacy_scope');
@@ -98,23 +100,7 @@ extension _InventoryScope on LocalInventoryDatabase {
       await File(stagingPath).rename(dbPath);
     }
 
-    _database = await factory.openDatabase(dbPath,
-        options: OpenDatabaseOptions(
-            version: LocalDatabaseSchema.version,
-            onCreate: (db, _) async {
-              for (final sql in LocalDatabaseSchema.createStatements) {
-                await db.execute(sql);
-              }
-            },
-            onUpgrade: (db, old, current) async {
-              for (var version = old + 1; version <= current; version++) {
-                for (final sql
-                    in LocalDatabaseSchema.migrationStatements[version] ??
-                        <String>[]) {
-                  await db.execute(sql);
-                }
-              }
-            }));
+    _database = await factory.openDatabase(dbPath, options: _businessOptions());
     await _ensureSync();
   }
 
@@ -124,10 +110,48 @@ extension _InventoryScope on LocalInventoryDatabase {
     return rows.isEmpty ? '' : rows.first['value'] as String;
   }
 
-  Future<String> _selectedScope() async {
-    if (await loadAuthMode() != 'online') return 'offline';
-    return '${_server(await loadSyncServerUrl())}\n${await loadActiveShopId()}';
+  OpenDatabaseOptions _businessOptions({bool singleInstance = true}) =>
+      OpenDatabaseOptions(
+        version: LocalDatabaseSchema.version,
+        singleInstance: singleInstance,
+        onCreate: (db, _) async {
+          for (final sql in LocalDatabaseSchema.createStatements) {
+            await db.execute(sql);
+          }
+        },
+        onUpgrade: (db, old, current) async {
+          for (var version = old + 1; version <= current; version++) {
+            for (final sql
+                in LocalDatabaseSchema.migrationStatements[version] ??
+                    <String>[]) {
+              await db.execute(sql);
+            }
+          }
+        },
+      );
+
+  Future<Map<String, String>> _authSnapshot() async => {
+        for (final row in await _settings
+            .query('app_settings', where: 'key IN (?,?,?,?,?,?)', whereArgs: [
+          LocalInventoryDatabase._authModeKey,
+          LocalInventoryDatabase._syncServerUrlKey,
+          LocalInventoryDatabase._authTokenKey,
+          LocalInventoryDatabase._activeShopIdKey,
+          LocalInventoryDatabase._activeShopNameKey,
+          'sync_device_id'
+        ]))
+          row['key'] as String: row['value'] as String,
+      };
+
+  String _scopeFromSnapshot(Map<String, String> config) {
+    if (config[LocalInventoryDatabase._authModeKey] != 'online') {
+      return 'offline';
+    }
+    return '${_server(config[LocalInventoryDatabase._syncServerUrlKey] ?? '')}\n${config[LocalInventoryDatabase._activeShopIdKey] ?? ''}';
   }
+
+  Future<String> _selectedScope() async =>
+      _scopeFromSnapshot(await _authSnapshot());
 
   Future<bool> _isOnlineWorkspace() async =>
       _openedScope == null ? await loadAuthMode() == 'online' : _openedOnline;

@@ -6,10 +6,12 @@ import '../ocr/ai_inbound_extractor.dart';
 
 class AiRebuildWarehousePage extends StatefulWidget {
   final LocalInventoryDatabase database;
+  final AiInboundExtractor? extractor;
 
   const AiRebuildWarehousePage({
     super.key,
     required this.database,
+    this.extractor,
   });
 
   @override
@@ -18,10 +20,11 @@ class AiRebuildWarehousePage extends StatefulWidget {
 
 class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
   late final AiInboundExtractor _aiInboundExtractor =
-      AiInboundExtractor(widget.database);
+      widget.extractor ?? AiInboundExtractor(widget.database);
 
   List<InboundReceipt> _receipts = [];
   bool _isLoading = true;
+  bool _remoteAvailable = false;
 
   // 批量/单体分析状态
   bool _isProcessing = false;
@@ -41,6 +44,7 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
   Future<void> _loadReceipts() async {
     setState(() => _isLoading = true);
     try {
+      final remoteAvailable = await widget.database.loadSyncContext() != null;
       final allReceipts = await widget.database.loadInboundHistory();
       // 仅筛选带物理图片的单据
       final targetReceipts = allReceipts.where((r) {
@@ -51,7 +55,9 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
       // 按时间倒序排列
       targetReceipts.sort((a, b) => b.createdAt.compareTo(a.createdAt));
 
+      if (!mounted) return;
       setState(() {
+        _remoteAvailable = remoteAvailable;
         _receipts = targetReceipts;
       });
     } catch (e) {
@@ -61,13 +67,27 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
         );
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
+    }
+  }
+
+  Future<bool> _canAnalyze() async {
+    try {
+      await _aiInboundExtractor.ensureRemoteAvailable();
+      return mounted;
+    } on RemoteAiUnavailable catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('$error')));
+      }
+      return false;
     }
   }
 
   // 运行单个单据的重新分析
   Future<void> _analyzeSingle(InboundReceipt receipt) async {
-    if (_isProcessing) return;
+    if (_isProcessing || !await _canAnalyze()) return;
+    if (!mounted) return;
 
     setState(() {
       _isProcessing = true;
@@ -97,11 +117,6 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
       }
     } catch (e) {
       if (!mounted) return;
-      await widget.database.overwriteInboundItems(
-        receiptId: receipt.id,
-        items: const [],
-        ocrStatus: OcrStatus.failed,
-      );
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('分析失败: $e')),
@@ -121,7 +136,8 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
 
   // 运行批量重整
   Future<void> _runBatch({required bool onlyUnsettled}) async {
-    if (_isProcessing) return;
+    if (_isProcessing || !await _canAnalyze()) return;
+    if (!mounted) return;
 
     final targets = onlyUnsettled
         ? _receipts.where((r) => !r.isSettled).toList()
@@ -172,11 +188,6 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
         }
       } catch (e) {
         if (!mounted) break;
-        await widget.database.overwriteInboundItems(
-          receiptId: receipt.id,
-          items: const [],
-          ocrStatus: OcrStatus.failed,
-        );
         if (mounted) {
           setState(() {
             _failCount++;
@@ -191,7 +202,7 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
     // 局部更新已在循环内完成，直接完成状态提示
     setState(() {
       _currentlyProcessingId = null;
-      _statusMessage = '重整成功！已局部更新对应库存与台账。';
+      _statusMessage = '处理完成：成功 $_successCount 笔，失败 $_failCount 笔。失败单据保留原内容。';
     });
 
     await Future.delayed(const Duration(seconds: 1));
@@ -348,6 +359,12 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
       ),
       body: Column(
         children: [
+          if (!_isLoading && !_remoteAvailable)
+            const Padding(
+              padding: EdgeInsets.all(16),
+              child: Text(
+                  '完全本地模式不连接服务器，云端 AI 图片重整不可用。请返回入库页面使用本机 OCR；原单据与库存保持不变。'),
+            ),
           // 1. 顶部进度/状态展示看板 (仅在处理中或刚处理完时显示)
           if (_isProcessing || _statusMessage.isNotEmpty)
             Container(
@@ -613,7 +630,8 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
                                                   const EdgeInsets.symmetric(
                                                       horizontal: 10),
                                             ),
-                                            onPressed: _isProcessing
+                                            onPressed: _isProcessing ||
+                                                    !_remoteAvailable
                                                 ? null
                                                 : () => _analyzeSingle(receipt),
                                             child: const Text('重新分析',
@@ -651,7 +669,7 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
                           shape: const RoundedRectangleBorder(
                               borderRadius: BorderRadius.zero),
                         ),
-                        onPressed: _isProcessing
+                        onPressed: _isProcessing || !_remoteAvailable
                             ? null
                             : () => _runBatch(onlyUnsettled: true),
                         child: const Text(
@@ -674,7 +692,7 @@ class _AiRebuildWarehousePageState extends State<AiRebuildWarehousePage> {
                               borderRadius: BorderRadius.zero),
                           elevation: 0,
                         ),
-                        onPressed: _isProcessing
+                        onPressed: _isProcessing || !_remoteAvailable
                             ? null
                             : () => _runBatch(onlyUnsettled: false),
                         child: const Text(

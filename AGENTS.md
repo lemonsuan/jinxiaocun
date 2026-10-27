@@ -29,3 +29,6 @@ Managed by Trellis. Edits outside this block are preserved; edits inside may be 
 - **产物统一存放目录**：项目编译打包生成的安装包/构建产物（如 Android APK），必须统一存放在根目录的 `/Users/xcy/Project/商品管理系统/releases` 目录下。
 - **强制版本号命名**：编译发布前必须检查并递增 `pubspec.yaml`（或相应项目配置）中的版本号（如 `1.0.4+6`），编译生成的安装包必须以 `app-v<版本号>.apk`（例如 `app-v1.0.4+6.apk`）命名并归档至 `releases/` 目录，禁止产生无版本号的散乱产物。
 
+
+# 代码注释与说明语言
+- 新增或修改的代码注释、备注和说明统一使用中文；既有未涉及的内容不因语言要求进行无关批量改写。
