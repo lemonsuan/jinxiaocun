@@ -31,3 +31,5 @@
 - `adb devices -l` is empty. Android cold/warm/P95 latency, peak PSS, real-receipt accuracy, capture interference and low-light behavior remain **pending**. Keep task in_progress; do not claim fastest inference or lowest phone RAM.
 - Normalized line widths over3,200 and more than1,000 accepted boxes return recoverable errors instead of truncated success.
 - No separate table-structure model is packaged. User confirmed regular SKU/name/quantity columns without merged cells. Native row geometry is tested; field heuristics need real receipt comparison before simplification. SLANet_plus is a possible separate extension, outside this approved engine replacement.
+
+Dictionary whitespace note: the final line is a required ordinary-space class, not a formatting defect. A model-directory .gitattributes entry preserves exact bytes and exempts only this dictionary data from end-of-line/end-of-file whitespace checks. Model hashes remain unchanged.
