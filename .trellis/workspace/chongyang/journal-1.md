@@ -571,3 +571,37 @@ Flutter/Django/Vue三端完成增量同步、持久重试与冲突、私有图�
 ### Next Steps
 
 - 更新目标后端迁移及Web后，用两台真机验收同店同步、断网恢复与相机/OCR表现。
+
+
+## Session 18: 默认店铺离线直达完成并启动前后端
+<!-- trellis-session: v=2 fp=cab35edd36939472 -->
+
+**Date**: 2026-10-28
+**Task**: 默认店铺离线直达完成并启动前后端
+**Branch**: `codex/shop-incremental-sync`
+
+### Summary
+
+默认记住工作区，历史店铺离线进入与纯本地禁网完成，APK1.0.8+10归档；按用户要求启动本机前后端并备份补齐同步迁移。
+
+### Main Changes
+
+- 持久历史和原子选择、设置取消保留、认证暂停及友好中文离线状态；新增备注说明中文。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `b6a4890` | feat(mobile): 默认直达已保存店铺并支持离线与完全本地模式 |
+
+### Testing
+
+- [OK] Flutter104及真实后端联调1通过，API36隔离模拟器实际断网冷启动/切换/最终APK验证通过；分析零错误，原28项既有问题保留。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 前端5173、后端8000及PostgreSQL保持运行；两台物理手机和原相机/OCR仍待真机验收。
