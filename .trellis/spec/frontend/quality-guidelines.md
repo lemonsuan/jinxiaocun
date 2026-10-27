@@ -73,74 +73,58 @@ Check that UI state survives app restart through SQLite, native bridge failures 
 
 ### 1. Scope / Trigger
 
-Use this contract when changing Flutter-to-native OCR, bundled OCR assets, PP-OCRv5 LiteRT/Paddle Lite/OpenCV integration, or product-list table post-processing.
+Applies to Android OCR, bundled model/runtime assets, the Flutter native bridge and product-list postprocessing. The active Android implementation is **PP-OCRv6_small with a reduced ARM64 CPU ONNX Runtime 1.21.1**. The earlier PP-OCRv5 LiteRT implementation is a historical rollback version, not the current packaged engine. No complete iOS project exists in this checkout; do not claim iOS verification.
 
 ### 2. Signatures
 
-Flutter method channel: `inventory_app/paddle_ocr`.
-
-Request: `recognizeTable` with `{"imagePath": "<absolute local image path>", "rowMergeTolerance": <double 0.20..0.60>}`. `rowMergeTolerance` controls native row grouping strictness; lower values make Android less likely to merge vertically adjacent product rows. Default is `0.30`.
-
-Response: `{"rows": List<List<String>>, "rawText": String}` where each inner list is an editable draft row/cell sequence, not confirmed inventory. `rawText` is the native recognizer's full text output when available and may be empty; Flutter should show it in the editable OCR review box before or alongside any parsed product draft.
+Channel: `inventory_app/paddle_ocr`; method `recognizeTable`; request `{"imagePath":"<absolute local path>","rowMergeTolerance":0.30}`. Tolerance is clamped to0.20..0.60, default0.30. Response remains `{"rows":List<List<String>>,"rawText":String}`; a failure is a recoverable PlatformException, never an exception stack trace returned as OCR text.
 
 ### 3. Contracts
 
-Android owns bundled PP-OCRv5 LiteRT/TFLite OCR through `android/app/src/main/cpp`, `android/app/src/main/assets/models`, and the arm64 LiteRT runtime under `litert_cc_sdk`. iOS currently owns the local CocoaPods pod `ios/LocalPods/InventoryPaddleOcr`, including Paddle Lite, OpenCV, and `InventoryPaddleOcrResources.bundle`.
-
-Native code may perform text recognition and row/cell grouping, returning editable draft rows and the raw recognizer text through the method channel. Dart remains responsible for custom product-row cleanup in `mobile_app/lib/src/ocr/pp_structure_post_processor.dart`, and SQLite remains responsible for confirmed stock writes. Android row grouping must consume the caller-provided `rowMergeTolerance` instead of hard-coding a single line-spacing threshold.
-
-Product-list cleanup must treat each line that starts with a product code as a new editable draft item. If the line has no standalone quantity cell, default the draft quantity to `1` instead of merging the line into the previous product. OCR-recognized `订单号` text may prefill the inbound `商家单号` field only when the user has not already typed a value there.
-
-OCR-recognized `订单号` is displayed as optional `商家单号`, not as the required inbound `快递单号`. Inbound `返利单号` and outbound `物流单号` are optional metadata fields; UI may show and search them, but confirmation must remain valid when they are empty.
-
-Android must not load or package app-local Paddle Lite or OpenCV for OCR. Xiaomi Android 16 devices showed a non-catchable native crash in `CreatePaddlePredictor`; Android OCR should use the PP-OCRv5 LiteRT/TFLite path and keep the editable manual path when recognition returns no rows.
-
-When Android OCR is implemented with PP-OCRv5 LiteRT, do not keep stale Paddle OCR `.nb` model assets, PaddleLite folders, or OpenCV folders in the Android app module. Verify the release APK has `ocr_det_fp16.tflite`, `ocr_rec_fp16.tflite`, `keys_v5.txt`, `libLiteRt.so`, `libLiteRtOpenClAccelerator.so`, and arm64 `libinventory_ocr.so`, with no `libpaddle_light_api_shared.so`, `PP-OCRv5_mobile`, or `SLANet` entries.
-
-The real Android OCR runtime is arm64-only. Inspect the final APK native library directories: Flutter can seed build-type ABI filters that override `defaultConfig` filters, so an arm64 release must explicitly clear/select the release build-type filters; `--target-platform android-arm64` alone can leave other dependency ABIs packaged. If Flutter/Gradle still configures `armeabi-v7a` or `x86_64`, those ABIs may compile a no-op JNI stub so the APK builds, but only `arm64-v8a` devices should be treated as OCR-capable.
-
-When adding source files to the iOS local pod, rerun `pod install` from `mobile_app/ios`; otherwise Xcode may compile stale pod project files and fail at link time with missing C++ symbols.
+- Assets: `ppocrv6_small_det.ort`, `ppocrv6_small_rec.ort`, `keys_v6_small.txt`, and versioned `models/manifest.json` with actual size/SHA256. Model files are official FP32 small models optimized offline for ARM using ORT1.21.1; do not relabel v5 or silently substitute tiny/quantized weights.
+- Detector input is BGR FP32 NCHW `[1,3,H,W]`, bounded maxside960, dimensions aligned32, normalization scale1/255, mean[0.485,0.456,0.406], std[0.229,0.224,0.225]. DB defaults come from the actual model config: pixel0.2, box0.45, expansion1.4. Detection returns boxes in source-image coordinates.
+- Recognizer input is BGR FP32 NCHW `[1,3,48,W]`, batch1 and dynamic width up to3200. Output is softmax `[1,T,18710]`. Official18708characters plus a trailing ordinary space produce18709dictionary lines; blank is outputindex0 and dictionaryline i maps to class i+1. Never trim away the space or reuse v5 keys.
+- Runtime: `cpp/onnxruntime/lib/arm64-v8a/libonnxruntime.so`, CPU-only basicminimal and reduced operator/types, exceptions retained,16KB LOADalignment. Preserve exact build manifest, license/notices, required-operator config and reproducible `tools/ocr` scripts. Do not disable exceptions/abort on recoverable errors, add a full GPU runtime, or reintroduce PaddleLite/OpenCV for this path.
+- Kotlin owns row grouping with caller tolerance and deskewed source coordinates. A model recognizing each cell correctly is not sufficient: assert that SKU/name/quantity stay in the same row, including tilted documents. Native OCR is text/geometry, not a full table-structure model.
+- OcrService has one CPU lane with2pending slots, reuses sessions within a burst and releases after10s idle. MainActivity's45s request deadline propagates as remaining time to core (max35s); per-request ORT RunOptions and a joined watchdog terminate timed-out work. Check cancellation before preprocessing/detection/each line; late results deliver at most once.
+- Core enforces bounded dimensions/boxes/line width; more than1000accepted boxes or normalized line width over3200 fails recoverably instead of silently returning a truncated receipt. Release detector output before per-line recognition.
+- Keep SQL and product parsing out of widgets/native code. Dart owns `pp_structure_post_processor.dart`; SQLite owns confirmed stock writes. Product parsing still treats a new code-prefixed line as a new draft and defaults missing quantity to1 under the existing business contract. Any change to this heuristic needs its own sample-backed requirement.
+- OCR `订单号` may prefill optional `商家单号` only if the field is empty; it is not the required快递单号. Optional inbound返利单号/outbound物流单号 must not block confirmation. Outbound proof photos are evidence only, not OCR inputs.
+- Raw OCR remains editable review material. Do not expand the existing express workflow's legacy direct-stock behavior while replacing the engine; inventory workflow changes require separate scope.
 
 ### 4. Validation & Error Matrix
 
-* Missing or unreadable `imagePath` -> return empty rows or a recoverable platform error; do not write stock.
-* Missing OCR model/resource files -> return empty rows or a recoverable platform error; do not write stock.
-* Missing or out-of-range `rowMergeTolerance` -> clamp to the supported range and continue OCR.
-* OCR succeeds but rows are empty -> return `rawText` if available, keep the receipt editable for manual entry, and do not block inbound when a valid SF tracking number exists.
-* PP-OCRv5 returns text boxes without table structure -> native code must group tokens into rows/cells; do not fail the whole receipt if text exists.
-* Native OCR returns `rawText` but product cleanup finds no rows -> Flutter must put `rawText` into the editable text field and let the user correct it manually.
-* Android Paddle Lite crashes in `libpaddle_light_api_shared.so` on a device family -> do not reintroduce Android Paddle OCR; use PP-OCRv5 LiteRT/TFLite and return empty rows while keeping manual editable input if recognition still fails.
-* OCR rows parse into invalid quantities -> keep the draft editable and require user correction.
+- Missing/unreadable/corrupt image or model, manifest/hash mismatch -> structured recoverable error, retained image/manual path; no diagnostic text as a product.
+- Valid image with no text -> empty rows/rawText; allow manual entry and the existing valid-SF empty-item path.
+- Timeout/queue full -> OCR_TIMEOUT/OCR_BUSY or other structured platform error; cancelled native work must free the serial lane and allow the next request.
+- Width/box bounds exceeded -> recoverable error; do not partially confirm a clipped list.
+- Invalid tolerance -> clamp and continue. Recognized text with no product draft -> preserve rawText for editing.
+- Pure text boxes without table structure -> deskew/group rows by source geometry and sort columns; do not invent merged-cell HTML or silently add another model.
+- Model bytes/runtime linkage/class-count mismatch -> fail before recognition; do not fall back to a stale v5 cache.
 
-### 5. Good/Base/Bad Cases
+### 5. Good / Base / Bad Cases
 
-* Good: camera image -> native PP-OCRv5 LiteRT text rows/cells -> Dart post-processing -> editable inbound draft -> user confirmation writes ledger.
-* Base: PP-OCRv5 has no explicit table structure but text exists -> native row/cell grouping fallback -> editable draft.
-* Base: native OCR text exists but product-row parsing fails -> editable text box contains raw OCR text and the user can press "生成商品草稿" after correction.
-* Base: OCR returns no rows, user manually enters product rows, then confirms inbound normally.
-* Bad: native OCR output directly inserts `inbound_items`, `stock_ledger`, or `warehouse_stock`.
+Good: image -> bounded v6det -> source-coordinate boxes -> dynamic-width v6rec -> correct CTC dictionary -> skew-aware row/cell grouping -> Dart editable fields -> existing confirmation workflow.
+
+Base: text is readable but product cleanup fails -> editable rawText/manual corrections remain available. Forms may need separate structure extraction; PP-OCRv6 alone does not eliminate column matching or field validation.
+
+Bad: using a v5 dictionary for v6; outputting an error stack as rawText; clipping long lines/large tables and reporting success; freeing an engine while Run is active; returning timeout but leaving Run to block the queue.
 
 ### 6. Tests Required
 
-Run `dart format lib test`, `flutter analyze`, `flutter test`, and the platform build touched by the change. Post-processing tests must cover header/footer filtering, quantity extraction, and multiline product names. MethodChannel tests must assert `rawText` is preserved for editable review and falls back to joined rows when absent. Native bridge changes require at least a release build for the changed platform.
+Run Flutter formatting/analyzer/tests and Kotlin/native checks, plus an ARM64 release build. Native fixture harness must link the **production** C++ core and execute the shipped ORT models on Chinese/English/numeric clear/skewed/long-line/wired-table/blank fixtures. Test0/1/20ms cancellation and subsequent same-engine recovery. Model preparation compares original ONNX and ORT outputs at multiple dynamic sizes. Kotlin grouping tests must include actual noisy v6 detections, not only ideal equal-angle boxes.
+
+Inspect the final APK: only the selected v6models/keys and `libonnxruntime.so`/`libinventory_ocr.so` for OCR; no old v5TFLite/keys, LiteRT/OpenCL, PaddleLite/OpenCV or accidental extraABIs. Runtime source pin, artifact hashes and licenses must be available. Host correctness/timing/RSS is not Android latency/PSS; no connected phone means physical performance and receipt acceptance remain pending.
 
 ### 7. Wrong vs Correct
 
-Wrong: upgrading Android NDK/CMake because a plugin recommends it without verifying LiteRT native links and APK contents.
+Wrong: blindly copy the official demo with full runtime/OpenCV, keep old LiteRT packaged, and assume a new model fixes all quantity rules.
 
-Correct: keep the pinned NDK/CMake until `flutter build apk --release` proves `libinventory_ocr.so` links with LiteRT and the APK contains the expected arm64 runtime libraries.
+Correct: keep the bridge stable, package a model-specific reduced runtime and matching dictionary, verify actual inference/row association, then separately evaluate business parsing on real receipts.
 
-Wrong: leaving Android Paddle OCR `.nb` assets, PaddleLite SDK, or OpenCV SDK packaged after switching to PP-OCRv5 LiteRT.
+Wrong: hard-code640x640/320-wide v5 assumptions or report model storage as phone RAM.
 
-Correct: remove Android Paddle OCR native build/resources and verify the release APK contains LiteRT OCR assets but no Paddle/OpenCV OCR artifacts.
-
-Wrong: adding PP-Structure/SLANet output parsing inside a Flutter widget.
-
-Correct: keep native payload parsing under `src/platform` and product cleanup under `src/ocr`, then show only editable draft rows in UI.
-
-Wrong: only returning grouped `rows` from native OCR, so users see an empty text box when grouping or product parsing fails.
-
-Correct: return `rawText` plus grouped `rows`, show `rawText` in the editable OCR review field, and treat parsed product rows as a convenience draft only.
+Correct: derive layout/classes from verified v6 assets, bound dynamic processing explicitly, and attach real measurement scope to every resource claim.
 
 ## Scenario: Continuous Express Camera and Trustworthy Capture Feedback
 

@@ -1,0 +1,33 @@
+{
+  "id": "ocr-v6-small",
+  "name": "ocr-v6-small",
+  "title": "PP-OCRv6 small端侧替换与轻量推理",
+  "description": "使用官方PP-OCRv6_small替换现有v5端侧OCR，精简模型与推理依赖，保持单据识别接口和库存流程兼容",
+  "status": "in_progress",
+  "dev_type": "fullstack",
+  "scope": "mobile_app",
+  "package": null,
+  "priority": "P2",
+  "creator": "chongyang",
+  "assignee": "chongyang",
+  "createdAt": "2026-10-27",
+  "completedAt": null,
+  "branch": "codex/ocr-v6-small",
+  "base_branch": "master",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [],
+  "parent": null,
+  "relatedFiles": [
+    "mobile_app/android/app/src/main/cpp/ocr_v6_engine.cpp",
+    "mobile_app/android/app/src/main/cpp/ocr_v6_jni.cpp",
+    "mobile_app/android/app/src/main/kotlin/com/xcy/inventory/inventory_mobile_app/ocr/PaddleOcrEngine.kt",
+    "mobile_app/tools/ocr/README.md",
+    "mobile_app/test/native_ocr/verify_v6.py",
+    "mobile_app/pubspec.yaml"
+  ],
+  "notes": "User-approved v6_small replacement implemented and locally validated:41Fluttertests,3Kotlin grouping tests,5production-core actual-model fixtures, conversion equivalence and cancellation recovery. APK1.0.6+8 archived; spec migrated. Keepin_progress:AndroiddevicePSS/latency/realreceipt acceptancepending(noadbdevice). User asked abouttablemodels; confirmedregularcolumns; separateSLANetnotpackaged.",
+  "meta": {}
+}

@@ -1,0 +1,431 @@
+{
+  "scope": "Host production-core correctness; not Android performance",
+  "model_files": {
+    "det": "ppocrv6_small_det.ort",
+    "rec": "ppocrv6_small_rec.ort",
+    "keys": "keys_v6_small.txt"
+  },
+  "results": [
+    {
+      "fixture": "clear_list.png",
+      "passed": true,
+      "missing": [],
+      "missing_cells": [],
+      "text": "商品清单洗发水A10013护发素12B2002沐浴露C30035",
+      "detections": [
+        {
+          "text": "商品清单",
+          "confidence": 0.999594,
+          "box": {
+            "centerX": 183.7,
+            "centerY": 80.62,
+            "width": 242.211,
+            "height": 76.5161,
+            "angle": 0.387312
+          }
+        },
+        {
+          "text": "洗发水",
+          "confidence": 0.999948,
+          "box": {
+            "centerX": 515,
+            "centerY": 194.542,
+            "width": 184.821,
+            "height": 79.6105,
+            "angle": 0
+          }
+        },
+        {
+          "text": "A1001",
+          "confidence": 0.999895,
+          "box": {
+            "centerX": 149.318,
+            "centerY": 203.539,
+            "width": 185.378,
+            "height": 88.5079,
+            "angle": 0.738444
+          }
+        },
+        {
+          "text": "3",
+          "confidence": 0.992851,
+          "box": {
+            "centerX": 1044.38,
+            "centerY": 203.604,
+            "width": 75.7764,
+            "height": 45.855,
+            "angle": 90
+          }
+        },
+        {
+          "text": "护发素",
+          "confidence": 0.999975,
+          "box": {
+            "centerX": 513.75,
+            "centerY": 317.188,
+            "width": 190.673,
+            "height": 86.4754,
+            "angle": 0
+          }
+        },
+        {
+          "text": "12",
+          "confidence": 0.996128,
+          "box": {
+            "centerX": 1062.5,
+            "centerY": 323.229,
+            "width": 80.9111,
+            "height": 77.4167,
+            "angle": 90
+          }
+        },
+        {
+          "text": "B2002",
+          "confidence": 0.999973,
+          "box": {
+            "centerX": 152.499,
+            "centerY": 323.297,
+            "width": 185.065,
+            "height": 84.6201,
+            "angle": 0.692284
+          }
+        },
+        {
+          "text": "沐浴露",
+          "confidence": 0.999111,
+          "box": {
+            "centerX": 515.625,
+            "centerY": 439.229,
+            "width": 191.38,
+            "height": 90.7841,
+            "angle": 0
+          }
+        },
+        {
+          "text": "C3003",
+          "confidence": 0.999963,
+          "box": {
+            "centerX": 154.375,
+            "centerY": 442.25,
+            "width": 180.823,
+            "height": 79.3702,
+            "angle": 0
+          }
+        },
+        {
+          "text": "5",
+          "confidence": 0.999605,
+          "box": {
+            "centerX": 1044.38,
+            "centerY": 442.854,
+            "width": 74.6694,
+            "height": 49.7097,
+            "angle": 90
+          }
+        }
+      ],
+      "host_wall_seconds": 1.0134,
+      "host_metrics": {
+        "peak_rss_bytes": 188268544,
+        "wall_seconds": 0.173317,
+        "detection_ms": 89.9989,
+        "recognition_ms": 50.4724
+      }
+    },
+    {
+      "fixture": "skewed_list.png",
+      "passed": true,
+      "missing": [],
+      "missing_cells": [],
+      "text": "商品清单3洗发水A100112护发素B20025沐浴露C3003",
+      "detections": [
+        {
+          "text": "商品清单",
+          "confidence": 0.998648,
+          "box": {
+            "centerX": 191.878,
+            "centerY": 167.601,
+            "width": 244.594,
+            "height": 85.7562,
+            "angle": -4.42533
+          }
+        },
+        {
+          "text": "3",
+          "confidence": 0.994092,
+          "box": {
+            "centerX": 1058.25,
+            "centerY": 215.182,
+            "width": 74.7518,
+            "height": 48.3737,
+            "angle": 86.5252
+          }
+        },
+        {
+          "text": "洗发水",
+          "confidence": 0.999881,
+          "box": {
+            "centerX": 530.457,
+            "centerY": 253.23,
+            "width": 187.582,
+            "height": 85.517,
+            "angle": -3.84038
+          }
+        },
+        {
+          "text": "A1001",
+          "confidence": 0.99994,
+          "box": {
+            "centerX": 167.542,
+            "centerY": 291.241,
+            "width": 182.766,
+            "height": 85.9582,
+            "angle": -3.33439
+          }
+        },
+        {
+          "text": "12",
+          "confidence": 0.99557,
+          "box": {
+            "centerX": 1086.22,
+            "centerY": 335.278,
+            "width": 86.2133,
+            "height": 77.8331,
+            "angle": 85.5557
+          }
+        },
+        {
+          "text": "护发素",
+          "confidence": 0.999984,
+          "box": {
+            "centerX": 538.599,
+            "centerY": 372.196,
+            "width": 193.9,
+            "height": 93.3075,
+            "angle": -4.16256
+          }
+        },
+        {
+          "text": "B2002",
+          "confidence": 0.999961,
+          "box": {
+            "centerX": 180.515,
+            "centerY": 411.859,
+            "width": 184.641,
+            "height": 85.4272,
+            "angle": -3.42464
+          }
+        },
+        {
+          "text": "5",
+          "confidence": 0.999787,
+          "box": {
+            "centerX": 1078.89,
+            "centerY": 454.186,
+            "width": 76.709,
+            "height": 46.8245,
+            "angle": 84.451
+          }
+        },
+        {
+          "text": "沐浴露",
+          "confidence": 0.998657,
+          "box": {
+            "centerX": 550.864,
+            "centerY": 493.443,
+            "width": 194.622,
+            "height": 94.5897,
+            "angle": -2.80605
+          }
+        },
+        {
+          "text": "C3003",
+          "confidence": 0.999951,
+          "box": {
+            "centerX": 192.212,
+            "centerY": 531.459,
+            "width": 185.078,
+            "height": 87.9616,
+            "angle": -4.14586
+          }
+        }
+      ],
+      "host_wall_seconds": 0.1791,
+      "host_metrics": {
+        "peak_rss_bytes": 176160768,
+        "wall_seconds": 0.160893,
+        "detection_ms": 89.05,
+        "recognition_ms": 49.1006
+      }
+    },
+    {
+      "fixture": "long_line.png",
+      "passed": true,
+      "missing": [],
+      "missing_cells": [],
+      "text": "A1001清爽保湿修护洗发水家庭实惠补充装适合日常使用数量12",
+      "detections": [
+        {
+          "text": "A1001清爽保湿修护洗发水家庭实惠补充装适合日常使用数量12",
+          "confidence": 0.999877,
+          "box": {
+            "centerX": 697.5,
+            "centerY": 101.25,
+            "width": 1321.07,
+            "height": 48.5733,
+            "angle": 0
+          }
+        }
+      ],
+      "host_wall_seconds": 0.1136,
+      "host_metrics": {
+        "peak_rss_bytes": 139689984,
+        "wall_seconds": 0.098133,
+        "detection_ms": 18.1946,
+        "recognition_ms": 56.9856
+      }
+    },
+    {
+      "fixture": "blank.png",
+      "passed": true,
+      "missing": [],
+      "missing_cells": [],
+      "text": "",
+      "detections": [],
+      "host_wall_seconds": 0.1272,
+      "host_metrics": {
+        "peak_rss_bytes": 182845440,
+        "wall_seconds": 0.111887,
+        "detection_ms": 89.251,
+        "recognition_ms": 0.000166
+      }
+    },
+    {
+      "fixture": "wired_table.png",
+      "passed": true,
+      "missing": [],
+      "missing_cells": [],
+      "text": "商品清单洗发水3A1001护发素B200212沐浴露C30035",
+      "detections": [
+        {
+          "text": "商品清单",
+          "confidence": 0.999853,
+          "box": {
+            "centerX": 184.375,
+            "centerY": 87.6042,
+            "width": 252.107,
+            "height": 98.7369,
+            "angle": 0
+          }
+        },
+        {
+          "text": "洗发水",
+          "confidence": 0.999945,
+          "box": {
+            "centerX": 515.625,
+            "centerY": 203,
+            "width": 193.523,
+            "height": 101.314,
+            "angle": 0
+          }
+        },
+        {
+          "text": "3",
+          "confidence": 0.984685,
+          "box": {
+            "centerX": 1044.16,
+            "centerY": 208.349,
+            "width": 90.6931,
+            "height": 55.6526,
+            "angle": 84.7846
+          }
+        },
+        {
+          "text": "A1001",
+          "confidence": 0.99992,
+          "box": {
+            "centerX": 148.75,
+            "centerY": 212.667,
+            "width": 195.784,
+            "height": 109.541,
+            "angle": 0
+          }
+        },
+        {
+          "text": "护发素",
+          "confidence": 0.999672,
+          "box": {
+            "centerX": 514.188,
+            "centerY": 325.161,
+            "width": 199.656,
+            "height": 102.35,
+            "angle": 1.02555
+          }
+        },
+        {
+          "text": "B2002",
+          "confidence": 0.999972,
+          "box": {
+            "centerX": 151.75,
+            "centerY": 330.862,
+            "width": 191.726,
+            "height": 102.679,
+            "angle": 0.629354
+          }
+        },
+        {
+          "text": "12",
+          "confidence": 0.986082,
+          "box": {
+            "centerX": 1062.5,
+            "centerY": 331.083,
+            "width": 94.7465,
+            "height": 80.4792,
+            "angle": 90
+          }
+        },
+        {
+          "text": "沐浴露",
+          "confidence": 0.999141,
+          "box": {
+            "centerX": 516.25,
+            "centerY": 441.646,
+            "width": 192.73,
+            "height": 90.8808,
+            "angle": 0
+          }
+        },
+        {
+          "text": "C3003",
+          "confidence": 0.999952,
+          "box": {
+            "centerX": 155,
+            "centerY": 446.479,
+            "width": 187.321,
+            "height": 90.4857,
+            "angle": 0
+          }
+        },
+        {
+          "text": "5",
+          "confidence": 0.999045,
+          "box": {
+            "centerX": 1044.83,
+            "centerY": 448.154,
+            "width": 90.3875,
+            "height": 58.2224,
+            "angle": 85.073
+          }
+        }
+      ],
+      "host_wall_seconds": 0.1735,
+      "host_metrics": {
+        "peak_rss_bytes": 183877632,
+        "wall_seconds": 0.156628,
+        "detection_ms": 88.7457,
+        "recognition_ms": 45.2463
+      }
+    }
+  ],
+  "passed": true
+}

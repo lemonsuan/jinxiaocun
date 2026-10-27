@@ -67,6 +67,7 @@ flutter {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
     // Express intake shares one CameraX session for barcode analysis and still photos.
     implementation("androidx.camera:camera-camera2:1.6.0")
     implementation("androidx.camera:camera-lifecycle:1.6.0")

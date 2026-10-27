@@ -5,190 +5,116 @@ import android.graphics.Bitmap
 import android.graphics.BitmapFactory
 import android.graphics.Matrix
 import android.media.ExifInterface
-import android.util.Log
+import android.os.SystemClock
 import java.io.Closeable
 import java.io.File
 import java.io.FileOutputStream
-import kotlin.math.abs
+import java.security.MessageDigest
+import org.json.JSONObject
 import kotlin.math.max
-import kotlin.math.min
 
-/**
- * Android PP-OCRv5 LiteRT wrapper adapted from the PPOCRv5-Android demo.
- *
- * The Flutter contract stays table-shaped: native returns editable OCR rows and
- * raw text; Dart remains responsible for product-list cleanup.
- */
+/** Official PP-OCRv6_small models, executed by the reduced ARM64 CPU ORT runtime. */
 class PaddleOcrEngine(private val context: Context) : Closeable {
-
     companion object {
-        private const val TAG = "PaddleOcrEngine"
-        private const val MODELS_DIR = "models"
-        private const val DET_MODEL_FILE = "ocr_det_fp16.tflite"
-        private const val REC_MODEL_FILE = "ocr_rec_fp16.tflite"
-        private const val KEYS_FILE = "keys_v5.txt"
-        private const val CACHE_DIR = "ppocrv5_cache"
         private const val DEFAULT_ROW_MERGE_TOLERANCE = 0.30f
         private const val MIN_ROW_MERGE_TOLERANCE = 0.20f
         private const val MAX_ROW_MERGE_TOLERANCE = 0.60f
-
-        @Volatile
-        private var cacheInitialized = false
-
-        init {
-            System.loadLibrary("inventory_ocr")
-        }
-
-        private fun initializeCache(context: Context) {
-            if (cacheInitialized) return
-            val cacheDir = File(context.cacheDir, CACHE_DIR).apply { mkdirs() }
-            nativeSetCacheDir(cacheDir.absolutePath)
-            cacheInitialized = true
-        }
-
-        @JvmStatic
-        private external fun nativeSetCacheDir(cacheDir: String)
-
-        @JvmStatic
-        private external fun nativeShutdown()
+        private const val MAX_BITMAP_SIDE = 2048
+        init { System.loadLibrary("inventory_ocr") }
     }
 
     private var nativeHandle = 0L
 
-    fun initialize(): Boolean {
-        if (nativeHandle != 0L) return true
-
-        return try {
-            initializeCache(context)
-            val detModel = copyAssetToCache("$MODELS_DIR/$DET_MODEL_FILE")
-            val recModel = copyAssetToCache("$MODELS_DIR/$REC_MODEL_FILE")
-            val keys = copyAssetToCache("$MODELS_DIR/$KEYS_FILE")
-
-            nativeHandle = nativeCreate(
-                detModel,
-                recModel,
-                keys,
-                OcrAcceleratorType.GPU.value,
-            )
-            if (nativeHandle == 0L) {
-                Log.e(TAG, "nativeCreate returned null handle")
-                false
-            } else {
-                true
+    private fun initialize() {
+        if (nativeHandle != 0L) return
+        val manifest = context.assets.open("models/manifest.json").bufferedReader().use { JSONObject(it.readText()) }
+        val models = manifest.getJSONArray("models")
+        val paths = mutableMapOf<String, String>()
+        val cache = File(context.cacheDir, "ppocrv6_small").apply { check(isDirectory || mkdirs()) }
+        for (index in 0 until models.length()) {
+            val entry = models.getJSONObject(index)
+            val assetPath = entry.getString("assetPath")
+            val filename = entry.getString("targetPath")
+            require(filename == File(filename).name && !filename.contains("..")) { "Invalid model filename" }
+            val expectedSize = entry.getLong("sizeBytes")
+            val expectedHash = entry.getString("sha256")
+            val target = File(cache, filename)
+            if (!matches(target, expectedSize, expectedHash)) {
+                val temporary = File(cache, "$filename.pending")
+                try {
+                    context.assets.open(assetPath).use { input ->
+                        FileOutputStream(temporary).use { output -> input.copyTo(output); output.fd.sync() }
+                    }
+                    check(matches(temporary, expectedSize, expectedHash)) { "Model asset verification failed" }
+                    check(temporary.renameTo(target)) { "Cannot install verified model" }
+                } finally { temporary.delete() }
             }
-        } catch (e: Throwable) {
-            Log.e(TAG, "Initialize failed", e)
-            nativeHandle = 0L
-            false
+            paths[filename] = target.absolutePath
         }
+        nativeHandle = nativeCreate(
+            requireNotNull(paths["ppocrv6_small_det.ort"]),
+            requireNotNull(paths["ppocrv6_small_rec.ort"]),
+            requireNotNull(paths["keys_v6_small.txt"]),
+        )
+        check(nativeHandle != 0L) { "PP-OCRv6_small initialization failed" }
+        // The old cache is never reused and is safe to remove after the new runtime initializes.
+        File(context.cacheDir, "ppocrv5_cache").deleteRecursively()
+        listOf("ocr_det_fp16.tflite", "ocr_rec_fp16.tflite", "keys_v5.txt").forEach { File(context.cacheDir, it).delete() }
     }
 
-    fun recognize(
-        imagePath: String,
-        rowMergeTolerance: Float = DEFAULT_ROW_MERGE_TOLERANCE,
-    ): MlKitOcrResult {
-        if (!initialize()) {
-            return MlKitOcrResult(emptyList(), "ERROR: PP-OCRv5 LiteRT engine init failed")
+    private fun matches(file: File, size: Long, expected: String): Boolean {
+        if (!file.isFile || file.length() != size) return false
+        val digest = MessageDigest.getInstance("SHA-256")
+        file.inputStream().buffered().use { stream ->
+            val buffer = ByteArray(65536)
+            while (true) { val read = stream.read(buffer); if (read < 0) break; digest.update(buffer, 0, read) }
         }
+        return digest.digest().joinToString("") { "%02x".format(it.toInt() and 255) } == expected
+    }
 
+    fun recognize(imagePath: String, rowMergeTolerance: Float = DEFAULT_ROW_MERGE_TOLERANCE, deadlineElapsed: Long = 0): MlKitOcrResult {
+        initialize()
         val bitmap = decodeBitmapForOcr(imagePath)
-            ?: return MlKitOcrResult(emptyList(), "ERROR: Failed to decode image: $imagePath")
-
-        return try {
-            val results = nativeProcess(nativeHandle, bitmap).orEmpty()
-                .filter { result -> result.text.isNotBlank() }
+        try {
+            val budget = if (deadlineElapsed > 0) deadlineElapsed - SystemClock.elapsedRealtime() else 35_000L
+            check(budget > 0) { "OCR request expired" }
+            val results = requireNotNull(nativeProcess(nativeHandle, bitmap, budget.coerceAtMost(35_000L))) { "OCR returned no response" }
+                .filter { it.text.isNotBlank() }
             val rows = groupResultsIntoRows(results, normalizeRowMergeTolerance(rowMergeTolerance))
-            val rawText = rows.joinToString("\n") { row -> row.joinToString(" ") }
-            MlKitOcrResult(rows, rawText)
-        } catch (e: Throwable) {
-            Log.e(TAG, "OCR process failed", e)
-            MlKitOcrResult(emptyList(), "OCR_ERROR: ${e.stackTraceToString()}")
-        } finally {
-            if (!bitmap.isRecycled) {
-                bitmap.recycle()
-            }
-        }
+            return MlKitOcrResult(rows, rows.joinToString("\n") { it.joinToString(" ") })
+        } finally { if (!bitmap.isRecycled) bitmap.recycle() }
     }
 
-    override fun close() {
-        release()
-    }
+    override fun close() = release()
+    fun release() { if (nativeHandle != 0L) { nativeDestroy(nativeHandle); nativeHandle = 0L } }
 
-    fun release() {
-        if (nativeHandle != 0L) {
-            nativeDestroy(nativeHandle)
-            nativeHandle = 0L
+    private fun decodeBitmapForOcr(imagePath: String): Bitmap {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeFile(imagePath, bounds)
+        require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Missing or unreadable OCR image" }
+        var sample = 1
+        while (max(bounds.outWidth, bounds.outHeight) / sample > MAX_BITMAP_SIDE) sample *= 2
+        val options = BitmapFactory.Options().apply { inPreferredConfig = Bitmap.Config.ARGB_8888; inSampleSize = sample }
+        val decoded = requireNotNull(BitmapFactory.decodeFile(imagePath, options)) { "Cannot decode OCR image" }
+        val argb = if (decoded.config == Bitmap.Config.ARGB_8888) decoded else {
+            val converted = requireNotNull(decoded.copy(Bitmap.Config.ARGB_8888, false))
+            decoded.recycle(); converted
         }
-    }
-
-    fun shutdownRuntime() {
-        release()
-        nativeShutdown()
-        cacheInitialized = false
-    }
-
-    private fun copyAssetToCache(assetPath: String): String {
-        val target = File(context.cacheDir, assetPath.substringAfterLast('/'))
-        if (target.exists() && target.length() > 0L) {
-            return target.absolutePath
-        }
-
-        context.assets.open(assetPath).use { input ->
-            FileOutputStream(target).use { output ->
-                input.copyTo(output)
-            }
-        }
-        return target.absolutePath
-    }
-
-    private fun decodeBitmapForOcr(imagePath: String): Bitmap? {
-        val options = BitmapFactory.Options().apply {
-            inPreferredConfig = Bitmap.Config.ARGB_8888
-        }
-        val decoded = BitmapFactory.decodeFile(imagePath, options) ?: return null
-        val argbBitmap = if (decoded.config == Bitmap.Config.ARGB_8888) {
-            decoded
-        } else {
-            decoded.copy(Bitmap.Config.ARGB_8888, false)?.also { converted ->
-                if (converted !== decoded) {
-                    decoded.recycle()
-                }
-            } ?: decoded
-        }
-
-        val oriented = applyExifOrientation(imagePath, argbBitmap)
-        if (oriented !== argbBitmap && !argbBitmap.isRecycled) {
-            argbBitmap.recycle()
-        }
-        return oriented
-    }
-
-    private fun applyExifOrientation(imagePath: String, bitmap: Bitmap): Bitmap {
-        val orientation = try {
-            ExifInterface(imagePath).getAttributeInt(
-                ExifInterface.TAG_ORIENTATION,
-                ExifInterface.ORIENTATION_NORMAL,
-            )
-        } catch (e: Throwable) {
-            return bitmap
-        }
-
         val matrix = Matrix()
+        val orientation = try { ExifInterface(imagePath).getAttributeInt(ExifInterface.TAG_ORIENTATION, ExifInterface.ORIENTATION_NORMAL) }
+            catch (_: Exception) { ExifInterface.ORIENTATION_NORMAL }
         when (orientation) {
             ExifInterface.ORIENTATION_ROTATE_90 -> matrix.postRotate(90f)
             ExifInterface.ORIENTATION_ROTATE_180 -> matrix.postRotate(180f)
             ExifInterface.ORIENTATION_ROTATE_270 -> matrix.postRotate(270f)
             ExifInterface.ORIENTATION_FLIP_HORIZONTAL -> matrix.preScale(-1f, 1f)
             ExifInterface.ORIENTATION_FLIP_VERTICAL -> matrix.preScale(1f, -1f)
-            else -> return bitmap
+            ExifInterface.ORIENTATION_TRANSPOSE -> { matrix.postRotate(90f); matrix.preScale(-1f, 1f) }
+            ExifInterface.ORIENTATION_TRANSVERSE -> { matrix.postRotate(270f); matrix.preScale(-1f, 1f) }
+            else -> return argb
         }
-
-        return try {
-            Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
-        } catch (e: Throwable) {
-            Log.w(TAG, "Failed to apply EXIF orientation", e)
-            bitmap
-        }
+        return try { Bitmap.createBitmap(argb, 0, 0, argb.width, argb.height, matrix, true).also { if (it !== argb) argb.recycle() } }
+            catch (error: Throwable) { argb.recycle(); throw error }
     }
 
     private fun normalizeRowMergeTolerance(value: Float): Float {
@@ -198,76 +124,10 @@ class PaddleOcrEngine(private val context: Context) : Closeable {
         return value.coerceIn(MIN_ROW_MERGE_TOLERANCE, MAX_ROW_MERGE_TOLERANCE)
     }
 
-    private fun groupResultsIntoRows(
-        results: List<NativeOcrResult>,
-        rowMergeTolerance: Float,
-    ): List<List<String>> {
-        val sorted = results.sortedWith(
-            compareBy<NativeOcrResult> { it.centerY }.thenBy { it.centerX },
-        )
-        val medianHeight = sorted.map { it.height }.sorted().let { heights ->
-            if (heights.isEmpty()) 0f else heights[heights.size / 2]
-        }
-        val grouped = mutableListOf<MutableList<NativeOcrResult>>()
+    private fun groupResultsIntoRows(results: List<NativeOcrResult>, tolerance: Float): List<List<String>> =
+        OcrRowGrouping.group(results, tolerance)
 
-        for (result in sorted) {
-            val current = grouped.lastOrNull()
-            if (current == null) {
-                grouped.add(mutableListOf(result))
-                continue
-            }
-
-            val rowCenter = current.map { it.centerY }.average().toFloat()
-            val rowHeight = current.map { it.height }.average().toFloat()
-            val referenceHeight = if (medianHeight > 0f) {
-                min(max(rowHeight, result.height), medianHeight * 1.25f)
-            } else {
-                max(rowHeight, result.height)
-            }
-            val threshold = max(3f, min(12f, referenceHeight * rowMergeTolerance))
-            val rowTop = current.map { it.centerY - it.height / 2f }.average().toFloat()
-            val rowBottom = current.map { it.centerY + it.height / 2f }.average().toFloat()
-            val resultTop = result.centerY - result.height / 2f
-            val resultBottom = result.centerY + result.height / 2f
-            val verticalOverlap =
-                min(rowBottom, resultBottom) - max(rowTop, resultTop)
-            val minHeight = min(rowHeight, result.height)
-            val minOverlapRatio = (0.65f - rowMergeTolerance).coerceIn(0.2f, 0.45f)
-            val isSameRow = abs(result.centerY - rowCenter) <= threshold &&
-                verticalOverlap >= minHeight * minOverlapRatio
-            if (!isSameRow) {
-                grouped.add(mutableListOf(result))
-            } else {
-                current.add(result)
-            }
-        }
-
-        return grouped
-            .map { row ->
-                row.sortedBy { it.centerX }
-                    .map { it.text.trim() }
-                    .filter { it.isNotEmpty() }
-            }
-            .filter { it.isNotEmpty() }
-    }
-
-    private external fun nativeCreate(
-        detModelPath: String,
-        recModelPath: String,
-        keysPath: String,
-        acceleratorType: Int,
-    ): Long
-
-    private external fun nativeProcess(
-        handle: Long,
-        bitmap: Bitmap,
-    ): Array<NativeOcrResult>?
-
+    private external fun nativeCreate(detModelPath: String, recModelPath: String, keysPath: String): Long
+    private external fun nativeProcess(handle: Long, bitmap: Bitmap, timeoutMs: Long): Array<NativeOcrResult>?
     private external fun nativeDestroy(handle: Long)
-}
-
-private enum class OcrAcceleratorType(val value: Int) {
-    GPU(0),
-    CPU(1),
-    NPU(2),
 }

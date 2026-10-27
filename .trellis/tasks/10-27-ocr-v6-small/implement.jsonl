@@ -1,0 +1,6 @@
+{"file": ".trellis/spec/frontend/directory-structure.md", "reason": "UI/platform/storage ownership"}
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "Bridge, OCR and camera contracts; migrate v5 engine contract explicitly"}
+{"file": ".trellis/tasks/10-27-ocr-v6-small/research/findings.md", "reason": "Verified official source/config and current footprint"}
+{"file": ".trellis/tasks/10-27-ocr-v6-small/research/official-models.json", "reason": "Downloaded model artifact sizes/hashes"}
+{"file": ".trellis/tasks/10-27-ocr-v6-small/prd.md", "reason": "User-selected small scope and acceptance"}
+{"file": ".trellis/tasks/10-27-ocr-v6-small/design.md", "reason": "Reduced CPU runtime and native data flow"}

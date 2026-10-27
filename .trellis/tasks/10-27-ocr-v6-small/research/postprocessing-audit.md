@@ -1,0 +1,5 @@
+# User Follow-up: Forms and Postprocessing
+
+User asked whether v6_small understands forms and whether existing postrecognition rules remain needed. Explained that text detection/recognition and table structure extraction are separate; official table pipeline adds classification/structure/cell components (https://www.paddleocr.ai/latest/en/version3.x/pipeline_usage/table_recognition_v2.html). No authorization to replace inventory parsing rules or add extra table models was given; retain current rules in this engine-replacement task and assess using samples.
+
+Concrete pp_structure_post_processor.dart heuristics to flag for later sample-based review: last pure integer treated as quantity; missing quantity for code-prefixed line defaults1; line without quantity merges into prior product; fixed kerastase substring drops a whole line. These can change fields even when OCR characters are correct. Do not silently remove them during model migration; separate character/box accuracy from structured product/quantity accuracy. Native coordinate grouping and field validation remain needed for lightweight form parsing.

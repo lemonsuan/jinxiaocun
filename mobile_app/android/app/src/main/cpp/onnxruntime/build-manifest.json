@@ -1,0 +1,19 @@
+{
+  "version": "1.21.1",
+  "abi": "arm64-v8a",
+  "api": 28,
+  "format": "ORT",
+  "source": "https://codeload.github.com/microsoft/onnxruntime/tar.gz/refs/tags/v1.21.1",
+  "sourceSha256": "afd53e380d534c5285598f0010b9fe99c6c05ea83de11bddf3b9d51686746a03",
+  "eigenCommit": "1d8b82b0740839c0de7f1242a3585e3390ff5f33",
+  "precision": "FP32",
+  "minimalBuild": true,
+  "operatorTypeReduction": true,
+  "exceptions": true,
+  "executionProviders": [
+    "CPUExecutionProvider"
+  ],
+  "requiredOperatorsSha256": "5f6e75164a7eebde5dca67d2a12711b55a808bc0af8b207bf340a8afa0f5aa57",
+  "libraryBytes": 2509408,
+  "librarySha256": "24bcdf7ec904cf117fa6cd4ac2fdb7a2a297a01c5fafc42951886e7a19714b55"
+}

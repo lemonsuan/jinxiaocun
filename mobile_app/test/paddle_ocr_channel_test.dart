@@ -67,4 +67,17 @@ void main() {
       rowMergeTolerance: 0.12,
     );
   });
+
+  test('native inference failure propagates instead of becoming product text',
+      () async {
+    messenger.setMockMethodCallHandler(methodChannel, (call) async {
+      throw PlatformException(
+          code: 'OCR_INFERENCE_FAILED', message: '识别失败，请重试');
+    });
+    await expectLater(
+      PaddleOcrChannel().recognizeTable('/tmp/list.jpg'),
+      throwsA(isA<PlatformException>()
+          .having((e) => e.code, 'code', 'OCR_INFERENCE_FAILED')),
+    );
+  });
 }

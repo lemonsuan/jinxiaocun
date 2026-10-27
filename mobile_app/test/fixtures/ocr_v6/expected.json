@@ -1,0 +1,91 @@
+{
+  "fixture_origin": "Synthetic document images rendered with system Arial Unicode font; font file is not redistributed.",
+  "cases": [
+    {
+      "image": "clear_list.png",
+      "required": [
+        "商品清单",
+        "A1001",
+        "洗发水",
+        "3",
+        "B2002",
+        "护发素",
+        "12",
+        "C3003",
+        "沐浴露",
+        "5"
+      ],
+      "exact_cells": [
+        "A1001",
+        "洗发水",
+        "3",
+        "B2002",
+        "护发素",
+        "12",
+        "C3003",
+        "沐浴露",
+        "5"
+      ]
+    },
+    {
+      "image": "skewed_list.png",
+      "required": [
+        "洗发水",
+        "护发素",
+        "沐浴露",
+        "12"
+      ],
+      "exact_cells": [
+        "A1001",
+        "洗发水",
+        "3",
+        "B2002",
+        "护发素",
+        "12",
+        "C3003",
+        "沐浴露",
+        "5"
+      ]
+    },
+    {
+      "image": "long_line.png",
+      "required": [
+        "A1001",
+        "清爽保湿修护洗发水",
+        "家庭实惠补充装",
+        "日常使用数量",
+        "12"
+      ]
+    },
+    {
+      "image": "blank.png",
+      "required": [],
+      "empty": true
+    },
+    {
+      "image": "wired_table.png",
+      "required": [
+        "A1001",
+        "洗发水",
+        "3",
+        "B2002",
+        "护发素",
+        "12",
+        "C3003",
+        "沐浴露",
+        "5"
+      ],
+      "exact_cells": [
+        "A1001",
+        "洗发水",
+        "3",
+        "B2002",
+        "护发素",
+        "12",
+        "C3003",
+        "沐浴露",
+        "5"
+      ]
+    }
+  ]
+}

@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.os.Handler
 import android.os.Looper
 import android.os.ResultReceiver
+import android.os.SystemClock
 import android.content.ContentValues
 import android.provider.MediaStore
 import android.os.Build
@@ -188,12 +189,7 @@ class MainActivity : FlutterActivity() {
         val delivered = AtomicBoolean(false)
         val timeout = Runnable {
             if (delivered.compareAndSet(false, true)) {
-                result.success(
-                    mapOf(
-                        "rows" to emptyList<List<String>>(),
-                        "rawText" to "",
-                    )
-                )
+                result.error("OCR_TIMEOUT", "清单识别超时，请重试或手工录入", null)
             }
         }
         handler.postDelayed(timeout, OCR_TIMEOUT_MS)
@@ -204,6 +200,11 @@ class MainActivity : FlutterActivity() {
                     return
                 }
                 handler.removeCallbacks(timeout)
+                if (resultCode != OcrService.RESULT_OK) {
+                    result.error(resultData?.getString(OcrService.EXTRA_ERROR_CODE) ?: "OCR_FAILED",
+                        resultData?.getString(OcrService.EXTRA_ERROR_MESSAGE) ?: "清单识别失败，请重试", null)
+                    return
+                }
                 val rowLines = resultData
                     ?.getStringArrayList(OcrService.EXTRA_ROWS)
                     .orEmpty()
@@ -228,6 +229,7 @@ class MainActivity : FlutterActivity() {
             startService(
                 Intent(this, OcrService::class.java)
                     .putExtra(OcrService.EXTRA_IMAGE_PATH, imagePath)
+                    .putExtra(OcrService.EXTRA_DEADLINE, SystemClock.elapsedRealtime() + OCR_TIMEOUT_MS)
                     .putExtra(OcrService.EXTRA_ROW_MERGE_TOLERANCE, rowMergeTolerance)
                     .putExtra(OcrService.EXTRA_RESULT_RECEIVER, receiver)
             )
@@ -235,12 +237,7 @@ class MainActivity : FlutterActivity() {
             e.printStackTrace()
             if (delivered.compareAndSet(false, true)) {
                 handler.removeCallbacks(timeout)
-                result.success(
-                    mapOf(
-                        "rows" to emptyList<List<String>>(),
-                        "rawText" to "MAIN_ACTIVITY_ERROR: ${e.stackTraceToString()}",
-                    )
-                )
+                result.error("OCR_START_FAILED", "无法启动清单识别，请重试或手工录入", null)
             }
         }
     }

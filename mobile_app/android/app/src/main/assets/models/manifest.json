@@ -1,57 +1,97 @@
 {
-  "version": 3,
+  "version": 4,
+  "modelName": "PP-OCRv6_small",
+  "license": "Apache-2.0",
+  "licenseSource": "https://raw.githubusercontent.com/PaddlePaddle/PaddleOCR/v3.7.0/LICENSE",
+  "runtime": "ONNX Runtime reduced CPU",
+  "runtimeVersion": "1.21.1",
+  "precision": "FP32",
+  "layout": "NCHW",
   "models": [
     {
       "name": "ocr_detection",
-      "type": "tflite",
-      "assetPath": "models/ocr_det_fp16.tflite",
-      "targetPath": "ocr_det_fp16.tflite",
-      "sha256": "f02bb7693e98dacd08075ac911dbdfdb0184b5f582cabb0c49ca41c5120fe189",
-      "sizeBytes": 2444316,
+      "type": "ort",
+      "assetPath": "models/ppocrv6_small_det.ort",
+      "targetPath": "ppocrv6_small_det.ort",
+      "sha256": "6cb59cc3da4ee1e8a813d61bebcf4ee82e30359651c12a2f7f139de07550d9db",
+      "sizeBytes": 9982352,
       "required": true,
-      "description": "PP-OCRv5 text detection model (FP16)",
-      "source": "https://github.com/PaddlePaddle/PaddleOCR",
-      "inputShape": [
-        1,
-        640,
-        640,
-        3
+      "precision": "FP32",
+      "description": "Official PP-OCRv6_small_det, FP32, Fixed ARM optimized ORT",
+      "source": "https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/PP-OCRv6_small_det_onnx_infer.tar",
+      "inputs": [
+        {
+          "name": "x",
+          "dtype": "float32",
+          "shape": [
+            "DynamicDimension.0",
+            3,
+            "DynamicDimension.1",
+            "DynamicDimension.2"
+          ]
+        }
       ],
-      "quantization": "FP16"
+      "outputs": [
+        {
+          "name": "fetch_name_0",
+          "dtype": "float32",
+          "shape": [
+            "ConvTranspose_459_o0__d0",
+            1,
+            "ConvTranspose_459_o0__d2",
+            "ConvTranspose_459_o0__d3"
+          ]
+        }
+      ]
     },
     {
       "name": "ocr_recognition",
-      "type": "tflite",
-      "assetPath": "models/ocr_rec_fp16.tflite",
-      "targetPath": "ocr_rec_fp16.tflite",
-      "sha256": "559b9f822a19887bbf18a9607619406710c0aeec90577117fb620d5cf6e0a55d",
-      "sizeBytes": 8324208,
+      "type": "ort",
+      "assetPath": "models/ppocrv6_small_rec.ort",
+      "targetPath": "ppocrv6_small_rec.ort",
+      "sha256": "ddb6b8961c43daabcf06cbc5d68b7efaeeea0c28e4b6a787370a34a963266d56",
+      "sizeBytes": 21290816,
       "required": true,
-      "description": "PP-OCRv5 text recognition model (FP16)",
-      "source": "https://github.com/PaddlePaddle/PaddleOCR",
-      "inputShape": [
-        1,
-        48,
-        320,
-        3
+      "precision": "FP32",
+      "description": "Official PP-OCRv6_small_rec, FP32, Fixed ARM optimized ORT",
+      "source": "https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/PP-OCRv6_small_rec_onnx_infer.tar",
+      "inputs": [
+        {
+          "name": "x",
+          "dtype": "float32",
+          "shape": [
+            "DynamicDimension.0",
+            3,
+            48,
+            "DynamicDimension.1"
+          ]
+        }
       ],
-      "outputShape": [
-        1,
-        40,
-        18385
-      ],
-      "quantization": "FP16"
+      "outputs": [
+        {
+          "name": "fetch_name_0",
+          "dtype": "float32",
+          "shape": [
+            "DynamicDimension.0",
+            "Reshape_471_o0__d2",
+            18710
+          ]
+        }
+      ]
     },
     {
       "name": "ocr_dictionary",
       "type": "dictionary",
-      "assetPath": "models/keys_v5.txt",
-      "targetPath": "keys_v5.txt",
-      "sha256": "d1979e9f794c464c0d2e0b70a7fe14dd978e9dc644c0e71f14158cdf8342af1b",
-      "sizeBytes": 74012,
+      "assetPath": "models/keys_v6_small.txt",
+      "targetPath": "keys_v6_small.txt",
+      "sha256": "d051391881962ec266c4b4ee7b6a493fa2aeabaa2cd9ee369148cf3f6980af99",
+      "sizeBytes": 74949,
       "required": true,
-      "description": "Character dictionary for CTC decoding (18383 chars)",
-      "source": "https://github.com/PaddlePaddle/PaddleOCR"
+      "characterCount": 18709,
+      "blankIndex": 0,
+      "spaceIndex": 18709,
+      "description": "18708 official dictionary entries + trailing space; CTC blank is not a dictionary line",
+      "source": "Official PP-OCRv6_small_rec inference.yml PostProcess.character_dict"
     }
   ]
 }

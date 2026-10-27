@@ -1,0 +1,31 @@
+{
+  "retrieved": "2026-10-27",
+  "model": "PP-OCRv6_small",
+  "source_template": "https://paddle-model-ecology.bj.bcebos.com/paddlex/official_inference_model/paddle3.0.0/PP-OCRv6_small_<det|rec>_onnx_infer.tar",
+  "members": [
+    {
+      "stage": "det",
+      "file": "PP-OCRv6_small_det_onnx_infer/inference.onnx",
+      "bytes": 9880512,
+      "sha256": "d73e0058b7a8086bbd57f3d10b8bcd4ff95363f67e06e2762b5e814fe9c9410e"
+    },
+    {
+      "stage": "det",
+      "file": "PP-OCRv6_small_det_onnx_infer/inference.yml",
+      "bytes": 885,
+      "sha256": "193f435274bf9f0b5f71a929bbfbcf148282df7e633b34e7c373e8f44741b516"
+    },
+    {
+      "stage": "rec",
+      "file": "PP-OCRv6_small_rec_onnx_infer/inference.onnx",
+      "bytes": 21159378,
+      "sha256": "5435fd747c9e0efe15a96d0b378d5bd157e9492ed8fd80edf08f30d02fa24634"
+    },
+    {
+      "stage": "rec",
+      "file": "PP-OCRv6_small_rec_onnx_infer/inference.yml",
+      "bytes": 150579,
+      "sha256": "ab078671bb49f06228eadccd34f1bb501e157f7a047095ffb943ba81512c77d1"
+    }
+  ]
+}
