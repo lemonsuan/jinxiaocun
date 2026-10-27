@@ -537,3 +537,37 @@ Add a feature to filter and export photo inbound receipts within a selected date
 ### Next Steps
 
 - 连接Android真机验证实际单据、冷暖启动/P95及峰值PSS；模型和拍照任务均保留待真机验收。用户清单为规则列，现有字段规则暂保留，SLANet_plus未加入本版。
+
+
+## Session 17: 同店铺增量同步与本机删除隔离完成
+<!-- trellis-session: v=2 fp=20e8d25801afdbec -->
+
+**Date**: 2026-10-27
+**Task**: 同店铺增量同步与本机删除隔离完成
+**Branch**: `codex/shop-incremental-sync`
+
+### Summary
+
+Flutter/Django/Vue三端完成增量同步、持久重试与冲突、私有图片及只读查看；本机删除不传播。APK1.0.7+9和Web0.1.0已归档；未部署生产、待两台真机验收。
+
+### Main Changes
+
+- 保留历史库/图片/库存，隔离服务器与店铺；在线删除仅隐藏本机，显式拒绝单据放弃保留证据。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `d509ac7` | feat(sync): 完成同店铺增量同步、本机删除隔离与在线只读查看 |
+
+### Testing
+
+- [OK] Flutter67+真实Django联调1，PostgreSQL26并发及留存测试，Web3/构建/浏览器；静态分析0错误，保留28项既有提示。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 更新目标后端迁移及Web后，用两台真机验收同店同步、断网恢复与相机/OCR表现。
