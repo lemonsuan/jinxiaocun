@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 15
+- **Total Sessions**: 16
 - **Last Active**: 2026-10-27
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~508 | Active |
+| `journal-1.md` | ~539 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 16 | 2026-10-27 | PP-OCRv6 small端侧替换完成与验证记录 | `5b18b09`, `fd651ca` | `codex/ocr-v6-small` |
 | 15 | 2026-10-27 | 极速入库连续相机重写与OCR端侧选型调研 | `68db83a` | `codex/express-camera-response` |
 | 14 | 2026-07-20 | Add date-filtered zip export for photo inbound receipts | `2dc4d90` | `master` |
 | 13 | 2026-06-17 | Add Inbound Calendar and Stock Clearing Features | `b387493`, `6d7eb3a` | `master` |

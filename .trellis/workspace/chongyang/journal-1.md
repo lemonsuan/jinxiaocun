@@ -506,3 +506,34 @@ Add a feature to filter and export photo inbound receipts within a selected date
 ### Next Steps
 
 - 连接真机完成连续20单、快门中位数/P95、提示后移动清晰度、弱光和CameraX三用例兼容性验收；任务保留in_progress
+
+
+## Session 16: PP-OCRv6 small端侧替换完成与验证记录
+<!-- trellis-session: v=2 fp=da14cc4eef2c606b -->
+
+**Date**: 2026-10-27
+**Task**: PP-OCRv6 small端侧替换完成与验证记录
+**Branch**: `codex/ocr-v6-small`
+
+### Summary
+
+替换为官方v6_small FP32 ORT模型、匹配CTC字典及2.5MB精简ARM64 CPU引擎，修复倾斜行对齐和超时取消；1.0.6+8安装包60.6MB已归档。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `5b18b09` | feat(ocr): 替换为PP-OCRv6 small与精简ARM64推理引擎 |
+| `fd651ca` | chore(ocr): 固化CTC字典空格字符与校验规则 |
+
+### Testing
+
+- [OK] Flutter41项、Kotlin3项、真实模型主机样本5类与超时恢复通过；ARM64发布、APK模型哈希/依赖/签名/16KB对齐检查通过；静态分析28项既有问题，无新增。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 连接Android真机验证实际单据、冷暖启动/P95及峰值PSS；模型和拍照任务均保留待真机验收。用户清单为规则列，现有字段规则暂保留，SLANet_plus未加入本版。
