@@ -179,7 +179,7 @@ class SyncTests(TestCase):
     def test_same_client_ids_are_scoped_to_shop(self):
         self.applied(self.push())
         other = Shop.objects.create(name='Shop B')
-        ShopMembership.objects.create(user=self.user, shop=other, status='APPROVED')
+        ShopMembership.objects.create(user=self.user, shop=other, role='ADMIN', status='APPROVED')
         self.headers['HTTP_X_ACTIVE_SHOP_ID'] = str(other.pk)
         self.applied(self.push(data=self.inbound(5)))
         self.assertEqual(InboundReceipt.objects.count(), 2)
@@ -226,7 +226,7 @@ class SyncTests(TestCase):
         self.assertEqual(b''.join(downloaded.streaming_content), content)
         self.assertEqual(downloaded['Cache-Control'], 'private, no-store')
         other = Shop.objects.create(name='Other')
-        ShopMembership.objects.create(user=self.user, shop=other, status='APPROVED')
+        ShopMembership.objects.create(user=self.user, shop=other, role='ADMIN', status='APPROVED')
         self.headers['HTTP_X_ACTIVE_SHOP_ID'] = str(other.pk)
         self.assertEqual(self.get('sync/v2/media/' + digest).status_code, 404)
         self.assertEqual(self.get('sync/v2/media/' + digest + '/exists').status_code, 404)
@@ -327,7 +327,7 @@ class PostgreSQLConcurrencyTests(TransactionTestCase):
             self.skipTest('Run with postgres_test_settings for real row-lock concurrency.')
         self.user = CustomUser.objects.create_user(username='concurrent')
         self.shop = Shop.objects.create(name='Concurrent shop')
-        ShopMembership.objects.create(user=self.user, shop=self.shop, status='APPROVED')
+        ShopMembership.objects.create(user=self.user, shop=self.shop, role='ADMIN', status='APPROVED')
 
     def run_ops(self, operations):
         from concurrent.futures import ThreadPoolExecutor

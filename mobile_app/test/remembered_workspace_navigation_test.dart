@@ -174,7 +174,7 @@ void main() {
               {
                 'shop_id': 'B',
                 'shop_name': '待选新店铺',
-                'role': 'MEMBER',
+                'role': 'ADMIN',
                 'status': 'APPROVED'
               }
             ]),
@@ -285,7 +285,7 @@ void main() {
                 {
                   'shop_id': 'B',
                   'shop_name': '新的店铺B',
-                  'role': 'MEMBER',
+                  'role': 'ADMIN',
                   'status': shopFetches == 1 || approvedAtEntry
                       ? 'APPROVED'
                       : 'PENDING'

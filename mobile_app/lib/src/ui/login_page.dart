@@ -237,10 +237,9 @@ class _LoginPageState extends State<LoginPage> {
   Future<void> _joinShop() async {
     if (_shopBusy) return;
     final id = _joinShopIdController.text.trim();
-    if (!RegExp(
-            r'^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$')
-        .hasMatch(id)) {
-      _showError('请输入管理员提供的完整店铺 ID（UUID）');
+    if (!RegExp(r'^[1-9][0-9]{4,18}$').hasMatch(id) ||
+        int.tryParse(id) == null) {
+      _showError('请输入店铺创建人提供的10000起数字店铺ID');
       return;
     }
     final epoch = _requestEpoch;
@@ -256,7 +255,7 @@ class _LoginPageState extends State<LoginPage> {
               'Authorization': 'Bearer $_tempToken',
               'Content-Type': 'application/json'
             },
-            body: jsonEncode({'shop_id': id}),
+            body: jsonEncode({'shop_number': id}),
           )
           .timeout(const Duration(seconds: 10));
       if (!mounted || epoch != _requestEpoch) return;
@@ -264,7 +263,7 @@ class _LoginPageState extends State<LoginPage> {
       if (response.statusCode == 200 || response.statusCode == 201) {
         _joinShopIdController.clear();
         ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('申请已提交，请联系店铺管理员审批，然后刷新审批状态。')));
+            const SnackBar(content: Text('管理员申请已提交，请联系店铺创建人批准，然后刷新。')));
         await _fetchShops();
       } else {
         _showError(_responseMessage(body, '申请加入失败，请检查店铺 ID。'));
@@ -323,8 +322,10 @@ class _LoginPageState extends State<LoginPage> {
     try {
       // 在线首次进入时复查审批；历史离线入口由工作区设置单独选择。
       if (!await _fetchShops() || !mounted) return;
-      if (!_shops
-          .any((shop) => shop.shopId == shopId && shop.status == 'APPROVED')) {
+      if (!_shops.any((shop) =>
+          shop.shopId == shopId &&
+          shop.status == 'APPROVED' &&
+          shop.isManagement)) {
         _showError('此店铺尚未审批通过或权限已变更，请联系管理员。');
         return;
       }
@@ -648,8 +649,10 @@ class _LoginPageState extends State<LoginPage> {
 
   // 2. 店铺列表与创建店铺子界面
   Widget _buildShopSelectorView() {
-    final approvedShops = _shops.where((s) => s.status == 'APPROVED').toList();
-    final pendingShops = _shops.where((s) => s.status == 'PENDING').toList();
+    final approvedShops =
+        _shops.where((s) => s.status == 'APPROVED' && s.isManagement).toList();
+    final pendingShops =
+        _shops.where((s) => s.status == 'PENDING' && s.isManagement).toList();
 
     return Column(
       key: const ValueKey('shop_view'),
@@ -724,12 +727,16 @@ class _LoginPageState extends State<LoginPage> {
               child: ListTile(
                 title: Text(
                   shop.shopName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(
                       fontSize: 14, fontWeight: FontWeight.bold),
                 ),
-                subtitle: Text('角色：${shop.role == "CREATOR" ? "创建者" : "店员"}',
+                subtitle: Text(
+                    '${shop.shopNumber == null ? '' : '店铺ID：${shop.shopNumber}\n'}角色：${shop.role == "CREATOR" ? "创建人" : "管理员"}',
                     style:
                         const TextStyle(fontSize: 11, color: _notionGreyText)),
+                isThreeLine: shop.shopNumber != null,
                 trailing: const Icon(Icons.arrow_forward_ios,
                     size: 12, color: _notionText),
                 onTap: _shopBusy
@@ -744,7 +751,7 @@ class _LoginPageState extends State<LoginPage> {
         // 审批中的店铺列表
         if (pendingShops.isNotEmpty) ...[
           const SizedBox(height: 12),
-          const Text('等待审核批准的店铺',
+          const Text('等待创建人批准的管理员申请',
               style: TextStyle(
                   fontSize: 12,
                   fontWeight: FontWeight.bold,
@@ -759,6 +766,8 @@ class _LoginPageState extends State<LoginPage> {
               child: ListTile(
                 title: Text(
                   shop.shopName,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
                   style: const TextStyle(fontSize: 14, color: _notionGreyText),
                 ),
                 subtitle: const Text('加入申请审核中...',
@@ -798,23 +807,26 @@ class _LoginPageState extends State<LoginPage> {
               color: Colors.white, border: Border.all(color: _notionBorder)),
           child:
               Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-            const Text('加入已有店铺',
+            const Text('申请成为店铺管理员',
                 style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
             const SizedBox(height: 8),
             TextField(
                 controller: _joinShopIdController,
+                keyboardType: TextInputType.number,
+                maxLength: 19,
                 decoration: const InputDecoration(
-                    hintText: '输入管理员提供的店铺 ID',
+                    hintText: '输入10000起数字店铺ID',
+                    counterText: '',
                     border: OutlineInputBorder(borderRadius: BorderRadius.zero),
                     isDense: true),
                 style: const TextStyle(fontSize: 12)),
             const SizedBox(height: 8),
-            const Text('审批通过后才能进入。待审批的店铺不会读取或上传本机数据。',
+            const Text('管理员申请需由店铺创建人批准。拍手请使用店铺提供的网页注册链接。',
                 style: TextStyle(fontSize: 11, color: _notionGreyText)),
             const SizedBox(height: 8),
             OutlinedButton(
                 onPressed: _shopBusy ? null : _joinShop,
-                child: Text(_isJoiningShop ? '正在提交…' : '提交加入申请')),
+                child: Text(_isJoiningShop ? '正在提交…' : '提交管理员申请')),
           ]),
         ),
         const SizedBox(height: 16),
@@ -883,19 +895,28 @@ class _ShopItem {
   _ShopItem({
     required this.shopId,
     required this.shopName,
+    this.shopNumber,
     required this.role,
     required this.status,
   });
 
   final String shopId;
   final String shopName;
+  final String? shopNumber;
   final String role;
   final String status;
 
+  bool get isManagement => role == 'CREATOR' || role == 'ADMIN';
+
   factory _ShopItem.fromJson(Map<String, dynamic> json) {
+    final number = json['shop_number']?.toString();
     return _ShopItem(
       shopId: json['shop_id'] as String,
       shopName: json['shop_name'] as String,
+      shopNumber:
+          number != null && RegExp(r'^[1-9][0-9]{4,18}$').hasMatch(number)
+              ? number
+              : null,
       role: json['role'] as String,
       status: json['status'] as String,
     );

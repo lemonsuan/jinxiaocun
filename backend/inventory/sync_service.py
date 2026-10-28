@@ -167,8 +167,11 @@ def apply_operation(shop, user, device_id, operation):
     with transaction.atomic():
         # Lock an existing Shop, not get_or_create(state), to serialize first writes too.
         locked_shop = Shop.objects.select_for_update().get(pk=shop.pk)
-        if not ShopMembership.objects.filter(shop=locked_shop, user=user, status='APPROVED').exists():
-            raise Rejected('membership_revoked', 'Shop membership is no longer approved.')
+        # 鉴权后仍可能被撤销管理身份，写入锁内再次核对角色。
+        if not ShopMembership.objects.filter(
+            shop=locked_shop, user=user, status='APPROVED', role__in=['CREATOR', 'ADMIN'],
+        ).exists():
+            raise Rejected('membership_revoked', '当前账号已不具备本店库存管理权限。')
         state, _ = ShopSyncState.objects.get_or_create(shop=locked_shop)
         previous = SyncOperation.objects.filter(shop=shop, operation_id=operation_id).first()
         if previous:

@@ -25,7 +25,7 @@ class ShopMembershipInline(TabularInline):
         return request.user.is_staff
 
     def _is_shop_manager(self, request, obj):
-        # Non-superuser member management uses the scoped API with creator protection.
+        # 非超管通过有店铺作用域和创建人保护的接口管理人员。
         return request.user.is_superuser
 
     def has_add_permission(self, request, obj=None):
@@ -154,9 +154,9 @@ class WarehouseStockInline(TabularInline):
 
 @admin.register(Shop)
 class ShopAdmin(ModelAdmin):
-    list_display = ('name', 'id', 'created_at')
-    search_fields = ('name',)
-    readonly_fields = ('id', 'created_at')
+    list_display = ('name', 'shop_number', 'created_at')
+    search_fields = ('name', 'shop_number')
+    readonly_fields = ('id', 'shop_number', 'created_at')
 
     # 挂载全部内联模块实现店铺核心功能整合
     inlines = [
@@ -168,7 +168,6 @@ class ShopAdmin(ModelAdmin):
     ]
 
     def has_view_permission(self, request, obj=None):
-        print(f"[DEBUG] has_view_permission called. User: {request.user}, is_staff: {getattr(request.user, 'is_staff', None)}, obj: {obj}")
         return request.user.is_staff
 
     def has_add_permission(self, request):
@@ -186,7 +185,6 @@ class ShopAdmin(ModelAdmin):
             role__in=['CREATOR', 'ADMIN'],
             status='APPROVED'
         ).exists()
-        print(f"[DEBUG] has_change_permission called. User: {request.user}, shop: {obj}, exists: {exists}")
         return exists
 
     def get_queryset(self, request):
@@ -209,7 +207,7 @@ class ShopMembershipAdmin(ModelAdmin):
     search_fields = ('user__username', 'shop__name')
     readonly_fields = ('joined_at',)
 
-    actions = ['approve_applications', 'reject_applications', 'promote_to_admin', 'demote_to_member']
+    actions = ['approve_applications', 'reject_applications']
 
     def get_queryset(self, request):
         qs = super().get_queryset(request)
@@ -238,7 +236,7 @@ class ShopMembershipAdmin(ModelAdmin):
     def approve_applications(self, request, queryset):
         count = 0
         for membership in queryset:
-            if membership.status == 'PENDING':
+            if membership.status == 'PENDING' and membership.role == 'ADMIN':
                 membership.status = 'APPROVED'
                 membership.save()
                 count += 1
@@ -251,7 +249,7 @@ class ShopMembershipAdmin(ModelAdmin):
     def reject_applications(self, request, queryset):
         count = 0
         for membership in queryset:
-            if membership.status == 'PENDING':
+            if membership.status == 'PENDING' and membership.role == 'ADMIN':
                 membership.status = 'REJECTED'
                 membership.save()
                 count += 1
@@ -259,29 +257,3 @@ class ShopMembershipAdmin(ModelAdmin):
             self.message_user(request, f"已拒绝 {count} 位成员的加入申请。", messages.SUCCESS)
         else:
             self.message_user(request, "选中的记录中没有待确认的申请。", messages.WARNING)
-
-    @action(description="提升为店铺管理员 (ADMIN)")
-    def promote_to_admin(self, request, queryset):
-        updated = 0
-        for membership in queryset:
-            if membership.status == 'APPROVED' and membership.role == 'MEMBER':
-                membership.role = 'ADMIN'
-                membership.save()
-                updated += 1
-        if updated > 0:
-            self.message_user(request, f"已成功将 {updated} 位成员提升为店铺管理员。", messages.SUCCESS)
-        else:
-            self.message_user(request, "无合法的提升对象（成员需已加入且角色当前为普通成员）。", messages.WARNING)
-
-    @action(description="降级为普通店铺成员 (MEMBER)")
-    def demote_to_member(self, request, queryset):
-        updated = 0
-        for membership in queryset:
-            if membership.status == 'APPROVED' and membership.role == 'ADMIN':
-                membership.role = 'MEMBER'
-                membership.save()
-                updated += 1
-        if updated > 0:
-            self.message_user(request, f"已将 {updated} 位管理员降级为普通成员。", messages.SUCCESS)
-        else:
-            self.message_user(request, "无合法的降级对象（无法降级创建人或非管理员）。", messages.WARNING)

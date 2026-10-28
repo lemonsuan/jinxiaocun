@@ -1,19 +1,21 @@
-import { createRouter, createWebHashHistory } from 'vue-router'
-import type { RouteRecordRaw } from 'vue-router'
-import { useAuthStore } from '../store/auth'
+import { createRouter, createWebHashHistory } from 'vue-router';
+import type { RouteRecordRaw } from 'vue-router';
+import { useAuthStore } from '../store/auth';
+import { workerRoutes, installWorkerGuard } from '../worker/routes';
 
 const routes: RouteRecordRaw[] = [
+  ...workerRoutes,
   {
     path: '/login',
     name: 'Login',
     component: () => import('../views/Login.vue'),
-    meta: { requireAuth: false }
+    meta: { requireAuth: false },
   },
   {
     path: '/',
     name: 'ShopSelect',
     component: () => import('../views/ShopSelect.vue'),
-    meta: { requireAuth: true }
+    meta: { requireAuth: true },
   },
   {
     path: '/shop',
@@ -25,64 +27,101 @@ const routes: RouteRecordRaw[] = [
       {
         path: 'stock',
         name: 'WarehouseStock',
-        component: () => import('../views/WarehouseStock.vue')
+        component: () => import('../views/WarehouseStock.vue'),
       },
       {
         path: 'products',
         name: 'ProductManagement',
-        component: () => import('../views/ProductManagement.vue')
+        component: () => import('../views/ProductManagement.vue'),
       },
       {
         path: 'inbound',
         name: 'InboundManagement',
-        component: () => import('../views/InboundManagement.vue')
+        component: () => import('../views/InboundManagement.vue'),
       },
       {
         path: 'outbound',
         name: 'OutboundManagement',
-        component: () => import('../views/OutboundManagement.vue')
+        component: () => import('../views/OutboundManagement.vue'),
       },
       {
         path: 'ledger',
         name: 'StockLedger',
-        component: () => import('../views/StockLedger.vue')
+        component: () => import('../views/StockLedger.vue'),
       },
-      { path: 'logs', name: 'OperationLogs', component: () => import('../views/OperationLogs.vue') },
+      {
+        path: 'jobs',
+        name: 'JobManagement',
+        component: () => import('../admin/JobManagement.vue'),
+      },
+      {
+        path: 'jobs/:jobId',
+        name: 'JobDetail',
+        component: () => import('../admin/JobDetail.vue'),
+      },
+      {
+        path: 'orders',
+        name: 'JobOrders',
+        component: () => import('../admin/JobOrders.vue'),
+      },
+      {
+        path: 'logs',
+        name: 'OperationLogs',
+        component: () => import('../views/OperationLogs.vue'),
+      },
       {
         path: 'members',
         name: 'MemberManagement',
-        component: () => import('../views/MemberManagement.vue')
-      }
-    ]
-  }
-]
+        component: () => import('../views/MemberManagement.vue'),
+      },
+    ],
+  },
+];
 
 const router = createRouter({
   history: createWebHashHistory(),
-  routes
-})
+  routes,
+});
 
 // 路由鉴权守卫
 router.beforeEach((to, _from, next) => {
-  const authStore = useAuthStore()
-  
-  if (to.path === '/shop/members' && !['CREATOR', 'ADMIN'].includes(authStore.activeShopRole)) { next('/shop/stock'); return }
+  if (to.path.startsWith('/worker')) {
+    next();
+    return;
+  }
+  const authStore = useAuthStore();
+
+  if (
+    to.path === '/shop/members' &&
+    !['CREATOR', 'ADMIN'].includes(authStore.activeShopRole)
+  ) {
+    next('/shop/stock');
+    return;
+  }
   if (to.meta.requireAuth) {
     if (!authStore.token) {
-      next('/login')
+      next('/login');
     } else if (to.meta.requireActiveShop && !authStore.activeShopId) {
-      next('/')
+      next('/');
+    } else if (
+      to.meta.requireActiveShop &&
+      !['CREATOR', 'ADMIN'].includes(authStore.activeShopRole)
+    ) {
+      authStore.clearShop();
+      next('/');
     } else {
-      next()
+      next();
     }
   } else {
     // 已登录状态下不能再进入登录页，直接跳转主页
     if (to.path === '/login' && authStore.token) {
-      next('/')
+      next('/');
     } else {
-      next()
+      next();
     }
   }
-})
+});
 
-export default router
+installWorkerGuard(router);
+
+export default router;

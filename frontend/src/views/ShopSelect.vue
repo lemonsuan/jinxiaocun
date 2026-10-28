@@ -1,249 +1,341 @@
-<template>
-  <div class="min-h-screen bg-slate-50 flex flex-col">
-    <!-- 顶部状态栏 -->
-    <header class="bg-white border-b border-slate-200 py-4 px-6 flex justify-between items-center shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
-      <div class="flex items-center gap-2">
-        <span class="text-xl">🏪</span>
-        <span class="font-bold text-slate-800 tracking-tight text-md">店铺管理中心</span>
-      </div>
-      <div class="flex items-center gap-4 text-xs">
-        <span class="text-slate-500 font-medium">当前用户: <strong class="text-slate-700">{{ authStore.username }}</strong></span>
-        <el-button size="small" @click="handleLogout" class="!rounded-sm">退出登录</el-button>
-      </div>
-    </header>
-
-    <!-- 主要区域 -->
-    <main class="flex-1 max-w-5xl w-full mx-auto p-8">
-      
-      <!-- 头部大字及操作 -->
-      <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between mb-8 pb-4 border-b border-slate-200 gap-4">
-        <div>
-          <h1 class="text-xl font-bold text-slate-800">请选择要进入的店铺</h1>
-          <p class="text-xs text-slate-400 mt-1">查看已同步的商品、出入库、库存与凭证。手机上的本机删除不影响服务器留存。</p>
-        </div>
-        <div class="flex gap-2 shrink-0 flex-wrap">
-          <el-button @click="fetchShops" :loading="loading">刷新审批状态</el-button>
-          <el-button type="primary" @click="showCreateDialog = true" class="!bg-primary hover:!bg-primary-hover !border-none !rounded-sm !text-xs py-2 px-3">
-            新建店铺
-          </el-button>
-          <el-button @click="showJoinDialog = true" class="!rounded-sm !text-xs py-2 px-3">
-            申请加入店铺
-          </el-button>
-        </div>
-      </div>
-
-      <!-- 我的店铺列表 (卡片网格) -->
-      <div v-if="loading" class="py-12 flex justify-center">
-        <el-icon class="is-loading text-slate-400 text-2xl"><Loading /></el-icon>
-      </div>
-      
-      <div v-else-if="myShops.length === 0" class="bg-white border border-slate-200 rounded-md p-10 text-center shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
-        <div class="text-4xl mb-4">📭</div>
-        <h3 class="text-sm font-bold text-slate-700">暂无可管理的店铺</h3>
-        <p class="text-xs text-slate-400 mt-2 max-w-sm mx-auto">
-          您当前没有所属的店铺。请创建一个新店铺，或向现有店铺管理员索要店铺 ID 申请加入，审核通过后即可在此处查看。
-        </p>
-      </div>
-
-      <div v-else class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-        <div 
-          v-for="item in myShops" 
-          :key="item.shop_id"
-          class="bg-white border border-slate-200 hover:border-primary rounded-md p-6 shadow-[0_1px_3px_rgba(0,0,0,0.02)] hover:shadow-[0_4px_12px_rgba(0,0,0,0.05)] transition-all duration-200 flex flex-col justify-between"
-        >
-          <div>
-            <div class="flex items-center justify-between mb-4">
-              <span 
-                class="px-2 py-0.5 rounded-sm text-[10px] font-semibold"
-                :class="statusClass(item.status)"
-              >
-                {{ statusText(item.status) }}
-              </span>
-              <span class="text-xs text-slate-400 font-mono">角色: {{ roleText(item.role) }}</span>
-            </div>
-            
-            <h3 class="text-md font-bold text-slate-800 mb-2 truncate">{{ item.shop_name }}</h3>
-            <p class="text-[11px] text-slate-400 font-mono select-all">店铺ID: {{ item.shop_id }}</p>
-          </div>
-
-          <div class="mt-6 pt-4 border-t border-slate-100 flex justify-end">
-            <el-button 
-              type="primary" 
-              size="small"
-              :disabled="item.status !== 'APPROVED'"
-              @click="enterShop(item.shop_id, item.shop_name, item.role)"
-              class="!bg-primary hover:!bg-primary-hover disabled:!bg-slate-100 disabled:!text-slate-400 !border-none !rounded-sm !text-xs"
-            >
-              进入查看 ➔
-            </el-button>
-          </div>
-        </div>
-      </div>
-    </main>
-
-    <!-- 新建店铺弹窗 -->
-    <el-dialog v-model="showCreateDialog" title="新建店铺" width="400px" class="custom-dialog">
-      <el-form :model="createForm" ref="createFormRef" :rules="createRules">
-        <el-form-item label="店铺名称" prop="name">
-          <el-input v-model="createForm.name" placeholder="例如：雅诗兰黛官方旗舰店" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="showCreateDialog = false" size="small" class="!rounded-sm">取消</el-button>
-          <el-button type="primary" :loading="submitLoading" @click="handleCreateShop" size="small" class="!bg-primary !border-none !rounded-sm">确认创建</el-button>
-        </span>
-      </template>
-    </el-dialog>
-
-    <!-- 申请加入店铺弹窗 -->
-    <el-dialog v-model="showJoinDialog" title="申请加入店铺" width="400px" class="custom-dialog">
-      <el-form :model="joinForm" ref="joinFormRef" :rules="joinRules">
-        <el-form-item label="店铺 ID (UUID)" prop="shop_id">
-          <el-input v-model="joinForm.shop_id" placeholder="请输入店铺 ID (UUID 格式)" />
-        </el-form-item>
-      </el-form>
-      <template #footer>
-        <span class="dialog-footer">
-          <el-button @click="showJoinDialog = false" size="small" class="!rounded-sm">取消</el-button>
-          <el-button type="primary" :loading="submitLoading" @click="handleJoinShop" size="small" class="!bg-primary !border-none !rounded-sm">提交申请</el-button>
-        </span>
-      </template>
-    </el-dialog>
-  </div>
-</template>
-
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
-import type { FormInstance } from 'element-plus'
-import { Loading } from '@element-plus/icons-vue'
-import axios from '../utils/request'
-import { useAuthStore } from '../store/auth'
-
-const router = useRouter()
-const authStore = useAuthStore()
-
-interface ShopMembershipItem {
-  shop_id: string
-  shop_name: string
-  role: string
-  status: string
-  joined_at: string
+import { onMounted, ref } from 'vue';
+import { useRouter } from 'vue-router';
+import request from '../utils/request';
+import { useAuthStore } from '../store/auth';
+import { copyVisibleText, errorText } from '../admin/logic';
+import { validShopNumber } from '../worker/logic';
+interface ShopRow {
+  shop_id: string;
+  shop_name: string;
+  shop_number: string;
+  role: 'CREATOR' | 'ADMIN';
+  status: 'APPROVED' | 'PENDING' | 'REJECTED';
 }
-
-const loading = ref(false)
-const submitLoading = ref(false)
-const myShops = ref<ShopMembershipItem[]>([])
-
-const showCreateDialog = ref(false)
-const createFormRef = ref<FormInstance>()
-const createForm = reactive({ name: '' })
-const createRules = {
-  name: [{ required: true, message: '店铺名称不能为空', trigger: 'blur' }]
-}
-
-const showJoinDialog = ref(false)
-const joinFormRef = ref<FormInstance>()
-const joinForm = reactive({ shop_id: '' })
-const joinRules = {
-  shop_id: [
-    { required: true, message: '店铺 ID 不能为空', trigger: 'blur' },
-    { pattern: /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i, message: '店铺 ID 格式不正确 (UUID)', trigger: 'blur' }
-  ]
-}
-
-const fetchShops = async () => {
-  loading.value = true
+const auth = useAuthStore();
+const router = useRouter();
+const rows = ref<ShopRow[]>([]);
+const loading = ref(false);
+const error = ref('');
+const notice = ref('');
+const creating = ref(false);
+const joining = ref(false);
+const saving = ref(false);
+const name = ref('');
+const number = ref('');
+async function fetchRows() {
+  loading.value = true;
+  error.value = '';
   try {
-    const res = await axios.get<never, ShopMembershipItem[]>('/api/shops/my-shops')
-    myShops.value = res
-  } catch (err) {
-    // 错误已由 Axios 拦截器展示
+    rows.value = await request.get<never, ShopRow[]>('/api/shops/my-shops');
+  } catch (failure) {
+    error.value = errorText(failure);
   } finally {
-    loading.value = false
+    loading.value = false;
   }
 }
-
-onMounted(() => {
-  fetchShops()
-})
-
-const enterShop = (shopId: string, shopName: string, role: string) => {
-  authStore.setActiveShop(shopId, shopName, role)
-  router.push('/shop')
+function enter(row: ShopRow) {
+  if (row.status !== 'APPROVED') return;
+  auth.setActiveShop(row.shop_id, row.shop_name, row.role, row.shop_number);
+  void router.push('/shop');
 }
-
-const handleCreateShop = async () => {
-  if (!createFormRef.value) return
-  await createFormRef.value.validate(async (valid) => {
-    if (!valid) return
-    submitLoading.value = true
-    try {
-      await axios.post('/api/shops/create', { name: createForm.name })
-      ElMessage.success('店铺创建成功！')
-      showCreateDialog.value = false
-      createForm.name = ''
-      await fetchShops()
-    } catch (err) {
-    } finally {
-      submitLoading.value = false
-    }
-  })
+async function create() {
+  if (saving.value || !name.value.trim()) return;
+  saving.value = true;
+  error.value = '';
+  try {
+    await request.post('/api/shops/create', { name: name.value.trim() });
+    creating.value = false;
+    name.value = '';
+    await fetchRows();
+  } catch (failure) {
+    error.value = errorText(failure);
+  } finally {
+    saving.value = false;
+  }
 }
-
-const handleJoinShop = async () => {
-  if (!joinFormRef.value) return
-  await joinFormRef.value.validate(async (valid) => {
-    if (!valid) return
-    submitLoading.value = true
-    try {
-      const res = await axios.post<never, { message?: string }>('/api/shops/join', { shop_id: joinForm.shop_id })
-      ElMessage.success(res.message || '申请提交成功，请联系管理员审批！')
-      showJoinDialog.value = false
-      joinForm.shop_id = ''
-      await fetchShops()
-    } catch (err) {
-    } finally {
-      submitLoading.value = false
-    }
-  })
+async function join() {
+  if (saving.value) return;
+  if (!validShopNumber(number.value.trim())) {
+    error.value = '请输入10000起的数字店铺 ID。';
+    return;
+  }
+  saving.value = true;
+  error.value = '';
+  try {
+    const result = await request.post<never, { message?: string }>(
+      '/api/shops/join',
+      { shop_number: number.value.trim() },
+    );
+    joining.value = false;
+    number.value = '';
+    notice.value = result.message || '已申请管理员身份，请联系店铺创建人批准。';
+    await fetchRows();
+  } catch (failure) {
+    error.value = errorText(failure);
+  } finally {
+    saving.value = false;
+  }
 }
-
-const handleLogout = () => {
-  authStore.logout()
-  router.push('/login')
+async function copy(value: string) {
+  notice.value = (await copyVisibleText(value))
+    ? `店铺 ID ${value} 已复制。`
+    : '浏览器未允许自动复制，可长按数字店铺 ID 选择复制。';
 }
-
-const roleText = (role: string) => {
-  const map: Record<string, string> = { CREATOR: '创建人', ADMIN: '管理员', MEMBER: '普通店员' }
-  return map[role] || role
+function logout() {
+  auth.logout();
+  void router.push('/login');
 }
-
-const statusText = (status: string) => {
-  const map: Record<string, string> = { PENDING: '审批中', APPROVED: '正常可用', REJECTED: '已拒绝' }
-  return map[status] || status
-}
-
-const statusClass = (status: string) => {
-  if (status === 'APPROVED') return 'bg-teal-50 text-teal-600 border border-teal-200'
-  if (status === 'PENDING') return 'bg-amber-50 text-amber-600 border border-amber-200'
-  return 'bg-rose-50 text-rose-600 border border-rose-200'
-}
+onMounted(fetchRows);
 </script>
-
+<template>
+  <div class="shop-select-page">
+    <header>
+      <strong>🏪 店铺管理中心</strong>
+      <div>
+        <span>{{ auth.username }}</span
+        ><button class="admin-btn" @click="logout">退出登录</button>
+      </div>
+    </header>
+    <main>
+      <div class="admin-heading">
+        <div>
+          <h1>选择管理店铺</h1>
+          <p>
+            创建人和管理员可以查看库存、管理作业与结算；拍手使用店铺专属注册入口。
+          </p>
+        </div>
+        <div class="admin-actions">
+          <button class="admin-btn" :disabled="loading" @click="fetchRows">
+            刷新状态</button
+          ><button
+            class="admin-btn"
+            @click="
+              joining = true;
+              error = '';
+            "
+          >
+            申请管理员</button
+          ><button
+            class="admin-btn primary"
+            @click="
+              creating = true;
+              error = '';
+            "
+          >
+            新建店铺
+          </button>
+        </div>
+      </div>
+      <div v-if="error" class="admin-error" role="alert">{{ error }}</div>
+      <div v-if="notice" class="admin-notice" role="status">{{ notice }}</div>
+      <div v-if="loading" class="admin-empty">正在读取店铺…</div>
+      <div v-else-if="!rows.length" class="admin-empty">
+        当前没有可管理的店铺。<br />你可以创建店铺，或向现有店铺创建人申请管理员身份。
+      </div>
+      <div v-else class="shop-grid">
+        <article
+          v-for="row in rows"
+          :key="row.shop_id"
+          class="shop-select-card"
+        >
+          <div class="card-meta">
+            <span
+              class="admin-badge"
+              :class="{ closed: row.status !== 'APPROVED' }"
+              >{{
+                row.status === 'APPROVED'
+                  ? '可管理'
+                  : row.status === 'PENDING'
+                    ? '等待创建人批准'
+                    : '未批准'
+              }}</span
+            ><small>{{ row.role === 'CREATOR' ? '创建人' : '管理员' }}</small>
+          </div>
+          <h2>{{ row.shop_name }}</h2>
+          <div class="shop-code">
+            店铺 ID <strong>{{ row.shop_number || '—' }}</strong
+            ><button
+              :disabled="!row.shop_number"
+              @click="copy(row.shop_number)"
+            >
+              复制
+            </button>
+          </div>
+          <button
+            class="admin-btn primary"
+            :disabled="row.status !== 'APPROVED'"
+            @click="enter(row)"
+          >
+            进入店铺 →
+          </button>
+        </article>
+      </div>
+    </main>
+    <el-dialog
+      v-model="creating"
+      title="新建店铺"
+      width="min(440px,95vw)"
+      :close-on-click-modal="!saving"
+      :close-on-press-escape="!saving"
+      ><form @submit.prevent="create">
+        <label class="admin-form-field"
+          ><span>店铺名称</span
+          ><input
+            v-model="name"
+            class="admin-input"
+            maxlength="100"
+            placeholder="填写便于辨认的店铺名称"
+            :disabled="saving"
+        /></label>
+        <p class="admin-notice">创建成功后自动分配10000起的数字店铺 ID。</p>
+        <div v-if="error" class="admin-error">{{ error }}</div>
+        <div class="admin-dialog-footer">
+          <button
+            type="button"
+            class="admin-btn"
+            :disabled="saving"
+            @click="creating = false"
+          >
+            取消</button
+          ><button
+            class="admin-btn primary"
+            type="submit"
+            :disabled="saving || !name.trim()"
+          >
+            {{ saving ? '正在创建…' : '创建店铺' }}
+          </button>
+        </div>
+      </form></el-dialog
+    ><el-dialog
+      v-model="joining"
+      title="申请店铺管理员"
+      width="min(440px,95vw)"
+      :close-on-click-modal="!saving"
+      :close-on-press-escape="!saving"
+      ><form @submit.prevent="join">
+        <label class="admin-form-field"
+          ><span>数字店铺 ID</span
+          ><input
+            v-model="number"
+            class="admin-input"
+            inputmode="numeric"
+            maxlength="19"
+            placeholder="例如 10000"
+            :disabled="saving"
+        /></label>
+        <p class="admin-notice">
+          管理员申请需由该店铺创建人批准。拍手不需要申请管理员，请使用本店拍手注册链接注册。
+        </p>
+        <div v-if="error" class="admin-error">{{ error }}</div>
+        <div class="admin-dialog-footer">
+          <button
+            class="admin-btn"
+            type="button"
+            :disabled="saving"
+            @click="joining = false"
+          >
+            取消</button
+          ><button class="admin-btn primary" type="submit" :disabled="saving">
+            {{ saving ? '提交中…' : '提交管理员申请' }}
+          </button>
+        </div>
+      </form></el-dialog
+    >
+  </div>
+</template>
+<style src="../admin/admin.css"></style>
 <style scoped>
-:deep(.el-dialog) {
-  border-radius: 6px;
-  box-shadow: 0 4px 16px rgba(0,0,0,0.08);
+.shop-select-page {
+  min-height: 100dvh;
+  background: #f6f8f7;
+  color: #284836;
 }
-:deep(.custom-dialog .el-form-item__label) {
+.shop-select-page > header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 15px;
+  padding: 18px max(20px, calc((100vw - 1100px) / 2));
+  background: white;
+  border-bottom: 1px solid #e1e9e3;
+}
+.shop-select-page > header strong {
+  font-size: 16px;
+}
+.shop-select-page > header > div {
+  display: flex;
+  gap: 13px;
+  align-items: center;
+  font-size: 12px;
+  color: #819587;
+}
+.shop-select-page > main {
+  max-width: 1100px;
+  padding: 32px 20px;
+  margin: 0 auto;
+}
+.shop-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(285px, 100%), 1fr));
+  gap: 19px;
+}
+.shop-select-card {
+  background: white;
+  border: 1px solid #e0e8e2;
+  border-radius: 12px;
+  padding: 23px;
+}
+.card-meta {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 9px;
+}
+.card-meta small {
+  color: #9aa89e;
   font-size: 11px;
-  font-weight: 500;
-  color: #64748b;
 }
-:deep(.custom-dialog .el-input__wrapper) {
-  border-radius: 4px;
+.shop-select-card h2 {
+  font-size: 18px;
+  margin: 22px 0 10px;
+  overflow-wrap: anywhere;
+  font-weight: 700;
+}
+.shop-code {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #8c9b91;
+  font-size: 11px;
+  margin-bottom: 28px;
+}
+.shop-code strong {
+  font-size: 18px;
+  letter-spacing: 1px;
+  color: #416a4f;
+  user-select: all;
+}
+.shop-code button {
+  border: 0;
+  background: #f0f6f2;
+  color: #5a8064;
+  font-size: 10px;
+  border-radius: 5px;
+  padding: 6px;
+}
+.shop-select-card > .admin-btn {
+  width: 100%;
+}
+@media (max-width: 500px) {
+  .shop-select-page > header {
+    padding: 14px;
+  }
+  .shop-select-page > header > div > span {
+    display: none;
+  }
+  .shop-select-page > main {
+    padding: 22px 14px;
+  }
 }
 </style>

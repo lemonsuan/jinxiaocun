@@ -16,6 +16,7 @@ This directory contains guidelines for backend development. Fill in each file wi
 |-------|-------------|--------|
 | [Directory Structure](./directory-structure.md) | Module organization and file layout | To fill |
 | [Shared Shop Sync](./shop-incremental-sync.md) | Retention, scoped incremental protocol, media and conflicts | Active |
+| [数字店铺与作业报单](./job-reporting.md) | 三角色、独立拍手、批量查快递、到货及结算快照 | Active |
 | [Database Guidelines](./database-guidelines.md) | ORM patterns, queries, migrations | Active |
 | [Error Handling](./error-handling.md) | Error types, handling strategies | To fill |
 | [Quality Guidelines](./quality-guidelines.md) | Code standards, forbidden patterns | To fill |

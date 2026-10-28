@@ -1,205 +1,433 @@
-<template>
-  <div class="bg-white border border-slate-200 rounded-md p-6 shadow-[0_1px_3px_rgba(0,0,0,0.02)]">
-    <!-- 头部和店铺ID展示 -->
-    <div class="flex flex-col sm:flex-row sm:items-center sm:justify-between pb-6 border-b border-slate-100 gap-4 mb-6">
-      <div>
-        <h2 class="text-sm font-bold text-slate-800">本店铺店员成员审批与管理</h2>
-        <p class="text-[11px] text-slate-400 mt-1">
-          审批外部用户的加入申请，并调整已批准店员的角色权限（仅店铺创建人与管理员可用）。
-        </p>
-      </div>
-      <div class="bg-slate-50 border border-slate-200 rounded-sm py-1.5 px-3 text-[11px] text-slate-500 font-mono">
-        邀请店员使用的店铺ID: <strong class="text-slate-700 select-all font-bold">{{ authStore.activeShopId }}</strong>
-      </div>
-    </div>
-
-    <!-- 无权限遮罩提示 -->
-    <div v-if="noPermission" class="py-16 text-center max-w-md mx-auto">
-      <div class="text-4xl mb-4">🔒</div>
-      <h3 class="text-sm font-bold text-slate-700">权限不足</h3>
-      <p class="text-xs text-slate-400 mt-2">
-        只有当前店铺的创建人 (CREATOR) 或管理员 (ADMIN) 可以管理店员关系和审批加入申请。普通店员无权访问该板块。
-      </p>
-    </div>
-
-    <!-- 数据表 -->
-    <div v-else>
-      <div class="flex justify-end mb-4"><el-button @click="fetchMembers" :loading="loading">刷新成员与申请</el-button></div>
-      <el-table 
-        v-loading="loading" 
-        :data="members" 
-        border 
-        style="width: 100%"
-        class="custom-table"
-        size="small"
-      >
-        <el-table-column type="index" label="#" width="60" align="center" />
-        <el-table-column prop="user.username" label="申请人用户名" min-width="150" />
-        <el-table-column prop="role" label="当前角色" width="130" align="center">
-          <template #default="scope">
-            <span class="font-medium text-xs">{{ roleText(scope.row.role) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="status" label="状态" width="130" align="center">
-          <template #default="scope">
-            <span 
-              class="px-2 py-0.5 rounded-sm text-[10px] font-semibold"
-              :class="statusClass(scope.row.status)"
-            >
-              {{ statusText(scope.row.status) }}
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="joined_at" label="申请/加入时间" width="200" align="center">
-          <template #default="scope">
-            <span class="font-mono text-slate-500">{{ formatDate(scope.row.joined_at) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="操作权限控制" width="220" align="center" fixed="right">
-          <template #default="scope">
-            <!-- 针对待审批的成员 -->
-            <div v-if="scope.row.status === 'PENDING'" class="flex justify-center gap-2">
-              <button 
-                @click="handleApprove(scope.row.id, true)"
-                class="text-xs text-teal-600 hover:underline font-medium cursor-pointer"
-              >
-                同意加入
-              </button>
-              <button 
-                @click="handleApprove(scope.row.id, false)"
-                class="text-xs text-rose-600 hover:underline font-medium cursor-pointer"
-              >
-                拒绝
-              </button>
-            </div>
-            
-            <!-- 针对已加入的普通店员 -->
-            <div v-else-if="scope.row.status === 'APPROVED' && scope.row.role === 'MEMBER'" class="flex justify-center gap-2">
-              <button 
-                @click="handleRoleChange(scope.row.id, 'ADMIN')"
-                class="text-xs text-primary hover:underline font-medium cursor-pointer"
-              >
-                提升为管理员
-              </button>
-            </div>
-
-            <!-- 针对已加入的店铺管理员 -->
-            <div v-else-if="scope.row.status === 'APPROVED' && scope.row.role === 'ADMIN'" class="flex justify-center gap-2">
-              <button 
-                @click="handleRoleChange(scope.row.id, 'MEMBER')"
-                class="text-xs text-slate-500 hover:underline font-medium cursor-pointer"
-              >
-                降级为普通店员
-              </button>
-            </div>
-            
-            <div v-else class="text-xs text-slate-400 font-medium">-</div>
-          </template>
-        </el-table-column>
-      </el-table>
-    </div>
-  </div>
-</template>
-
 <script setup lang="ts">
-import { ref, onMounted } from 'vue'
-import { ElMessage } from 'element-plus'
-import axios from '../utils/request'
-import { isAxiosError } from 'axios'
-import { useAuthStore } from '../store/auth'
-
-const authStore = useAuthStore()
-
-interface MemberItem {
-  id: string
-  user: {
-    id: string
-    username: string
-  }
-  role: string
-  status: string
-  joined_at: string
-}
-
-const loading = ref(false)
-const noPermission = ref(false)
-const members = ref<MemberItem[]>([])
-
-const fetchMembers = async () => {
-  loading.value = true
-  noPermission.value = false
+import { onBeforeUnmount, ref } from 'vue';
+import { useAuthStore } from '../store/auth';
+import {
+  listMembers,
+  listWorkers,
+  resetWorkerPassword,
+  setMemberStatus,
+  setWorkerEnabled,
+} from '../admin/api';
+import { errorText } from '../admin/logic';
+import { dateText } from '../worker/logic';
+import RegistrationLink from '../admin/components/RegistrationLink.vue';
+import type { AdminWorker, Member } from '../admin/types';
+const auth = useAuthStore();
+const tab = ref<'workers' | 'admins'>('workers');
+const workers = ref<AdminWorker[]>([]);
+const members = ref<Member[]>([]);
+const q = ref('');
+const enabled = ref('');
+const page = ref(1);
+const total = ref(0);
+const loading = ref(false);
+const busy = ref(false);
+const error = ref('');
+const notice = ref('');
+const resetting = ref<AdminWorker | null>(null);
+const password = ref('');
+const repeat = ref('');
+let controller: AbortController | undefined;
+async function fetchRows() {
+  controller?.abort();
+  const current = new AbortController();
+  controller = current;
+  loading.value = true;
+  error.value = '';
   try {
-    const res = await axios.get<never, MemberItem[]>('/api/shops/members')
-    members.value = res
-  } catch (err: unknown) {
-    if (isAxiosError(err) && err.response?.status === 403) {
-      noPermission.value = true
+    if (tab.value === 'admins')
+      members.value = await listMembers(current.signal);
+    else {
+      const result = await listWorkers(
+        {
+          page: page.value,
+          page_size: 20,
+          q: q.value.trim() || undefined,
+          enabled: enabled.value ? enabled.value === 'true' : undefined,
+        },
+        current.signal,
+      );
+      if (!current.signal.aborted) {
+        workers.value = result.items;
+        total.value = result.total;
+      }
     }
+  } catch (failure) {
+    if (!current.signal.aborted) error.value = errorText(failure);
   } finally {
-    loading.value = false
+    if (!current.signal.aborted) loading.value = false;
   }
 }
-
-onMounted(() => {
-  fetchMembers()
-})
-
-const handleApprove = async (membershipId: string, approve: boolean) => {
+function selectTab(value: 'workers' | 'admins') {
+  tab.value = value;
+  page.value = 1;
+  void fetchRows();
+}
+function search() {
+  page.value = 1;
+  void fetchRows();
+}
+async function toggle(worker: AdminWorker) {
+  if (busy.value) return;
+  if (
+    !window.confirm(
+      worker.enabled
+        ? `禁用“${worker.display_name || worker.username}”后，该拍手无法登录，已有会话也会失效；历史报单和结算保留。确定禁用？`
+        : `重新启用“${worker.display_name || worker.username}”？该拍手需要重新登录。`,
+    )
+  )
+    return;
+  busy.value = true;
+  error.value = '';
   try {
-    await axios.post('/api/shops/members/update', {
-      membership_id: membershipId,
-      status: approve ? 'APPROVED' : 'REJECTED'
-    })
-    ElMessage.success(approve ? '已批准该店员加入！' : '已拒绝该申请')
-    await fetchMembers()
-  } catch (err) {}
+    await setWorkerEnabled(worker, !worker.enabled);
+    notice.value = worker.enabled
+      ? '拍手已禁用，历史资料保留。'
+      : '拍手已重新启用，需要重新登录。';
+    await fetchRows();
+  } catch (failure) {
+    error.value = errorText(failure);
+  } finally {
+    busy.value = false;
+  }
 }
-
-const handleRoleChange = async (membershipId: string, role: string) => {
+function openReset(worker: AdminWorker) {
+  resetting.value = worker;
+  password.value = '';
+  repeat.value = '';
+  error.value = '';
+}
+async function reset() {
+  if (!resetting.value || busy.value) return;
+  if (password.value.length < 8 || password.value.length > 128) {
+    error.value = '新密码长度需为8至128位。';
+    return;
+  }
+  if (password.value !== repeat.value) {
+    error.value = '两次填写的新密码不一致。';
+    return;
+  }
+  busy.value = true;
+  error.value = '';
   try {
-    await axios.post('/api/shops/members/update', {
-      membership_id: membershipId,
-      role: role
-    })
-    ElMessage.success('成员权限配置修改成功！')
-    await fetchMembers()
-  } catch (err) {}
+    await resetWorkerPassword(resetting.value, password.value);
+    resetting.value = null;
+    password.value = '';
+    repeat.value = '';
+    notice.value = '密码已重置，旧登录已失效。请将新密码告知该拍手。';
+    await fetchRows();
+  } catch (failure) {
+    error.value = errorText(failure);
+  } finally {
+    busy.value = false;
+  }
 }
-
-const roleText = (role: string) => {
-  const map: Record<string, string> = { CREATOR: '店铺创建人', ADMIN: '店铺管理员', MEMBER: '普通店员' }
-  return map[role] || role
+async function updateAdmin(member: Member, status: Member['status']) {
+  if (busy.value) return;
+  if (
+    !window.confirm(
+      status === 'APPROVED'
+        ? `确认批准“${member.user.username}”成为本店管理员？`
+        : `确认停止或拒绝“${member.user.username}”的本店管理员访问？`,
+    )
+  )
+    return;
+  busy.value = true;
+  error.value = '';
+  try {
+    await setMemberStatus(member, status);
+    notice.value = '管理员状态已更新。';
+    await fetchRows();
+  } catch (failure) {
+    error.value = errorText(failure);
+  } finally {
+    busy.value = false;
+  }
 }
-
-const statusText = (status: string) => {
-  const map: Record<string, string> = { PENDING: '待审核', APPROVED: '已加入', REJECTED: '已拒绝' }
-  return map[status] || status
-}
-
-const statusClass = (status: string) => {
-  if (status === 'APPROVED') return 'bg-teal-50 text-teal-600 border border-teal-200'
-  if (status === 'PENDING') return 'bg-amber-50 text-amber-600 border border-amber-200'
-  return 'bg-rose-50 text-rose-600 border border-rose-200'
-}
-
-const formatDate = (isoStr: string) => {
-  if (!isoStr) return '-'
-  const d = new Date(isoStr)
-  return d.toLocaleString('zh-CN', { hour12: false })
-}
+void fetchRows();
+onBeforeUnmount(() => controller?.abort());
 </script>
-
+<template>
+  <section class="admin-section">
+    <div class="admin-heading">
+      <div>
+        <h1>人员与注册链接</h1>
+        <p>店铺仅创建人、管理员、拍手三种角色。拍手只看自己的报单。</p>
+      </div>
+    </div>
+    <RegistrationLink />
+    <div class="member-tabs">
+      <button
+        :class="{ active: tab === 'workers' }"
+        @click="selectTab('workers')"
+      >
+        拍手管理</button
+      ><button
+        :class="{ active: tab === 'admins' }"
+        @click="selectTab('admins')"
+      >
+        管理人员
+      </button>
+    </div>
+    <form
+      v-if="tab === 'workers'"
+      class="admin-toolbar"
+      @submit.prevent="search"
+    >
+      <input
+        v-model="q"
+        class="admin-input"
+        placeholder="搜索账号、称呼或电话"
+        aria-label="搜索拍手"
+        maxlength="100"
+      /><select
+        v-model="enabled"
+        class="admin-input"
+        aria-label="拍手启用状态"
+        @change="search"
+      >
+        <option value="">全部状态</option>
+        <option value="true">已启用</option>
+        <option value="false">已禁用</option></select
+      ><button class="admin-btn primary" :disabled="loading">查询</button
+      ><button
+        class="admin-btn"
+        type="button"
+        :disabled="loading"
+        @click="fetchRows"
+      >
+        刷新
+      </button>
+    </form>
+    <div v-if="error" class="admin-error" role="alert">{{ error }}</div>
+    <div v-if="notice" class="admin-notice" role="status">{{ notice }}</div>
+    <div v-if="loading" class="admin-empty">正在加载人员…</div>
+    <template v-else-if="tab === 'workers'"
+      ><div v-if="!workers.length" class="admin-empty">
+        暂无匹配的拍手。复制上方注册链接即可邀请本店拍手注册。
+      </div>
+      <div class="worker-admin-grid">
+        <article
+          v-for="worker in workers"
+          :key="worker.id"
+          class="worker-admin-card"
+        >
+          <div class="worker-admin-title">
+            <strong>{{ worker.display_name || worker.username }}</strong
+            ><span class="admin-badge" :class="{ closed: !worker.enabled }">{{
+              worker.enabled ? '已启用' : '已禁用'
+            }}</span>
+          </div>
+          <p>
+            账号 <span>{{ worker.username }}</span>
+          </p>
+          <p v-if="worker.phone">电话 {{ worker.phone }}</p>
+          <small>注册 {{ dateText(worker.created_at) }}</small>
+          <div class="admin-actions">
+            <button
+              class="admin-btn"
+              :class="{ danger: worker.enabled }"
+              :disabled="busy"
+              @click="toggle(worker)"
+            >
+              {{ worker.enabled ? '禁用拍手' : '重新启用' }}</button
+            ><button
+              class="admin-btn"
+              :disabled="busy"
+              @click="openReset(worker)"
+            >
+              重置密码
+            </button>
+          </div>
+        </article>
+      </div>
+      <div class="admin-pagination">
+        <span>共 {{ total }} 位拍手</span
+        ><button
+          class="admin-btn"
+          :disabled="page === 1 || loading"
+          @click="
+            page--;
+            fetchRows();
+          "
+        >
+          上一页</button
+        ><span>{{ page }}</span
+        ><button
+          class="admin-btn"
+          :disabled="page * 20 >= total || loading"
+          @click="
+            page++;
+            fetchRows();
+          "
+        >
+          下一页
+        </button>
+      </div></template
+    ><template v-else
+      ><div class="admin-notice">
+        只有店铺创建人可以批准管理员申请或停止管理员权限。
+      </div>
+      <div class="worker-admin-grid">
+        <article
+          v-for="member in members"
+          :key="member.id"
+          class="worker-admin-card"
+        >
+          <div class="worker-admin-title">
+            <strong>{{ member.user.username }}</strong
+            ><span class="admin-badge">{{
+              member.role === 'CREATOR' ? '创建人' : '管理员'
+            }}</span>
+          </div>
+          <p>
+            {{
+              member.status === 'APPROVED'
+                ? '已批准'
+                : member.status === 'PENDING'
+                  ? '等待创建人批准'
+                  : '未批准或已停用'
+            }}
+          </p>
+          <small>加入 {{ dateText(member.joined_at) }}</small>
+          <div
+            v-if="auth.activeShopRole === 'CREATOR' && member.role === 'ADMIN'"
+            class="admin-actions"
+          >
+            <button
+              v-if="member.status !== 'APPROVED'"
+              class="admin-btn primary"
+              :disabled="busy"
+              @click="updateAdmin(member, 'APPROVED')"
+            >
+              批准管理员</button
+            ><button
+              v-if="member.status !== 'REJECTED'"
+              class="admin-btn danger"
+              :disabled="busy"
+              @click="updateAdmin(member, 'REJECTED')"
+            >
+              {{ member.status === 'PENDING' ? '拒绝申请' : '停止权限' }}
+            </button>
+          </div>
+        </article>
+      </div></template
+    ><el-dialog
+      :model-value="!!resetting"
+      title="重置拍手密码"
+      width="min(440px,95vw)"
+      :close-on-click-modal="!busy"
+      :close-on-press-escape="!busy"
+      @close="
+        resetting = null;
+        password = '';
+        repeat = '';
+      "
+      ><p class="admin-notice">
+        为
+        {{ resetting?.display_name || resetting?.username }}
+        设置新密码。旧登录会立即失效；禁用账号不会因此自动启用。
+      </p>
+      <form @submit.prevent="reset">
+        <label class="admin-form-field"
+          ><span>新密码</span
+          ><input
+            v-model="password"
+            class="admin-input"
+            type="password"
+            autocomplete="new-password"
+            minlength="8"
+            maxlength="128"
+            :disabled="busy" /></label
+        ><label class="admin-form-field"
+          ><span>再次填写新密码</span
+          ><input
+            v-model="repeat"
+            class="admin-input"
+            type="password"
+            autocomplete="new-password"
+            minlength="8"
+            maxlength="128"
+            :disabled="busy"
+        /></label>
+        <div v-if="error" class="admin-error">{{ error }}</div>
+        <div class="admin-dialog-footer">
+          <button
+            type="button"
+            class="admin-btn"
+            :disabled="busy"
+            @click="
+              resetting = null;
+              password = '';
+              repeat = '';
+            "
+          >
+            取消</button
+          ><button class="admin-btn primary" :disabled="busy">
+            {{ busy ? '重置中…' : '确认重置' }}
+          </button>
+        </div>
+      </form></el-dialog
+    >
+  </section>
+</template>
 <style scoped>
-.custom-table {
-  --el-table-border-color: #e2e8f0;
-  --el-table-header-bg-color: #f8fafc;
-  --el-table-header-text-color: #475569;
-  --el-table-text-color: #1e293b;
+.member-tabs {
+  display: flex;
+  gap: 7px;
+  margin-bottom: 20px;
+  border-bottom: 1px solid #e8eeea;
+  padding-bottom: 12px;
 }
-:deep(.el-table__row) {
-  background-color: #fff;
+.member-tabs button {
+  border: 0;
+  background: #f2f6f3;
+  padding: 11px 18px;
+  border-radius: 7px;
+  font-size: 12px;
+  color: #85978b;
 }
-:deep(.el-table__cell) {
-  padding: 8px 0;
+.member-tabs button.active {
+  background: #e5f3eb;
+  color: #26734c;
+  font-weight: 650;
+}
+.worker-admin-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(min(270px, 100%), 1fr));
+  gap: 14px;
+}
+.worker-admin-card {
+  border: 1px solid #e2eae4;
+  border-radius: 9px;
+  padding: 17px;
+}
+.worker-admin-title {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  align-items: flex-start;
+}
+.worker-admin-title strong {
+  font-size: 14px;
+  overflow-wrap: anywhere;
+  min-width: 0;
+  color: #305941;
+}
+.worker-admin-card p {
+  font-size: 12px;
+  color: #809485;
+  margin: 10px 0;
+  overflow-wrap: anywhere;
+}
+.worker-admin-card small {
+  font-size: 10px;
+  color: #a0afa3;
+}
+.worker-admin-card .admin-actions {
+  margin-top: 17px;
+}
+.worker-admin-card .admin-actions button {
+  font-size: 11px;
 }
 </style>

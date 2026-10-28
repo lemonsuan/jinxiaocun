@@ -1,0 +1,30 @@
+{
+  "id": "work-order-reporting",
+  "name": "work-order-reporting",
+  "title": "批量查单看图汇总与移动端作业报单",
+  "description": "入库批量快递查图和商品汇总，店铺作业、拍手按店注册直接报单多快递、到货与结算状态",
+  "status": "in_progress",
+  "dev_type": "fullstack",
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "chongyang",
+  "assignee": "chongyang",
+  "createdAt": "2026-10-28",
+  "completedAt": null,
+  "branch": "codex/work-order-reporting",
+  "base_branch": "master",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "10-28-parcel-batch-view",
+    "10-28-job-reporting",
+    "10-28-numeric-shop-id"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "用户已在最终规划补充后明确授权：权限功能梳理好即开始开发，自行开发演变，6小时后验收。按最新全部决定实施，无需再询问例行技术选择；参考验收时间2026-10-28 08:08（亚洲/上海）。",
+  "meta": {}
+}

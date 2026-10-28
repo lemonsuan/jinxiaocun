@@ -1,121 +1,320 @@
+<script setup lang="ts">
+import { computed, onMounted, ref, watch } from 'vue';
+import { useRouter, useRoute } from 'vue-router';
+import {
+  Box,
+  Goods,
+  Download,
+  Upload,
+  Memo,
+  UserFilled,
+  DocumentChecked,
+} from '@element-plus/icons-vue';
+import { useAuthStore } from '../store/auth';
+import request from '../utils/request';
+import { copyVisibleText } from '../admin/logic';
+const router = useRouter();
+const route = useRoute();
+const auth = useAuthStore();
+const menuOpen = ref(false);
+const copied = ref(false);
+const items = [
+  { path: '/shop/stock', title: '即时库存', icon: Box },
+  { path: '/shop/products', title: '商品清单', icon: Goods },
+  { path: '/shop/inbound', title: '入库记录', icon: Download },
+  { path: '/shop/outbound', title: '出库记录', icon: Upload },
+  { path: '/shop/jobs', title: '作业管理', icon: DocumentChecked },
+  { path: '/shop/orders', title: '报单与结算', icon: Memo },
+  { path: '/shop/members', title: '人员与注册链接', icon: UserFilled },
+  { path: '/shop/ledger', title: '库存流水', icon: Memo },
+  { path: '/shop/logs', title: '操作记录', icon: Memo },
+];
+const title = computed(
+  () =>
+    items.find((item) => route.path.startsWith(item.path))?.title || '店铺管理',
+);
+watch(
+  () => route.path,
+  () => (menuOpen.value = false),
+);
+function switchShop() {
+  auth.clearShop();
+  void router.push('/');
+}
+function logout() {
+  auth.logout();
+  void router.push('/login');
+}
+async function copyId() {
+  copied.value = await copyVisibleText(auth.activeShopNumber);
+  setTimeout(() => (copied.value = false), 1800);
+}
+onMounted(async () => {
+  if (auth.activeShopNumber) return;
+  try {
+    const rows = await request.get<
+      never,
+      {
+        shop_id: string;
+        shop_name: string;
+        shop_number: string;
+        role: string;
+        status: string;
+      }[]
+    >('/api/shops/my-shops');
+    const shop = rows.find(
+      (row) => row.shop_id === auth.activeShopId && row.status === 'APPROVED',
+    );
+    if (shop)
+      auth.setActiveShop(
+        shop.shop_id,
+        shop.shop_name,
+        shop.role,
+        shop.shop_number,
+      );
+  } catch {
+    /* 请求层负责失效反馈，保留可返回店铺列表的入口。 */
+  }
+});
+</script>
 <template>
-  <div class="min-h-screen bg-slate-50 flex">
-    <!-- 左侧导航边栏 -->
-    <aside class="w-64 bg-white border-r border-slate-200 flex flex-col shrink-0">
-      
-      <!-- 边栏头部 Logo -->
-      <div class="h-16 border-b border-slate-200 flex items-center px-6 gap-3">
-        <span class="text-xl">🏪</span>
-        <div class="overflow-hidden">
-          <h2 class="font-bold text-slate-800 text-sm truncate">{{ authStore.activeShopName }}</h2>
-          <p class="text-[10px] text-slate-400 truncate">店铺在线查看</p>
+  <div class="shop-layout">
+    <button
+      v-if="menuOpen"
+      class="shop-menu-shade"
+      aria-label="关闭导航菜单"
+      @click="menuOpen = false"
+    />
+    <aside class="shop-sidebar" :class="{ open: menuOpen }">
+      <div class="shop-brand">
+        <span>🏪</span>
+        <div>
+          <strong>{{ auth.activeShopName }}</strong
+          ><button @click="copyId">
+            店铺 ID {{ auth.activeShopNumber || '—' }}
+            {{ copied ? '· 已复制' : '' }}
+          </button>
         </div>
       </div>
-
-      <!-- 导航项列表 -->
-      <nav class="flex-1 p-4 space-y-1">
-        <router-link 
-          v-for="item in menuItems" 
+      <nav>
+        <RouterLink
+          v-for="item in items"
           :key="item.path"
           :to="item.path"
-          class="flex items-center gap-3 px-4 py-2.5 rounded-sm text-xs font-semibold tracking-wide transition-colors duration-150 group"
-          :class="isRouteActive(item.path) ? 'bg-teal-50 text-teal-700' : 'text-slate-600 hover:bg-slate-50 hover:text-slate-800'"
+          :class="{ active: route.path.startsWith(item.path) }"
+          ><el-icon><component :is="item.icon" /></el-icon
+          ><span>{{ item.title }}</span></RouterLink
         >
-          <el-icon class="text-md group-hover:scale-105 transition-transform duration-150" :class="isRouteActive(item.path) ? 'text-teal-700' : 'text-slate-400'">
-            <component :is="item.icon" />
-          </el-icon>
-          <span>{{ item.title }}</span>
-        </router-link>
       </nav>
-
-      <!-- 边栏底部切换店铺 -->
-      <div class="p-4 border-t border-slate-200 bg-slate-50/50">
-        <button 
-          @click="switchShop"
-          class="w-full py-2 border border-slate-200 hover:border-slate-300 hover:bg-white text-slate-600 font-medium rounded-sm text-xs transition-colors duration-150 cursor-pointer flex items-center justify-center gap-1.5"
-        >
-          <span>↩</span>
-          <span>切换管理店铺</span>
-        </button>
+      <div class="shop-sidebar-footer">
+        <button @click="switchShop">↩ 切换管理店铺</button>
       </div>
-
     </aside>
-
-    <!-- 右侧主体内容区域 -->
-    <div class="flex-1 flex flex-col min-w-0">
-      <!-- 顶部信息头 -->
-      <header class="h-16 bg-white border-b border-slate-200 px-8 flex justify-between items-center shadow-[0_1px_3px_rgba(0,0,0,0.01)] shrink-0">
-        <!-- 路由标题面包屑 -->
-        <div>
-          <span class="text-xs text-slate-400">在线查看</span>
-          <span class="text-xs text-slate-300 mx-2">/</span>
-          <span class="text-xs text-slate-700 font-medium">{{ currentActiveTitle }}</span>
+    <div class="shop-body">
+      <header class="shop-topbar">
+        <div class="shop-topbar-title">
+          <button
+            class="shop-menu-button"
+            aria-label="打开导航菜单"
+            @click="menuOpen = true"
+          >
+            ☰</button
+          ><span>{{ title }}</span>
         </div>
-
-        <!-- 个人信息 -->
-        <div class="flex items-center gap-4 text-xs">
-          <span class="text-slate-500 font-medium">当前操作员: <strong class="text-slate-700">{{ authStore.username }}</strong></span>
-          <div class="w-px h-4 bg-slate-200"></div>
-          <button @click="handleLogout" class="text-rose-600 hover:underline cursor-pointer">安全注销</button>
+        <div class="shop-account">
+          <span
+            >{{ auth.username }}
+            <small>{{
+              auth.activeShopRole === 'CREATOR' ? '创建人' : '管理员'
+            }}</small></span
+          ><button @click="logout">退出登录</button>
         </div>
       </header>
-
-      <!-- 主要子页面视图区 -->
-      <main class="flex-1 overflow-y-auto p-8">
-        <router-view :key="authStore.activeShopId + $route.path" />
+      <main class="shop-main">
+        <RouterView
+          :key="`${auth.activeShopId}:${auth.scopeVersion}:${route.path}`"
+        />
       </main>
     </div>
   </div>
 </template>
-
-<script setup lang="ts">
-import { computed } from 'vue'
-import { useRouter, useRoute } from 'vue-router'
-import { useAuthStore } from '../store/auth'
-import { 
-  Box, 
-  Goods, 
-  Download, 
-  Upload, 
-  Memo, 
-  UserFilled 
-} from '@element-plus/icons-vue'
-
-const router = useRouter()
-const route = useRoute()
-const authStore = useAuthStore()
-
-const menuItems = computed(() => [
-  { path: '/shop/stock', title: '即时库存看板', icon: Box },
-  { path: '/shop/products', title: '商品清单', icon: Goods },
-  { path: '/shop/inbound', title: '入库记录', icon: Download },
-  { path: '/shop/outbound', title: '出库记录', icon: Upload },
-  { path: '/shop/ledger', title: '库存异动日志', icon: Memo },
-  { path: '/shop/logs', title: '操作记录', icon: Memo },
-  { path: '/shop/members', title: '店员成员审批', icon: UserFilled },
-].filter(item => item.path !== '/shop/members' || ['CREATOR', 'ADMIN'].includes(authStore.activeShopRole)))
-
-const isRouteActive = (path: string) => {
-  return route.path.startsWith(path)
-}
-
-const currentActiveTitle = computed(() => {
-  const item = menuItems.value.find(i => route.path.startsWith(i.path))
-  return item ? item.title : '概览'
-})
-
-const switchShop = () => {
-  // 清除 activeShop 上下文并回到大厅
-  authStore.setActiveShop('', '')
-  router.push('/')
-}
-
-const handleLogout = () => {
-  authStore.logout()
-  router.push('/login')
-}
-</script>
-
+<style src="../admin/admin.css"></style>
 <style scoped>
-/* 可以在此处添加通用过渡效果 */
+.shop-layout {
+  min-height: 100dvh;
+  display: flex;
+  background: #f6f8f7;
+}
+.shop-sidebar {
+  width: 230px;
+  flex: none;
+  background: white;
+  border-right: 1px solid #e2e9e5;
+  display: flex;
+  flex-direction: column;
+  position: sticky;
+  top: 0;
+  height: 100dvh;
+  z-index: 120;
+}
+.shop-brand {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 24px 19px;
+  border-bottom: 1px solid #e9eeeb;
+  min-width: 0;
+}
+.shop-brand > span {
+  font-size: 23px;
+}
+.shop-brand > div {
+  min-width: 0;
+}
+.shop-brand strong {
+  font-size: 14px;
+  display: block;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: #264b37;
+}
+.shop-brand button {
+  border: 0;
+  background: none;
+  padding: 7px 0 0;
+  font-size: 10px;
+  color: #839488;
+  cursor: pointer;
+  text-align: left;
+}
+.shop-sidebar nav {
+  padding: 20px 12px;
+  flex: 1;
+  overflow-y: auto;
+}
+.shop-sidebar nav a {
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 12px 15px;
+  margin-bottom: 5px;
+  border-radius: 7px;
+  color: #718276;
+  font-size: 12px;
+  text-decoration: none;
+  font-weight: 600;
+}
+.shop-sidebar nav a.active {
+  background: #edf7f1;
+  color: #0f766e;
+}
+.shop-sidebar nav a:hover {
+  background: #f5f8f5;
+}
+.shop-sidebar-footer {
+  padding: 17px;
+  border-top: 1px solid #e6ece8;
+}
+.shop-sidebar-footer button {
+  width: 100%;
+  border: 1px solid #dce5df;
+  border-radius: 7px;
+  min-height: 40px;
+  background: white;
+  font-size: 11px;
+  color: #718777;
+}
+.shop-body {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+.shop-topbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  background: white;
+  border-bottom: 1px solid #e2e9e5;
+  min-height: 69px;
+  padding: 12px 28px;
+  box-sizing: border-box;
+}
+.shop-topbar-title {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  font-size: 13px;
+  color: #526e5b;
+  min-width: 0;
+}
+.shop-account {
+  display: flex;
+  gap: 16px;
+  align-items: center;
+  font-size: 11px;
+  color: #6f8375;
+  flex-wrap: wrap;
+}
+.shop-account small {
+  color: #a1afa4;
+  font-size: 10px;
+  margin-left: 4px;
+}
+.shop-account button {
+  background: none;
+  border: 0;
+  padding: 9px 0;
+  color: #a65d61;
+  font-size: 11px;
+}
+.shop-main {
+  padding: 27px;
+  min-width: 0;
+  flex: 1;
+}
+.shop-menu-button {
+  display: none;
+  min-height: 40px;
+  min-width: 40px;
+  border: 1px solid #dce7df;
+  background: white;
+  border-radius: 7px;
+  color: #51725d;
+}
+.shop-menu-shade {
+  position: fixed;
+  inset: 0;
+  background: #12312350;
+  border: 0;
+  z-index: 110;
+}
+@media (max-width: 900px) {
+  .shop-sidebar {
+    position: fixed;
+    left: 0;
+    transform: translateX(-100%);
+    transition: transform 0.18s;
+  }
+  .shop-sidebar.open {
+    transform: none;
+  }
+  .shop-menu-button {
+    display: block;
+  }
+  .shop-topbar {
+    padding: 10px 14px;
+  }
+  .shop-main {
+    padding: 16px 12px;
+  }
+  .shop-account {
+    gap: 10px;
+  }
+  .shop-account small {
+    display: none;
+  }
+}
 </style>

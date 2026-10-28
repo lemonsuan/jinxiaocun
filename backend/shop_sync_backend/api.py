@@ -1,5 +1,6 @@
 import jwt
 import datetime
+import re
 from django.conf import settings
 from django.core.exceptions import ValidationError
 from django.contrib.auth import authenticate
@@ -26,6 +27,7 @@ JWT_ALGORITHM = 'HS256'
 
 def generate_token(user: CustomUser) -> str:
     payload = {
+        'token_type': 'management',
         'user_id': str(user.id),
         'username': user.username,
         'exp': datetime.datetime.utcnow() + datetime.timedelta(days=14)  # 默认2周免登录，保障离线体验
@@ -34,7 +36,9 @@ def generate_token(user: CustomUser) -> str:
 
 def decode_token(token: str) -> Optional[dict]:
     try:
-        return jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        payload = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        # 旧管理令牌允许无类型字段，拍手等其他用途不得进入库存身份。
+        return payload if payload.get('token_type') in (None, 'management') else None
     except (jwt.ExpiredSignatureError, jwt.InvalidTokenError):
         return None
 
@@ -58,11 +62,12 @@ class AuthBearer(HttpBearer):
                     membership = ShopMembership.objects.get(
                         user=user,
                         shop_id=active_shop_id,
-                        status='APPROVED'
+                        status='APPROVED',
+                        role__in=['CREATOR', 'ADMIN'],
                     )
                     request.active_shop = membership.shop
                 except (ShopMembership.DoesNotExist, ValidationError, ValueError):
-                    raise HttpError(403, "你没有访问该店铺数据的权限或申请尚未被确认。")
+                    raise HttpError(403, "只有已批准的店铺创建人或管理员可访问库存；拍手请使用拍手入口。")
             else:
                 request.active_shop = None
                 
@@ -91,11 +96,13 @@ class AuthTokenSchema(Schema):
 
 class ShopSchema(Schema):
     id: UUID
+    shop_number: str
     name: str
     created_at: datetime.datetime
 
 class ShopMembershipSchema(Schema):
     shop_id: UUID
+    shop_number: str
     shop_name: str
     role: str
     status: str
@@ -105,7 +112,8 @@ class CreateShopSchema(Schema):
     name: str
 
 class JoinShopSchema(Schema):
-    shop_id: UUID
+    shop_id: Optional[UUID] = None
+    shop_number: Optional[str] = None
 
 # ──── 1. 用户注册与登录 API ────
 
@@ -144,11 +152,14 @@ def login(request, data: LoginSchema):
 
 @api.get("/shops/my-shops", response=List[ShopMembershipSchema], auth=auth_bearer)
 def my_shops(request):
-    memberships = ShopMembership.objects.filter(user=request.user)
+    memberships = ShopMembership.objects.filter(
+        user=request.user, role__in=['CREATOR', 'ADMIN']
+    ).select_related('shop')
     res = []
     for m in memberships:
         res.append({
             "shop_id": m.shop.id,
+            "shop_number": str(m.shop.shop_number),
             "shop_name": m.shop.name,
             "role": m.role,
             "status": m.status,
@@ -171,34 +182,42 @@ def create_shop(request, data: CreateShopSchema):
         role='CREATOR',
         status='APPROVED'
     )
-    return 200, shop
+    return 200, {
+        'id': shop.id,
+        'shop_number': str(shop.shop_number),
+        'name': shop.name,
+        'created_at': shop.created_at,
+    }
 
 @api.post("/shops/join", response={200: dict, 400: dict}, auth=auth_bearer)
+@transaction.atomic
 def join_shop(request, data: JoinShopSchema):
-    try:
-        shop = Shop.objects.get(id=data.shop_id)
-    except Shop.DoesNotExist:
-        return 400, {"message": "找不到对应的店铺。"}
-        
-    membership, created = ShopMembership.objects.get_or_create(
-        user=request.user,
-        shop=shop,
-        defaults={
-            'role': 'MEMBER',
-            'status': 'PENDING'
-        }
+    # 数字编号只用于定位；旧UUID请求继续使用同一店铺与成员关系。
+    if data.shop_id is None and data.shop_number is None:
+        return 400, {'message': '请填写10000起的数字店铺ID。'}
+    if data.shop_number is not None:
+        number = data.shop_number.strip()
+        if not re.fullmatch(r'[1-9][0-9]{4,18}', number) or int(number) > 9223372036854775806:
+            return 400, {'message': '店铺ID必须是10000起的数字。'}
+        shop = Shop.objects.filter(shop_number=int(number)).first()
+        if data.shop_id is not None and (shop is None or shop.pk != data.shop_id):
+            return 400, {'message': '数字店铺ID与旧店铺标识不一致，请重新选择。'}
+    else:
+        shop = Shop.objects.filter(pk=data.shop_id).first()
+    if shop is None:
+        return 400, {'message': '找不到对应的店铺，请核对数字店铺ID。'}
+    membership, created = ShopMembership.objects.select_for_update().get_or_create(
+        user=request.user, shop=shop, defaults={'role': 'ADMIN', 'status': 'PENDING'},
     )
     if not created:
-        if membership.status == 'APPROVED':
-            return 400, {"message": "你已是该店铺的成员。"}
-        elif membership.status == 'PENDING':
-            return 400, {"message": "申请已提交，请耐心等待管理员审核。"}
-        else:
-            # 允许重新提交加入申请（将 REJECTED 重新置为 PENDING）
-            membership.status = 'PENDING'
-            membership.save()
-            
-    return 200, {"message": "申请已提交，等待管理员确认。"}
+        if membership.role == 'CREATOR' or (membership.role == 'ADMIN' and membership.status == 'APPROVED'):
+            return 400, {'message': '你已是该店铺的管理人员。'}
+        if membership.role == 'ADMIN' and membership.status == 'PENDING':
+            return 400, {'message': '管理员申请已提交，请等待店铺创建人批准。'}
+        membership.role = 'ADMIN'
+        membership.status = 'PENDING'
+        membership.save(update_fields=['role', 'status'])
+    return 200, {'message': '管理员申请已提交，等待店铺创建人批准。'}
 
 # ──── 3. 增量同步数据 Schema ────
 
@@ -579,46 +598,39 @@ def list_members(request):
     if not membership:
         raise HttpError(403, "只有店铺创建人或管理员可以管理成员")
         
-    return list(ShopMembership.objects.filter(shop=request.active_shop).order_by('-joined_at'))
+    return list(ShopMembership.objects.filter(
+        shop=request.active_shop, role__in=['CREATOR', 'ADMIN']
+    ).select_related('user').order_by('-joined_at'))
 
 @api.post("/shops/members/update", response={200: dict, 400: dict}, auth=auth_bearer)
+@transaction.atomic
 def update_member(request, data: MemberUpdateSchema):
     if not request.active_shop:
-        raise HttpError(400, "X-Active-Shop-ID is required")
-        
-    my_membership = ShopMembership.objects.filter(
-        user=request.user, 
-        shop=request.active_shop, 
-        status='APPROVED',
-        role__in=['CREATOR', 'ADMIN']
+        raise HttpError(400, '请先选择店铺。')
+    # 管理员权限申请与管理只交给创建人，不能由管理员相互提升。
+    creator = ShopMembership.objects.filter(
+        user=request.user, shop=request.active_shop,
+        status='APPROVED', role='CREATOR',
+    ).exists()
+    if not creator:
+        return 400, {'message': '只有店铺创建人可以批准或变更管理员。'}
+    target = ShopMembership.objects.select_for_update().filter(
+        pk=data.membership_id, shop=request.active_shop,
     ).first()
-    if not my_membership:
-        return 400, {"message": "只有店铺创建人或管理员可以管理成员"}
-        
-    try:
-        target_membership = ShopMembership.objects.get(id=data.membership_id, shop=request.active_shop)
-    except ShopMembership.DoesNotExist:
-        return 400, {"message": "未找到对应的成员记录"}
-        
-    if data.role and data.role not in ('ADMIN', 'MEMBER'):
-        return 400, {'message': '无效角色，创建人不可转让。'}
-    if data.status and data.status not in ('PENDING', 'APPROVED', 'REJECTED'):
-        return 400, {'message': '无效成员状态。'}
-    if target_membership.role == 'CREATOR':
+    if target is None:
+        return 400, {'message': '未找到对应的管理人员记录。'}
+    if target.role == 'CREATOR':
         return 400, {'message': '不能修改店铺创建人。'}
-    if my_membership.role != 'CREATOR' and (target_membership.role == 'ADMIN' or data.role == 'ADMIN'):
-        return 400, {'message': '只有创建人可以变更管理员。'}
-    # 防止管理员越权修改创建人
-    if target_membership.role == 'CREATOR' and my_membership.role != 'CREATOR':
-        return 400, {"message": "无法修改店铺创建人的角色或状态"}
-        
-    if data.role:
-        target_membership.role = data.role
-    if data.status:
-        target_membership.status = data.status
-        
-    target_membership.save()
-    return 200, {"message": "成员状态更新成功"}
+    if data.role is not None and data.role != 'ADMIN':
+        return 400, {'message': '这里只管理管理员；拍手请使用独立拍手管理。'}
+    if data.status is not None and data.status not in ('PENDING', 'APPROVED', 'REJECTED'):
+        return 400, {'message': '无效的管理员状态。'}
+    if target.role != 'ADMIN':
+        return 400, {'message': '该账号属于拍手，请通过管理员申请加入店铺。'}
+    if data.status is not None:
+        target.status = data.status
+        target.save(update_fields=['status'])
+    return 200, {'message': '管理员状态更新成功。'}
 
 @api.get("/inventory/products", response=List[ProductOutSchema], auth=auth_bearer)
 def list_products(request, search: Optional[str] = None):
@@ -983,5 +995,13 @@ def list_inbound_logs(request):
     return list(InboundActionLog.objects.filter(shop=request.active_shop).select_related('user').order_by('-created_at'))
 
 
+# 静态批量路径必须在/view动态单据路由前注册。
+from inventory.batch_view import router as batch_view_router
+api.add_router("", batch_view_router, auth=auth_bearer)
+
 from .sync_v2 import router as sync_v2_router
 api.add_router("", sync_v2_router, auth=auth_bearer)
+
+# 作业使用管理认证，拍手使用独立认证器，避免获得库存权限。
+from jobs.api import register_jobs
+register_jobs(api, auth_bearer)

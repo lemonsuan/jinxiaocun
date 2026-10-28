@@ -64,3 +64,7 @@ Correct: retry the immutable persisted operation and preserve later local genera
 ## Reviewed Media Failure Isolation
 
 A missing/corrupt legacy local image must not stall every following record. Service scans a bounded100 candidates and freezes at most30 valid documents per cycle; file/format failures keep the affected document dirty and show an incomplete-media status while other candidates continue. Auth/network failures still stop the cycle. Never omit the evidence field to force success. Pending/conflicting counts must prevent a false all-complete status.
+
+## 作业管理写入与撤权的并发边界
+
+作业、结算、撤销结算和拍手管理写入统一先锁店铺，再锁定当前管理员的成员记录并复验 `APPROVED` 与 `CREATOR/ADMIN`。不能只沿用进入请求时的权限结果：请求等待店铺锁期间，创建人可能已经撤销该管理员资格。成员锁持续到写入事务提交，确保撤权与业务写入按实际锁顺序生效。回归用例须覆盖初次鉴权通过、取得店铺锁前资格被撤销的情况；库存并发测试应显式使用管理员角色，不依赖成员默认角色。
