@@ -1,7 +1,5 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:typed_data';
-import 'dart:ui' as ui;
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
@@ -15,20 +13,21 @@ import '../application/inventory_service.dart';
 import '../application/shop_sync_service.dart';
 import 'shop_sync_page.dart';
 import '../application/express_processing_queue.dart';
+import '../application/ocr_access_policy.dart';
+import '../application/capture_image_processor.dart';
+import '../domain/captured_photo.dart';
+import '../domain/express_capture.dart';
 import '../data/local_inventory_database.dart';
 import '../domain/models.dart';
 import '../domain/ocr_settings.dart';
-import '../ocr/ai_inbound_extractor.dart';
 import '../ocr/pp_structure_post_processor.dart';
 import '../platform/paddle_ocr_channel.dart';
 import 'scanner_page.dart';
 import 'product_price_page.dart';
 import 'data_management_page.dart';
-import 'ai_config_page.dart';
 import 'workspace_settings_page.dart';
 import 'express_inbound_page.dart';
 import 'custom_camera_page.dart';
-import 'ai_rebuild_warehouse_page.dart';
 
 enum _HistorySettlementFilter { all, settled, unsettled }
 
@@ -53,7 +52,8 @@ class _OutboundCartEntry {
 }
 
 class AppHome extends StatefulWidget {
-  const AppHome({super.key});
+  const AppHome({super.key, this.database});
+  final LocalInventoryDatabase? database;
 
   @override
   State<AppHome> createState() => _AppHomeState();
@@ -85,11 +85,18 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
   static const Color _notionGreyText = Color(0xFF7C7B77);
   static const Color _notionBorder = Color(0xFFEDEDEB);
 
-  final LocalInventoryDatabase _database = LocalInventoryDatabase();
-  late final AiInboundExtractor _aiInboundExtractor =
-      AiInboundExtractor(_database);
+  late final LocalInventoryDatabase _database =
+      widget.database ?? LocalInventoryDatabase();
   final PpStructurePostProcessor _postProcessor = PpStructurePostProcessor();
-  final PaddleOcrChannel _paddleOcr = PaddleOcrChannel();
+  late final PaddleOcrChannel _paddleOcr =
+      PaddleOcrChannel(policy: () => _database.ocrPolicy);
+  VoidCallback? _releaseQueue;
+  bool _ocrEnabled = true;
+  bool _savingOcrEnabled = false;
+  int _draftGeneration = 0;
+  bool _draftNeedsReview = false;
+  int _photoSaveCount = 0;
+  bool _confirmingInbound = false;
   final ImagePicker _imagePicker = ImagePicker();
   final TextEditingController _trackingController = TextEditingController();
   final TextEditingController _sellerOrderController = TextEditingController();
@@ -140,6 +147,8 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
     _shopSync?.removeListener(_onSyncChanged);
     _shopSync?.dispose();
     _registeredQueue?.listeners.remove(_refreshWhenHomeVisible);
+    _releaseQueue?.call();
+    _draftGeneration++;
     _trackingController.dispose();
     _sellerOrderController.dispose();
     _rebateOrderController.dispose();
@@ -162,7 +171,8 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
             : IndexedStack(
                 index: _selectedTabIndex,
                 children: [
-                  _scanInboundTab(),
+                  AbsorbPointer(
+                      absorbing: _photoSaveCount > 0, child: _scanInboundTab()),
                   _historyInboundTab(),
                   _inventoryManagementTab(),
                   _profileTab(),
@@ -369,8 +379,9 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
                       onPressed: _captureAndRecognizeList,
                       icon: const Icon(Icons.photo_camera_outlined,
                           size: 16, color: Colors.white),
-                      label: const Text('拍照识别',
-                          style: TextStyle(fontWeight: FontWeight.normal)),
+                      label: Text(_ocrEnabled ? '拍照识别' : '拍照保存',
+                          style:
+                              const TextStyle(fontWeight: FontWeight.normal)),
                     ),
                   ),
                   const SizedBox(width: 12),
@@ -388,8 +399,9 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
                       onPressed: _pickAndRecognizeList,
                       icon: const Icon(Icons.photo_library_outlined,
                           size: 16, color: _notionText),
-                      label: const Text('相册识别',
-                          style: TextStyle(fontWeight: FontWeight.normal)),
+                      label: Text(_ocrEnabled ? '相册识别' : '相册保存',
+                          style:
+                              const TextStyle(fontWeight: FontWeight.normal)),
                     ),
                   ),
                 ],
@@ -482,7 +494,9 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
                           borderRadius: BorderRadius.zero),
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                     ),
-                    onPressed: _confirmInbound,
+                    onPressed: _photoSaveCount > 0 || _confirmingInbound
+                        ? null
+                        : _confirmInbound,
                     icon: const Icon(Icons.archive_outlined,
                         size: 16, color: Colors.white),
                     label: const Text('确认入库',
@@ -773,6 +787,14 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
     final valueText = _ocrRowMergeTolerance.toStringAsFixed(2);
 
     return _page([
+      SwitchListTile(
+        key: const ValueKey('ocr-enabled-switch'),
+        title: const Text('OCR图片识别'),
+        subtitle: Text(
+            _ocrEnabled ? '开启后自动识别商品；拍摄期间暂停后台任务。' : '已关闭：只保存单号和照片，可手工补录商品。'),
+        value: _ocrEnabled,
+        onChanged: _savingOcrEnabled ? null : _saveOcrEnabled,
+      ),
       const SizedBox(height: 8),
 
       // 当前店铺及工作区卡片 (Notion 极简直角风)
@@ -881,38 +903,7 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
                   );
                 },
               ),
-              Divider(height: 1, color: Colors.grey.shade200),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    border: Border.all(color: Colors.black, width: 0.8),
-                  ),
-                  child: const Icon(Icons.auto_awesome_outlined,
-                      color: Colors.black, size: 18),
-                ),
-                title: const Text('OCR 与 AI 配置',
-                    style: TextStyle(
-                        fontSize: 14,
-                        fontFamily: 'monospace',
-                        fontWeight: FontWeight.bold)),
-                subtitle: const Text('配置本机离线与自建 OCR 识别，管理云端大模型接口',
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontFamily: 'monospace',
-                        color: Colors.grey)),
-                onTap: () {
-                  Navigator.of(context).push(
-                    MaterialPageRoute(
-                      builder: (context) => AiConfigPage(
-                        database: _database,
-                      ),
-                    ),
-                  );
-                },
-              ),
+
             ],
           ),
         ),
@@ -1037,30 +1028,7 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
                   );
                 },
               ),
-              Divider(height: 1, color: Colors.grey.shade200),
-              ListTile(
-                contentPadding: EdgeInsets.zero,
-                leading: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: Colors.white,
-                    border: Border.all(color: Colors.black, width: 0.8),
-                  ),
-                  child: const Icon(Icons.psychology_outlined,
-                      color: Colors.black, size: 18),
-                ),
-                title: const Text('AI 图片分析重整库房',
-                    style: TextStyle(
-                        fontSize: 14,
-                        fontFamily: 'monospace',
-                        fontWeight: FontWeight.bold)),
-                subtitle: const Text('对所有带图片的入库单重跑 AI 识别并一键重整库存',
-                    style: TextStyle(
-                        fontSize: 11,
-                        fontFamily: 'monospace',
-                        color: Colors.grey)),
-                onTap: _startAiInventoryRebuilding,
-              ),
+
               Divider(height: 1, color: Colors.grey.shade200),
               ListTile(
                 contentPadding: EdgeInsets.zero,
@@ -1102,12 +1070,6 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
     ]);
   }
 
-  Widget _sectionTitle(String value) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: Text(value, style: Theme.of(context).textTheme.titleLarge),
-    );
-  }
 
   Widget _scanInboundHeader() {
     return Padding(
@@ -1247,19 +1209,7 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
                     fontSize: 12,
                     fontWeight: FontWeight.bold)),
           ),
-          const SizedBox(width: 8),
-          GestureDetector(
-            onTap: _openAiExtractDialog,
-            child: Container(
-              width: 32,
-              height: 32,
-              decoration: BoxDecoration(
-                color: Colors.white,
-                border: Border.all(color: Colors.black, width: 0.8),
-              ),
-              child: const Icon(Icons.menu, color: Colors.black, size: 16),
-            ),
-          ),
+
         ],
       ),
     );
@@ -1580,338 +1530,214 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
     );
   }
 
-  Future<void> _rotateImageFile(String path, int quarterTurns) async {
-    if (quarterTurns % 4 == 0) {
-      return;
-    }
-    final File file = File(path);
-    if (!file.existsSync()) return;
-
-    final Uint8List bytes = await file.readAsBytes();
-    final ui.Codec codec = await ui.instantiateImageCodec(bytes);
-    final ui.FrameInfo frameInfo = await codec.getNextFrame();
-    final ui.Image image = frameInfo.image;
-
-    final double angle = (quarterTurns % 4) * 90 * 3.141592653589793 / 180;
-    final bool is90or270 = (quarterTurns % 4) % 2 != 0;
-    final int targetWidth = is90or270 ? image.height : image.width;
-    final int targetHeight = is90or270 ? image.width : image.height;
-
-    final ui.PictureRecorder recorder = ui.PictureRecorder();
-    final ui.Canvas canvas = ui.Canvas(recorder);
-
-    canvas.translate(targetWidth / 2, targetHeight / 2);
-    canvas.rotate(angle);
-    canvas.translate(-image.width / 2, -image.height / 2);
-    canvas.drawImage(image, Offset.zero, ui.Paint());
-
-    final ui.Picture picture = recorder.endRecording();
-    final ui.Image rotatedImage =
-        await picture.toImage(targetWidth, targetHeight);
-    final ByteData? byteData =
-        await rotatedImage.toByteData(format: ui.ImageByteFormat.png);
-
-    if (byteData != null) {
-      await file.writeAsBytes(byteData.buffer.asUint8List(), flush: true);
-      // 清理 Flutter ImageCache，防止列表缩略图不更新
-      PaintingBinding.instance.imageCache.evict(FileImage(file));
-    }
-
-    image.dispose();
-    rotatedImage.dispose();
-  }
-
-  /// 如果图片是横屏（宽度 > 高度），将其物理旋转 90 度为竖屏
-  Future<void> _ensureVerticalImage(String path) async {
-    try {
-      final File file = File(path);
-      if (!file.existsSync()) return;
-
-      final Uint8List bytes = await file.readAsBytes();
-      final ui.Codec codec = await ui.instantiateImageCodec(bytes);
-      final ui.FrameInfo frameInfo = await codec.getNextFrame();
-      final ui.Image image = frameInfo.image;
-
-      final int width = image.width;
-      final int height = image.height;
-
-      // 如果宽度大于高度，则是横屏图，强制逆时针旋转90度（即顺时针旋转270度）
-      if (width > height) {
-        const double angle = 270 * 3.141592653589793 / 180;
-        final int targetWidth = height;
-        final int targetHeight = width;
-
-        final ui.PictureRecorder recorder = ui.PictureRecorder();
-        final ui.Canvas canvas = ui.Canvas(recorder);
-
-        canvas.translate(targetWidth / 2, targetHeight / 2);
-        canvas.rotate(angle);
-        canvas.translate(-width / 2, -height / 2);
-        canvas.drawImage(image, Offset.zero, ui.Paint());
-
-        final ui.Picture picture = recorder.endRecording();
-        final ui.Image rotatedImage =
-            await picture.toImage(targetWidth, targetHeight);
-        final ByteData? byteData =
-            await rotatedImage.toByteData(format: ui.ImageByteFormat.png);
-
-        if (byteData != null) {
-          await file.writeAsBytes(byteData.buffer.asUint8List(), flush: true);
-        }
-        rotatedImage.dispose();
-      }
-      image.dispose();
-
-      // 清理 Flutter ImageCache 缓存，防止缩略图缓存不刷新
-      PaintingBinding.instance.imageCache.evict(FileImage(file));
-    } catch (e) {
-      debugPrint('图片纠偏异常: $e');
-    }
-  }
-
   Future<void> _reRecognizeReceipt(InboundReceipt receipt) async {
     final path = receipt.imagePath;
     if (path == null || path.isEmpty) return;
 
-    showDialog<void>(
+    try {
+      await _database.ocrPolicy.permit();
+    } on OcrCancelled catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text(error.toString())));
+      }
+      return;
+    }
+    if (!mounted) return;
+    final temporaryImages = <String>{};
+    String? recognitionImagePath;
+    await showDialog<void>(
       context: context,
       barrierDismissible: false,
       builder: (context) {
+        OcrPermit? recognitionPermit;
         int currentStep = 1;
         int quarterTurns = 0;
         bool isLoading = false;
         List<InboundDraftItem> newDraftItems = [];
-        String reRecognizeMethod = 'ocr';
 
         return StatefulBuilder(
           builder: (dialogContext, setDialogState) {
-            return Dialog(
-              backgroundColor: Colors.white,
-              shape: const RoundedRectangleBorder(
-                borderRadius: BorderRadius.zero,
-              ),
-              insetPadding:
-                  const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // 头部
-                    Row(
-                      children: [
-                        const Expanded(
-                          child: Text(
-                            '图片旋转与二次识别',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontFamily: 'monospace',
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF1E293B),
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: isLoading
-                              ? null
-                              : () => Navigator.pop(dialogContext),
-                          icon: const Icon(Icons.close, color: Colors.grey),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-
-                    // 主体
-                    if (currentStep == 1) ...[
-                      // 第一步：展示预览及旋转 (固定高度，不撑满屏幕)
-                      SizedBox(
-                        height: 280,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            Container(
-                              width: double.infinity,
-                              decoration: BoxDecoration(
-                                color: Colors.white,
-                                border: Border.all(
-                                    color: Colors.grey.shade300, width: 0.5),
-                                borderRadius: BorderRadius.zero,
-                              ),
-                              clipBehavior: Clip.antiAlias,
-                              child: InteractiveViewer(
-                                maxScale: 4.0,
-                                child: Center(
-                                  child: RotatedBox(
-                                    quarterTurns: quarterTurns,
-                                    child: Image.file(
-                                      File(path),
-                                      fit: BoxFit.contain,
-                                    ),
-                                  ),
-                                ),
-                              ),
-                            ),
-                            if (isLoading)
-                              Container(
-                                decoration: const BoxDecoration(
-                                  color: Colors.black26,
-                                  borderRadius: BorderRadius.zero,
-                                ),
-                                child: const Center(
-                                  child: CircularProgressIndicator(
-                                    color: Colors.black,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                      const SizedBox(height: 16),
-                      // 识别方式选择
-                      const Text(
-                        '识别方式',
-                        style: TextStyle(
-                          fontSize: 12,
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF64748B),
-                          fontFamily: 'monospace',
-                        ),
-                      ),
-                      const SizedBox(height: 8),
+            return PopScope(
+              canPop: !isLoading,
+              child: Dialog(
+                backgroundColor: Colors.white,
+                shape: const RoundedRectangleBorder(
+                  borderRadius: BorderRadius.zero,
+                ),
+                insetPadding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
+                child: Padding(
+                  padding: const EdgeInsets.all(24),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    crossAxisAlignment: CrossAxisAlignment.stretch,
+                    children: [
+                      // 头部
                       Row(
                         children: [
-                          Expanded(
-                            child: ChoiceChip(
-                              label: const Center(
-                                child: Text(
-                                  '本地 OCR 识别',
-                                  style: TextStyle(fontSize: 12),
-                                ),
+                          const Expanded(
+                            child: Text(
+                              '图片旋转与二次识别',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontFamily: 'monospace',
+                                fontWeight: FontWeight.bold,
+                                color: Color(0xFF1E293B),
                               ),
-                              selected: reRecognizeMethod == 'ocr',
-                              shape: const RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.zero),
-                              selectedColor: const Color(0xFF1E293B),
-                              backgroundColor: const Color(0xFFF1F5F9),
-                              labelStyle: TextStyle(
-                                color: reRecognizeMethod == 'ocr'
-                                    ? Colors.white
-                                    : const Color(0xFF475569),
-                              ),
-                              onSelected: (selected) {
-                                if (selected) {
-                                  setDialogState(() {
-                                    reRecognizeMethod = 'ocr';
-                                  });
-                                }
-                              },
                             ),
                           ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: ChoiceChip(
-                              label: const Center(
-                                child: Text(
-                                  'AI 视觉识别',
-                                  style: TextStyle(fontSize: 12),
-                                ),
-                              ),
-                              selected: reRecognizeMethod == 'ai',
-                              shape: const RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.zero),
-                              selectedColor: const Color(0xFF1E293B),
-                              backgroundColor: const Color(0xFFF1F5F9),
-                              labelStyle: TextStyle(
-                                color: reRecognizeMethod == 'ai'
-                                    ? Colors.white
-                                    : const Color(0xFF475569),
-                              ),
-                              onSelected: (selected) {
-                                if (selected) {
-                                  setDialogState(() {
-                                    reRecognizeMethod = 'ai';
-                                  });
-                                }
-                              },
-                            ),
+                          IconButton(
+                            onPressed: isLoading
+                                ? null
+                                : () => Navigator.pop(dialogContext),
+                            icon: const Icon(Icons.close, color: Colors.grey),
+                            padding: EdgeInsets.zero,
+                            constraints: const BoxConstraints(),
                           ),
                         ],
                       ),
                       const SizedBox(height: 16),
-                      // 底部按钮 Row
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.black,
-                                side: const BorderSide(
-                                    color: Colors.black, width: 0.8),
-                                shape: const RoundedRectangleBorder(
+
+                      // 主体
+                      if (currentStep == 1) ...[
+                        // 第一步：展示预览及旋转 (固定高度，不撑满屏幕)
+                        SizedBox(
+                          height: 280,
+                          child: Stack(
+                            alignment: Alignment.center,
+                            children: [
+                              Container(
+                                width: double.infinity,
+                                decoration: BoxDecoration(
+                                  color: Colors.white,
+                                  border: Border.all(
+                                      color: Colors.grey.shade300, width: 0.5),
                                   borderRadius: BorderRadius.zero,
                                 ),
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 12),
+                                clipBehavior: Clip.antiAlias,
+                                child: InteractiveViewer(
+                                  maxScale: 4.0,
+                                  child: Center(
+                                    child: RotatedBox(
+                                      quarterTurns: quarterTurns,
+                                      child: Image.file(
+                                        File(path),
+                                        fit: BoxFit.contain,
+                                      ),
+                                    ),
+                                  ),
+                                ),
                               ),
-                              onPressed: isLoading
-                                  ? null
-                                  : () {
-                                      setDialogState(() {
-                                        quarterTurns = (quarterTurns + 1) % 4;
-                                      });
-                                    },
-                              icon: const Icon(Icons.rotate_right,
-                                  size: 16, color: Colors.black),
-                              label: const Text(
-                                '旋转90°',
-                                style: TextStyle(
-                                    fontFamily: 'monospace',
-                                    fontWeight: FontWeight.normal),
+                              if (isLoading)
+                                Container(
+                                  decoration: const BoxDecoration(
+                                    color: Colors.black26,
+                                    borderRadius: BorderRadius.zero,
+                                  ),
+                                  child: const Center(
+                                    child: CircularProgressIndicator(
+                                      color: Colors.black,
+                                    ),
+                                  ),
+                                ),
+                            ],
+                          ),
+                        ),
+                        const SizedBox(height: 16),
+
+                        // 底部按钮 Row
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.black,
+                                  side: const BorderSide(
+                                      color: Colors.black, width: 0.8),
+                                  shape: const RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.zero,
+                                  ),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
+                                ),
+                                onPressed: isLoading
+                                    ? null
+                                    : () {
+                                        setDialogState(() {
+                                          quarterTurns = (quarterTurns + 1) % 4;
+                                        });
+                                      },
+                                icon: const Icon(Icons.rotate_right,
+                                    size: 16, color: Colors.black),
+                                label: const Text(
+                                  '旋转90°',
+                                  style: TextStyle(
+                                      fontFamily: 'monospace',
+                                      fontWeight: FontWeight.normal),
+                                ),
                               ),
                             ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: OutlinedButton.icon(
-                              style: OutlinedButton.styleFrom(
-                                backgroundColor: Colors.black,
-                                foregroundColor: Colors.white,
-                                side: BorderSide.none,
-                                shape: const RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.zero,
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: OutlinedButton.icon(
+                                style: OutlinedButton.styleFrom(
+                                  backgroundColor: Colors.black,
+                                  foregroundColor: Colors.white,
+                                  side: BorderSide.none,
+                                  shape: const RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.zero,
+                                  ),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
                                 ),
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 12),
-                              ),
-                              onPressed: isLoading
-                                  ? null
-                                  : () async {
-                                      setDialogState(() {
-                                        isLoading = true;
-                                      });
-                                      try {
-                                        // 1. 如果有旋转，则先物理旋转并写回文件，且重置 quarterTurns
-                                        if (quarterTurns % 4 != 0) {
-                                          await _rotateImageFile(
-                                              path, quarterTurns);
-                                          setDialogState(() {
-                                            quarterTurns = 0;
-                                          });
-                                        }
+                                onPressed: isLoading
+                                    ? null
+                                    : () async {
+                                        setDialogState(() {
+                                          isLoading = true;
+                                        });
+                                        try {
+                                          recognitionPermit = await _database
+                                              .ocrPolicy
+                                              .permit();
+                                          // 旋转生成独立JPEG，确认写入前不更改原始凭证。
+                                          final sourcePath = quarterTurns % 4 ==
+                                                  0
+                                              ? path
+                                              : await CaptureImageProcessor()
+                                                  .process(
+                                                      path,
+                                                      CaptureCrop.full,
+                                                      'review_${DateTime.now().microsecondsSinceEpoch}',
+                                                      quarterTurns:
+                                                          quarterTurns);
+                                          if (!dialogContext.mounted) {
+                                            if (sourcePath != path &&
+                                                !await _database
+                                                    .isImagePathReferenced(
+                                                        sourcePath)) {
+                                              final unused = File(sourcePath);
+                                              if (await unused.exists()) {
+                                                await unused.delete();
+                                              }
+                                            }
+                                            return;
+                                          }
+                                          recognitionImagePath =
+                                              sourcePath == path
+                                                  ? null
+                                                  : sourcePath;
+                                          if (recognitionImagePath != null) {
+                                            temporaryImages
+                                                .add(recognitionImagePath!);
+                                          }
+                                          recognitionPermit!.validate();
 
-                                        // 2. 根据识别方式调用相应接口
-                                        List<InboundDraftItem> items = [];
-                                        if (reRecognizeMethod == 'ai') {
-                                          final result =
-                                              await _aiInboundExtractor
-                                                  .extractFromImage(path);
-                                          items = result.items;
-                                        } else {
+                                          // 2. 调用本地离线 PaddleOCR 识别表格
                                           final ocrResult = await _paddleOcr
-                                              .recognizeTable(path,
+                                              .recognizeTable(sourcePath,
+                                                  permit: recognitionPermit,
                                                   rowMergeTolerance:
                                                       _ocrRowMergeTolerance);
                                           final rows = ocrResult.rows;
@@ -1919,246 +1745,263 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
                                               ocrResult.editableText;
 
                                           // 使用本地处理器提取商品
-                                          var processedItems =
-                                              _postProcessor.processRows(rows);
+                                          var processedItems = _postProcessor
+                                              .processRows(rows);
                                           if (processedItems.isEmpty &&
                                               ocrText.isNotEmpty) {
                                             processedItems = _postProcessor
                                                 .processPlainText(ocrText);
                                           }
-                                          items = processedItems
+                                          final items = processedItems
                                               .map((e) => InboundDraftItem(
-                                                    productName: e.productName,
+                                                    productName:
+                                                        e.productName,
                                                     quantity: e.quantity,
-                                                    productCode: e.productCode,
+                                                    productCode:
+                                                        e.productCode,
                                                     purchasePrice:
                                                         e.purchasePrice,
                                                     salePrice: e.salePrice,
                                                   ))
                                               .toList();
-                                        }
 
-                                        newDraftItems = items
-                                            .map((item) => InboundDraftItem(
-                                                  productName: item.productName,
-                                                  quantity: item.quantity,
-                                                  productCode: item.productCode,
-                                                  purchasePrice:
-                                                      item.purchasePrice,
-                                                  salePrice: item.salePrice,
-                                                  sourceText:
-                                                      reRecognizeMethod == 'ai'
-                                                          ? 'AI重新识别提取'
-                                                          : 'OCR重新识别提取',
-                                                ))
-                                            .toList();
+                                          recognitionPermit!.validate();
+                                          if (!dialogContext.mounted) return;
+                                          newDraftItems = items
+                                              .map((item) => InboundDraftItem(
+                                                    productName:
+                                                        item.productName,
+                                                    quantity: item.quantity,
+                                                    productCode:
+                                                        item.productCode,
+                                                    purchasePrice:
+                                                        item.purchasePrice,
+                                                    salePrice: item.salePrice,
+                                                    sourceText: 'OCR重新识别提取',
+                                                  ))
+                                              .toList();
 
-                                        setDialogState(() {
-                                          currentStep = 2;
-                                          isLoading = false;
-                                        });
-                                      } catch (e) {
-                                        setDialogState(() {
-                                          isLoading = false;
-                                        });
-                                        if (dialogContext.mounted) {
-                                          ScaffoldMessenger.of(dialogContext)
-                                              .showSnackBar(SnackBar(
-                                                  content: Text('识别失败: $e')));
+                                          setDialogState(() {
+                                            currentStep = 2;
+                                            isLoading = false;
+                                          });
+                                        } catch (e) {
+                                          if (!dialogContext.mounted) return;
+                                          setDialogState(() {
+                                            isLoading = false;
+                                          });
+                                          if (dialogContext.mounted) {
+                                            ScaffoldMessenger.of(dialogContext)
+                                                .showSnackBar(SnackBar(
+                                                    content: Text('识别失败: $e')));
+                                          }
                                         }
-                                      }
-                                    },
-                              icon: const Icon(Icons.document_scanner_outlined,
-                                  size: 16, color: Colors.white),
-                              label: const Text(
-                                '开始识别',
-                                style: TextStyle(
-                                    fontFamily: 'monospace',
-                                    fontWeight: FontWeight.bold),
+                                      },
+                                icon: const Icon(
+                                    Icons.document_scanner_outlined,
+                                    size: 16,
+                                    color: Colors.white),
+                                label: const Text(
+                                  '开始识别',
+                                  style: TextStyle(
+                                      fontFamily: 'monospace',
+                                      fontWeight: FontWeight.bold),
+                                ),
                               ),
                             ),
-                          ),
-                        ],
-                      ),
-                    ] else ...[
-                      // 第二步：识别完成商品预览
-                      const Text(
-                        '二次识别已完成！商品清单预览：',
-                        style: TextStyle(
-                          fontSize: 13,
-                          fontFamily: 'monospace',
-                          fontWeight: FontWeight.bold,
-                          color: Color(0xFF475569),
+                          ],
                         ),
-                      ),
-                      const SizedBox(height: 12),
-                      ConstrainedBox(
-                        constraints: const BoxConstraints(maxHeight: 260),
-                        child: Container(
-                          decoration: BoxDecoration(
-                            color: Colors.white,
-                            border: Border.all(
-                                color: Colors.grey.shade300, width: 0.5),
-                            borderRadius: BorderRadius.zero,
+                      ] else ...[
+                        // 第二步：识别完成商品预览
+                        const Text(
+                          '二次识别已完成！商品清单预览：',
+                          style: TextStyle(
+                            fontSize: 13,
+                            fontFamily: 'monospace',
+                            fontWeight: FontWeight.bold,
+                            color: Color(0xFF475569),
                           ),
-                          clipBehavior: Clip.antiAlias,
-                          child: newDraftItems.isEmpty
-                              ? const SizedBox(
-                                  height: 100,
-                                  child: Center(
-                                    child: Text(
-                                      '未提取到商品信息',
-                                      style: TextStyle(
-                                          fontFamily: 'monospace',
-                                          color: Colors.grey),
+                        ),
+                        const SizedBox(height: 12),
+                        ConstrainedBox(
+                          constraints: const BoxConstraints(maxHeight: 260),
+                          child: Container(
+                            decoration: BoxDecoration(
+                              color: Colors.white,
+                              border: Border.all(
+                                  color: Colors.grey.shade300, width: 0.5),
+                              borderRadius: BorderRadius.zero,
+                            ),
+                            clipBehavior: Clip.antiAlias,
+                            child: newDraftItems.isEmpty
+                                ? const SizedBox(
+                                    height: 100,
+                                    child: Center(
+                                      child: Text(
+                                        '未提取到商品信息',
+                                        style: TextStyle(
+                                            fontFamily: 'monospace',
+                                            color: Colors.grey),
+                                      ),
                                     ),
-                                  ),
-                                )
-                              : ListView.separated(
-                                  shrinkWrap: true,
-                                  physics: const ClampingScrollPhysics(),
-                                  padding:
-                                      const EdgeInsets.symmetric(vertical: 8),
-                                  itemCount: newDraftItems.length,
-                                  separatorBuilder: (context, index) => Divider(
-                                      height: 1, color: Colors.grey.shade200),
-                                  itemBuilder: (context, index) {
-                                    final item = newDraftItems[index];
-                                    return Padding(
-                                      padding: const EdgeInsets.symmetric(
-                                          vertical: 12, horizontal: 16),
-                                      child: Row(
-                                        mainAxisAlignment:
-                                            MainAxisAlignment.spaceBetween,
-                                        children: [
-                                          Expanded(
-                                            child: Text(
-                                              item.productName,
+                                  )
+                                : ListView.separated(
+                                    shrinkWrap: true,
+                                    physics: const ClampingScrollPhysics(),
+                                    padding:
+                                        const EdgeInsets.symmetric(vertical: 8),
+                                    itemCount: newDraftItems.length,
+                                    separatorBuilder: (context, index) =>
+                                        Divider(
+                                            height: 1,
+                                            color: Colors.grey.shade200),
+                                    itemBuilder: (context, index) {
+                                      final item = newDraftItems[index];
+                                      return Padding(
+                                        padding: const EdgeInsets.symmetric(
+                                            vertical: 12, horizontal: 16),
+                                        child: Row(
+                                          mainAxisAlignment:
+                                              MainAxisAlignment.spaceBetween,
+                                          children: [
+                                            Expanded(
+                                              child: Text(
+                                                item.productName,
+                                                style: const TextStyle(
+                                                  fontSize: 13,
+                                                  fontFamily: 'monospace',
+                                                  fontWeight: FontWeight.bold,
+                                                  color: Color(0xFF1E293B),
+                                                ),
+                                                maxLines: 2,
+                                                overflow: TextOverflow.ellipsis,
+                                              ),
+                                            ),
+                                            const SizedBox(width: 12),
+                                            Text(
+                                              'x${item.quantity}',
                                               style: const TextStyle(
-                                                fontSize: 13,
+                                                fontSize: 14,
                                                 fontFamily: 'monospace',
                                                 fontWeight: FontWeight.bold,
-                                                color: Color(0xFF1E293B),
+                                                color: Colors.black,
                                               ),
-                                              maxLines: 2,
-                                              overflow: TextOverflow.ellipsis,
                                             ),
-                                          ),
-                                          const SizedBox(width: 12),
-                                          Text(
-                                            'x${item.quantity}',
-                                            style: const TextStyle(
-                                              fontSize: 14,
-                                              fontFamily: 'monospace',
-                                              fontWeight: FontWeight.bold,
-                                              color: Colors.black,
-                                            ),
-                                          ),
-                                        ],
-                                      ),
-                                    );
-                                  },
-                                ),
+                                          ],
+                                        ),
+                                      );
+                                    },
+                                  ),
+                          ),
                         ),
-                      ),
-                      const SizedBox(height: 16),
-                      // 底部按钮 Row
-                      Row(
-                        children: [
-                          Expanded(
-                            child: OutlinedButton(
-                              style: OutlinedButton.styleFrom(
-                                foregroundColor: Colors.black,
-                                side: const BorderSide(
-                                    color: Colors.black, width: 0.8),
-                                shape: const RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.zero,
+                        const SizedBox(height: 16),
+                        // 底部按钮 Row
+                        Row(
+                          children: [
+                            Expanded(
+                              child: OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  foregroundColor: Colors.black,
+                                  side: const BorderSide(
+                                      color: Colors.black, width: 0.8),
+                                  shape: const RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.zero,
+                                  ),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
                                 ),
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 12),
-                              ),
-                              onPressed: isLoading
-                                  ? null
-                                  : () {
-                                      setDialogState(() {
-                                        currentStep = 1;
-                                      });
-                                    },
-                              child: const Text(
-                                '重新旋转',
-                                style: TextStyle(
-                                    fontFamily: 'monospace',
-                                    fontWeight: FontWeight.normal),
-                              ),
-                            ),
-                          ),
-                          const SizedBox(width: 12),
-                          Expanded(
-                            child: OutlinedButton(
-                              style: OutlinedButton.styleFrom(
-                                backgroundColor: Colors.black,
-                                foregroundColor: Colors.white,
-                                side: BorderSide.none,
-                                shape: const RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.zero,
-                                ),
-                                padding:
-                                    const EdgeInsets.symmetric(vertical: 12),
-                              ),
-                              onPressed: newDraftItems.isEmpty || isLoading
-                                  ? null
-                                  : () async {
-                                      setDialogState(() {
-                                        isLoading = true;
-                                      });
-                                      try {
-                                        await _database.overwriteInboundItems(
-                                          receiptId: receipt.id,
-                                          items: newDraftItems,
-                                          ocrStatus: OcrStatus.confirmed,
-                                        );
-                                        if (dialogContext.mounted) {
-                                          Navigator.pop(dialogContext);
-                                          ScaffoldMessenger.of(context)
-                                              .showSnackBar(const SnackBar(
-                                                  content: Text('重新识别并更新成功！')));
-                                        }
-                                        _refreshData();
-                                        setState(() {
-                                          _expandedReceiptId = null;
-                                        });
-                                      } catch (e) {
+                                onPressed: isLoading
+                                    ? null
+                                    : () {
                                         setDialogState(() {
-                                          isLoading = false;
+                                          currentStep = 1;
                                         });
-                                        if (dialogContext.mounted) {
-                                          ScaffoldMessenger.of(dialogContext)
-                                              .showSnackBar(SnackBar(
-                                                  content: Text('覆写保存失败: $e')));
-                                        }
-                                      }
-                                    },
-                              child: isLoading
-                                  ? const SizedBox(
-                                      width: 16,
-                                      height: 16,
-                                      child: CircularProgressIndicator(
-                                        strokeWidth: 1.5,
-                                        color: Colors.white,
-                                      ),
-                                    )
-                                  : const Text(
-                                      '确认覆写清单',
-                                      style: TextStyle(
-                                          fontFamily: 'monospace',
-                                          fontWeight: FontWeight.bold),
-                                    ),
+                                      },
+                                child: const Text(
+                                  '重新旋转',
+                                  style: TextStyle(
+                                      fontFamily: 'monospace',
+                                      fontWeight: FontWeight.normal),
+                                ),
+                              ),
                             ),
-                          ),
-                        ],
-                      ),
+                            const SizedBox(width: 12),
+                            Expanded(
+                              child: OutlinedButton(
+                                style: OutlinedButton.styleFrom(
+                                  backgroundColor: Colors.black,
+                                  foregroundColor: Colors.white,
+                                  side: BorderSide.none,
+                                  shape: const RoundedRectangleBorder(
+                                    borderRadius: BorderRadius.zero,
+                                  ),
+                                  padding:
+                                      const EdgeInsets.symmetric(vertical: 12),
+                                ),
+                                onPressed: newDraftItems.isEmpty || isLoading
+                                    ? null
+                                    : () async {
+                                        setDialogState(() {
+                                          isLoading = true;
+                                        });
+                                        try {
+                                          await _database.overwriteInboundItems(
+                                            receiptId: receipt.id,
+                                            items: newDraftItems,
+                                            ocrStatus: OcrStatus.confirmed,
+                                            validateOcrPermit:
+                                                recognitionPermit?.validate,
+                                            expectedReceipt: receipt,
+                                            replacementImagePath:
+                                                recognitionImagePath,
+                                          );
+                                          if (dialogContext.mounted) {
+                                            Navigator.pop(dialogContext);
+                                            ScaffoldMessenger.of(context)
+                                                .showSnackBar(const SnackBar(
+                                                    content:
+                                                        Text('重新识别并更新成功！')));
+                                          }
+                                          if (!mounted) return;
+                                          _refreshData();
+                                          setState(() {
+                                            _expandedReceiptId = null;
+                                          });
+                                        } catch (e) {
+                                          if (!dialogContext.mounted) return;
+                                          setDialogState(() {
+                                            isLoading = false;
+                                          });
+                                          if (dialogContext.mounted) {
+                                            ScaffoldMessenger.of(dialogContext)
+                                                .showSnackBar(SnackBar(
+                                                    content:
+                                                        Text('覆写保存失败: $e')));
+                                          }
+                                        }
+                                      },
+                                child: isLoading
+                                    ? const SizedBox(
+                                        width: 16,
+                                        height: 16,
+                                        child: CircularProgressIndicator(
+                                          strokeWidth: 1.5,
+                                          color: Colors.white,
+                                        ),
+                                      )
+                                    : const Text(
+                                        '确认覆写清单',
+                                        style: TextStyle(
+                                            fontFamily: 'monospace',
+                                            fontWeight: FontWeight.bold),
+                                      ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ],
                     ],
-                  ],
+                  ),
                 ),
               ),
             );
@@ -2166,6 +2009,12 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
         );
       },
     );
+    for (final temporary in temporaryImages) {
+      if (!await _database.isImagePathReferenced(temporary)) {
+        final file = File(temporary);
+        if (await file.exists()) await file.delete();
+      }
+    }
   }
 
   Widget _receiptTile(InboundReceipt receipt) {
@@ -3189,22 +3038,15 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
 
   Future<void> _captureAndRecognizeList() async {
     try {
-      final image = await Navigator.of(context).push<XFile>(
-        MaterialPageRoute(
-          builder: (context) => const CustomCameraPage(title: '拍照识别商品清单'),
-        ),
-      );
-      if (image == null) {
-        return;
-      }
-      await _processImage(image);
-    } on Object catch (error) {
-      if (!mounted) {
-        return;
-      }
-      setState(() {
-        _message = '拍照识别失败：$error';
-      });
+      final photo = await Navigator.of(context).push<CapturedPhoto>(
+          MaterialPageRoute(
+              builder: (_) => CustomCameraPage(
+                  title: _ocrEnabled ? '拍照识别商品清单' : '拍照保存商品清单')));
+      if (photo == null || !mounted) return;
+      await _processImage(XFile(photo.imagePath),
+          crop: photo.crop, previewAspect: photo.previewAspect);
+    } catch (error) {
+      if (mounted) setState(() => _message = '拍照保存失败：$error');
     }
   }
 
@@ -3230,58 +3072,83 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _processImage(XFile image) async {
+  Future<void> _processImage(XFile image,
+      {CaptureCrop crop = CaptureCrop.full, double? previewAspect}) async {
+    if (!mounted) return;
+    final generation = ++_draftGeneration;
+    String? stored;
+    String? processed;
+    bool current() =>
+        mounted &&
+        generation == _draftGeneration &&
+        (stored == null || _currentInboundImagePath == stored);
     try {
-      final storedImagePath = await _storeInboundImage(image);
-      await _ensureVerticalImage(storedImagePath);
-      if (!mounted) {
+      setState(() => _photoSaveCount++);
+      try {
+        stored = await _storeInboundImage(image);
+      } finally {
+        _photoSaveCount--;
+        if (mounted) setState(() {});
+      }
+      if (!mounted || generation != _draftGeneration) {
+        if (!await _database.isImagePathReferenced(stored)) {
+          final unowned = File(stored);
+          if (await unowned.exists()) await unowned.delete();
+        }
         return;
       }
       setState(() {
-        _currentInboundImagePath = storedImagePath;
-        _message = '已保存商品清单图片并纠正方向，正在识别';
+        _currentInboundImagePath = stored;
+        _draftNeedsReview = true;
+        _message = '照片已保存';
       });
-      final recognition = await _paddleOcr.recognizeTable(
-        storedImagePath,
-        rowMergeTolerance: _ocrRowMergeTolerance,
-      );
-      final rows = recognition.rows;
-      final editableText = recognition.editableText;
-      final orderNumber = _postProcessor.extractSellerOrderNumber(editableText);
-      final filledSellerOrder =
-          _sellerOrderController.text.trim().isEmpty && orderNumber != null;
-
-      var items = _postProcessor.processRows(rows);
-      if (items.isEmpty && editableText.isNotEmpty) {
-        items = _postProcessor.processPlainText(editableText);
-      }
-      if (!mounted) {
+      if (!await _database.loadOcrEnabled()) {
+        if (current()) {
+          setState(() => _message = 'OCR已关闭，照片已保存，可填写单号后直接入库或手工补录商品。');
+        }
         return;
       }
+      final permit = await _database.ocrPolicy.permit();
+      processed = await CaptureImageProcessor().process(
+          stored, crop, 'draft_${DateTime.now().microsecondsSinceEpoch}',
+          previewAspect: previewAspect);
+      permit.validate();
+      if (!current()) return;
+      final recognition = await _paddleOcr.recognizeTable(processed,
+          rowMergeTolerance: _ocrRowMergeTolerance, permit: permit);
+      permit.validate();
+      if (!current()) return;
+      var items = _postProcessor.processRows(recognition.rows);
+      if (items.isEmpty && recognition.editableText.isNotEmpty) {
+        items = _postProcessor.processPlainText(recognition.editableText);
+      }
+      final orderNumber =
+          _postProcessor.extractSellerOrderNumber(recognition.editableText);
       setState(() {
-        if (filledSellerOrder) {
+        _currentInboundImagePath = processed;
+        _draftNeedsReview = items.isEmpty;
+        if (_sellerOrderController.text.trim().isEmpty && orderNumber != null) {
           _sellerOrderController.text = orderNumber;
         }
-        _ocrTextController.text = editableText;
+        _ocrTextController.text = recognition.editableText;
         _draftItems
           ..clear()
           ..addAll(items);
-        final orderMessage = filledSellerOrder ? '，已填入订单号' : '';
-        if (items.isNotEmpty) {
-          _message = '已识别 ${items.length} 条商品草稿，图片已保存$orderMessage';
-        } else if (editableText.isNotEmpty) {
-          _message = '已识别文字但未生成商品草稿，可编辑文本后点从文本重新生成$orderMessage';
-        } else {
-          _message = '未识别到文字，图片已保存，有顺丰单号也可先确认入库';
-        }
+        _message = items.isEmpty
+            ? '照片已保存，未识别到商品，可手工补录或先入库。'
+            : '已识别 ${items.length} 条商品草稿，照片已保存';
       });
-    } on Object catch (error) {
-      if (!mounted) {
-        return;
+    } on OcrCancelled catch (error) {
+      if (current()) setState(() => _message = error.toString());
+    } catch (error) {
+      if (current()) setState(() => _message = '照片已保留，后处理未完成，可手工录入：$error');
+    } finally {
+      if (processed != null &&
+          _currentInboundImagePath != processed &&
+          !await _database.isImagePathReferenced(processed)) {
+        final file = File(processed);
+        if (await file.exists()) await file.delete();
       }
-      setState(() {
-        _message = '商品清单识别处理失败：$error';
-      });
     }
   }
 
@@ -3342,9 +3209,11 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
       if (!mounted) return;
       final queue = ExpressProcessingQueue.forDatabase(_database);
       _registeredQueue = queue;
+      _releaseQueue = queue.retain();
       queue.listeners.add(_refreshWhenHomeVisible);
       unawaited(queue.kick());
       final ocrRowMergeTolerance = await _database.loadOcrRowMergeTolerance();
+      final ocrEnabled = await _database.loadOcrEnabled();
       await _loadShopInfo();
       if (!mounted) return;
       if (_authMode == 'online') {
@@ -3357,6 +3226,7 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
       }
       setState(() {
         _ocrRowMergeTolerance = ocrRowMergeTolerance;
+        _ocrEnabled = ocrEnabled;
         _isReady = true;
       });
     } on Object catch (error) {
@@ -3366,6 +3236,24 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
       setState(() {
         _message = '数据库初始化失败：$error';
       });
+    }
+  }
+
+  Future<void> _saveOcrEnabled(bool enabled) async {
+    if (_savingOcrEnabled) return;
+    setState(() => _savingOcrEnabled = true);
+    try {
+      await _database.saveOcrEnabled(enabled);
+      if (!mounted) return;
+      setState(() {
+        _ocrEnabled = enabled;
+        _message = enabled ? 'OCR已开启，继续未完成的旧识别任务。' : 'OCR已关闭，照片和原有商品保留。';
+      });
+      if (enabled) unawaited(_registeredQueue?.kick() ?? Future.value());
+    } catch (error) {
+      if (mounted) setState(() => _message = 'OCR设置保存失败：$error');
+    } finally {
+      if (mounted) setState(() => _savingOcrEnabled = false);
     }
   }
 
@@ -3392,15 +3280,6 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _startAiInventoryRebuilding() async {
-    await Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => AiRebuildWarehousePage(database: _database),
-      ),
-    );
-    _refreshData();
-  }
 
   void _refreshWhenHomeVisible() {
     if (mounted && (ModalRoute.of(context)?.isCurrent ?? false)) {
@@ -3540,6 +3419,7 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
   }
 
   void _addManualDraftItem() {
+    _draftGeneration++;
     setState(() {
       _draftItems.add(
         InboundDraftItem(
@@ -3553,6 +3433,7 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
   }
 
   void _replaceDraftItem(int index, InboundDraftItem item) {
+    _draftGeneration++;
     if (index < 0 || index >= _draftItems.length) {
       return;
     }
@@ -3560,6 +3441,7 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
   }
 
   void _setDraftQuantity(int index, int quantity) {
+    _draftGeneration++;
     if (index < 0 || index >= _draftItems.length) {
       return;
     }
@@ -3570,6 +3452,7 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
   }
 
   void _removeDraftItem(int index) {
+    _draftGeneration++;
     if (index < 0 || index >= _draftItems.length) {
       return;
     }
@@ -3580,6 +3463,7 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
   }
 
   Future<void> _clearCurrentInboundDraft() async {
+    _draftGeneration++;
     final imagePath = _currentInboundImagePath;
     _trackingController.clear();
     _sellerOrderController.clear();
@@ -3588,6 +3472,7 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
     _draftItems.clear();
     setState(() {
       _currentInboundImagePath = null;
+      _draftNeedsReview = false;
       _isSettled = false;
       _message = '已清空当前单';
     });
@@ -3595,34 +3480,51 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
   }
 
   Future<void> _confirmInbound() async {
+    if (_photoSaveCount > 0 || _confirmingInbound) return;
+    final generation = ++_draftGeneration;
+    final items = List<InboundDraftItem>.of(_draftItems);
+    final tracking = _trackingController.text;
+    final sellerOrder = _sellerOrderController.text;
+    final rebateOrder = _rebateOrderController.text;
+    final imagePath = _currentInboundImagePath;
+    final settled = _isSettled;
+    final status = items.isEmpty && _draftNeedsReview
+        ? OcrStatus.needsReview
+        : OcrStatus.confirmed;
+    setState(() => _confirmingInbound = true);
     try {
       final receipt = await _database.confirmInbound(
-        trackingNumber: _trackingController.text,
-        sellerOrderNumber: _sellerOrderController.text,
-        rebateOrderNumber: _rebateOrderController.text,
-        schemeNumber: _rebateOrderController.text,
-        items: _draftItems,
-        imagePath: _currentInboundImagePath,
-        isSettled: _isSettled,
-      );
+          trackingNumber: tracking,
+          sellerOrderNumber: sellerOrder,
+          rebateOrderNumber: rebateOrder,
+          schemeNumber: rebateOrder,
+          items: items,
+          imagePath: imagePath,
+          isSettled: settled,
+          ocrStatus: status);
       await _refreshData();
-      if (!mounted) {
-        return;
-      }
+      if (!mounted) return;
       setState(() {
-        _trackingController.clear();
-        _sellerOrderController.clear();
-        _rebateOrderController.clear();
-        _ocrTextController.clear();
-        _draftItems.clear();
-        _currentInboundImagePath = null;
-        _isSettled = false;
+        if (_draftGeneration == generation) {
+          if (_trackingController.text == tracking) _trackingController.clear();
+          if (_sellerOrderController.text == sellerOrder) {
+            _sellerOrderController.clear();
+          }
+          if (_rebateOrderController.text == rebateOrder) {
+            _rebateOrderController.clear();
+          }
+          _ocrTextController.clear();
+          _draftItems.clear();
+          _currentInboundImagePath = null;
+          _draftNeedsReview = false;
+          if (_isSettled == settled) _isSettled = false;
+        }
         _message = '入库成功：${receipt.trackingNumber}';
       });
     } on InventoryException catch (error) {
-      setState(() {
-        _message = error.message;
-      });
+      if (mounted) setState(() => _message = error.message);
+    } finally {
+      if (mounted) setState(() => _confirmingInbound = false);
     }
   }
 
@@ -3803,269 +3705,6 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
     }
   }
 
-  Future<void> _openAiExtractDialog() async {
-    showDialog<void>(
-      context: context,
-      barrierDismissible: false,
-      builder: (context) {
-        bool isExtracting = false;
-        bool isGenerating = false;
-
-        return StatefulBuilder(
-          builder: (dialogContext, setDialogState) {
-            final isLoading = isExtracting || isGenerating;
-            final message = isExtracting
-                ? 'AI 正在智能提取中...'
-                : (isGenerating ? '正在重新生成文本...' : '');
-
-            return Dialog(
-              backgroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(24),
-              ),
-              insetPadding:
-                  const EdgeInsets.symmetric(horizontal: 24, vertical: 40),
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.stretch,
-                  children: [
-                    // 标题
-                    Row(
-                      children: [
-                        const Expanded(
-                          child: Text(
-                            'AI 智能提取文本预览',
-                            style: TextStyle(
-                              fontSize: 18,
-                              fontWeight: FontWeight.bold,
-                              color: Color(0xFF1E293B),
-                            ),
-                          ),
-                        ),
-                        IconButton(
-                          onPressed: isLoading
-                              ? null
-                              : () => Navigator.pop(dialogContext),
-                          icon: const Icon(Icons.close, color: Colors.grey),
-                          padding: EdgeInsets.zero,
-                          constraints: const BoxConstraints(),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-
-                    // 文本预览框
-                    Stack(
-                      alignment: Alignment.center,
-                      children: [
-                        TextField(
-                          controller: _ocrTextController,
-                          maxLines: 8,
-                          enabled: !isLoading,
-                          decoration: const InputDecoration(
-                            hintText: '识别出的 OCR 文本，可手动进行微调...',
-                            border: OutlineInputBorder(),
-                            contentPadding: EdgeInsets.all(12),
-                          ),
-                          style: const TextStyle(fontSize: 14),
-                        ),
-                        if (isLoading)
-                          Container(
-                            height: 200,
-                            decoration: BoxDecoration(
-                              color: Colors.black.withOpacity(0.1),
-                              borderRadius: BorderRadius.circular(4),
-                            ),
-                            child: Center(
-                              child: Column(
-                                mainAxisAlignment: MainAxisAlignment.center,
-                                children: [
-                                  const CircularProgressIndicator(
-                                    color: Color(0xff2d6a4f),
-                                    strokeWidth: 3,
-                                  ),
-                                  const SizedBox(height: 12),
-                                  Text(
-                                    message,
-                                    style: const TextStyle(
-                                      fontWeight: FontWeight.bold,
-                                      color: Color(0xff2d6a4f),
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                      ],
-                    ),
-                    const SizedBox(height: 16),
-
-                    // 底部按钮 Row
-                    Row(
-                      children: [
-                        Expanded(
-                          child: OutlinedButton(
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: const Color(0xff2d6a4f),
-                              side: const BorderSide(
-                                  color: Color(0xff2d6a4f), width: 1.2),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(24),
-                              ),
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                            ),
-                            onPressed: isLoading
-                                ? null
-                                : () async {
-                                    if (_currentInboundImagePath == null ||
-                                        _currentInboundImagePath!.isEmpty) {
-                                      ScaffoldMessenger.of(dialogContext)
-                                          .showSnackBar(
-                                        const SnackBar(
-                                            content:
-                                                Text('未找到当前单的图片，请先拍照或相册识别')),
-                                      );
-                                      return;
-                                    }
-                                    setDialogState(() => isGenerating = true);
-                                    try {
-                                      final recognition =
-                                          await _paddleOcr.recognizeTable(
-                                        _currentInboundImagePath!,
-                                        rowMergeTolerance:
-                                            _ocrRowMergeTolerance,
-                                      );
-                                      _ocrTextController.text =
-                                          recognition.editableText;
-                                      if (dialogContext.mounted) {
-                                        ScaffoldMessenger.of(dialogContext)
-                                            .showSnackBar(
-                                          const SnackBar(
-                                              content: Text('已重新生成 OCR 文字。')),
-                                        );
-                                      }
-                                    } catch (e) {
-                                      if (dialogContext.mounted) {
-                                        ScaffoldMessenger.of(dialogContext)
-                                            .showSnackBar(
-                                          SnackBar(
-                                              content: Text('重新生成文字失败: $e')),
-                                        );
-                                      }
-                                    } finally {
-                                      setDialogState(
-                                          () => isGenerating = false);
-                                    }
-                                  },
-                            child: const Text(
-                              '重新生成',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                        ),
-                        const SizedBox(width: 12),
-                        Expanded(
-                          child: FilledButton(
-                            style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xff2d6a4f),
-                              foregroundColor: Colors.white,
-                              shape: RoundedRectangleBorder(
-                                  borderRadius: BorderRadius.circular(24)),
-                              padding: const EdgeInsets.symmetric(vertical: 12),
-                            ),
-                            onPressed: isLoading
-                                ? null
-                                : () async {
-                                    final text = _ocrTextController.text.trim();
-                                    if (text.isEmpty) {
-                                      ScaffoldMessenger.of(dialogContext)
-                                          .showSnackBar(
-                                        const SnackBar(
-                                            content: Text('识别文本不能为空，无法提取')),
-                                      );
-                                      return;
-                                    }
-                                    setDialogState(() => isExtracting = true);
-                                    try {
-                                      final result = await _aiInboundExtractor
-                                          .extract(text);
-                                      if (!dialogContext.mounted) return;
-                                      setState(() {
-                                        if (result.trackingNumber != null &&
-                                            result.trackingNumber!.isNotEmpty) {
-                                          _trackingController.text =
-                                              result.trackingNumber!;
-                                        }
-                                        if (result.sellerOrderNumber != null &&
-                                            result.sellerOrderNumber!
-                                                .isNotEmpty) {
-                                          _sellerOrderController.text =
-                                              result.sellerOrderNumber!;
-                                        }
-                                        if (result.schemeNumber != null &&
-                                            result.schemeNumber!.isNotEmpty) {
-                                          _rebateOrderController.text =
-                                              result.schemeNumber!;
-                                        }
-                                        if (result.items.isNotEmpty) {
-                                          _draftItems
-                                            ..clear()
-                                            ..addAll(result.items);
-                                          _message =
-                                              'AI 提取成功，已载入 ${result.items.length} 个商品。';
-                                        } else {
-                                          _message = 'AI 提取结束，但未发现有效的商品条目。';
-                                        }
-                                      });
-                                      Navigator.pop(dialogContext); // 关闭弹窗
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        SnackBar(content: Text(_message!)),
-                                      );
-                                    } catch (e) {
-                                      var items =
-                                          _postProcessor.processPlainText(text);
-                                      if (!dialogContext.mounted) return;
-                                      setState(() {
-                                        if (items.isNotEmpty) {
-                                          _draftItems
-                                            ..clear()
-                                            ..addAll(items);
-                                          _message =
-                                              'AI 提取失败，已降级本地提取 ${items.length} 个商品。';
-                                        } else {
-                                          _message = 'AI 提取与本地降级提取均未发现商品。';
-                                        }
-                                      });
-                                      Navigator.pop(dialogContext); // 关闭弹窗
-                                      ScaffoldMessenger.of(context)
-                                          .showSnackBar(
-                                        SnackBar(content: Text(_message!)),
-                                      );
-                                    } finally {
-                                      setDialogState(
-                                          () => isExtracting = false);
-                                    }
-                                  },
-                            child: const Text(
-                              'AI 识别',
-                              style: TextStyle(fontWeight: FontWeight.bold),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
-            );
-          },
-        );
-      },
-    );
-  }
 
   Future<void> _scanDraftItem() async {
     final barcode = await Navigator.of(context).push<String>(

@@ -15,6 +15,7 @@ This directory contains guidelines for frontend development. Fill in each file w
 | Guide | Description | Status |
 |-------|-------------|--------|
 | [默认工作区与离线入口](./remembered-workspace.md) | 启动直达、历史店铺、纯本地禁网与原子切换 | Active |
+| [OCR开关与低占用拍摄](./ocr-switch-camera.md) | 设备总开关、许可代际、相机优先、无闪烁反馈与照片交接 | Active |
 | [作业报单跨端契约](../backend/job-reporting.md) | 独立拍手会话、手机报单、管理结算、注册链接及批量查询 | Active |
 | [Directory Structure](./directory-structure.md) | Module organization and file layout | Active |
 | [Component Guidelines](./component-guidelines.md) | Component patterns, props, composition | To fill |

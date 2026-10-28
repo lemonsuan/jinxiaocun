@@ -1,4 +1,7 @@
-import '../application/capture_image_processor.dart';
+import 'dart:async';
+
+import '../application/capture_work_coordinator.dart';
+import '../domain/captured_photo.dart';
 import '../application/camera_preferences.dart';
 import '../domain/express_capture.dart';
 import 'package:camera/camera.dart';
@@ -23,13 +26,15 @@ class _CustomCameraPageState extends State<CustomCameraPage>
   List<CameraDescription> _cameras = [];
   bool _isInitialized = false;
   bool _isTakingPicture = false;
+  bool _cameraActive = true;
+  int _initializationGeneration = 0;
 
   FlashMode _flashMode = FlashMode.off;
 
   String _statusMessage = '正在初始化相机...';
 
-  // 快门定格动效与点击对焦状态
-  bool _showShutterFlash = false;
+  // 保存成功只更新局部控件，避免整屏闪烁。
+  late final VoidCallback _releaseCapturePriority;
   bool _photoSaved = false;
   Offset? _focusPoint;
   bool _showFocusIndicator = false;
@@ -42,90 +47,95 @@ class _CustomCameraPageState extends State<CustomCameraPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _releaseCapturePriority = CaptureWorkCoordinator.instance.acquire();
     _initializeCamera();
   }
 
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _initializationGeneration++;
     _controller?.dispose();
+    _releaseCapturePriority();
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    final CameraController? cameraController = _controller;
-
-    if (cameraController == null || !cameraController.value.isInitialized) {
-      return;
-    }
-
-    if (state == AppLifecycleState.inactive) {
-      cameraController.dispose();
-      setState(() {
-        _isInitialized = false;
-      });
+    if (state == AppLifecycleState.inactive ||
+        state == AppLifecycleState.paused) {
+      _cameraActive = false;
+      if (_isTakingPicture) return;
+      _initializationGeneration++;
+      final controller = _controller;
+      _controller = null;
+      unawaited(controller?.dispose());
+      if (mounted) setState(() => _isInitialized = false);
     } else if (state == AppLifecycleState.resumed) {
-      _initializeCamera();
+      _cameraActive = true;
+      if (!_isTakingPicture && !_photoSaved) unawaited(_initializeCamera());
     }
   }
 
   Future<void> _initializeCamera() async {
-    _flashMode =
-        await CameraPreferences.loadTorch() ? FlashMode.torch : FlashMode.off;
-    if (!mounted) return;
-
+    final generation = ++_initializationGeneration;
+    bool isCurrent() =>
+        mounted && _cameraActive && generation == _initializationGeneration;
+    final torch = await CameraPreferences.loadTorch();
+    if (!isCurrent()) return;
+    _flashMode = torch ? FlashMode.torch : FlashMode.off;
     setState(() {
       _isInitialized = false;
       _statusMessage = '正在检测摄像头硬件...';
     });
 
+    CameraController? createdController;
     try {
       _cameras = await availableCameras();
+      if (!isCurrent()) return;
       if (_cameras.isEmpty) {
-        setState(() {
-          _statusMessage = '未检测到可用摄像头';
-        });
+        setState(() => _statusMessage = '未检测到可用摄像头');
         return;
       }
-
       final backCamera = _cameras.firstWhere(
         (camera) => camera.lensDirection == CameraLensDirection.back,
         orElse: () => _cameras.first,
       );
-
+      final previous = _controller;
+      _controller = null;
+      await previous?.dispose();
+      if (!isCurrent()) return;
       final controller = CameraController(
         backCamera,
         ResolutionPreset.high,
         enableAudio: false,
         imageFormatGroup: ImageFormatGroup.jpeg,
       );
-
+      createdController = controller;
       _controller = controller;
-
       await controller.initialize();
+      if (!isCurrent()) return;
       await controller.lockCaptureOrientation(DeviceOrientation.portraitUp);
+      if (!isCurrent()) return;
       try {
         await controller.setFlashMode(_flashMode);
-      } catch (e) {
-        debugPrint('恢复闪光灯状态异常: $e');
+      } catch (error) {
+        debugPrint('恢复闪光灯状态异常: $error');
       }
+      if (!isCurrent()) return;
       try {
         await controller.setFocusMode(FocusMode.auto);
-      } catch (e) {
-        debugPrint('自动对焦预热异常: $e');
+      } catch (error) {
+        debugPrint('自动对焦预热异常: $error');
       }
-
-      if (mounted) {
-        setState(() {
-          _isInitialized = true;
-        });
-      }
-    } catch (e) {
-      if (mounted) {
-        setState(() {
-          _statusMessage = '相机初始化失败: $e';
-        });
+      if (isCurrent()) setState(() => _isInitialized = true);
+    } catch (error) {
+      if (isCurrent()) setState(() => _statusMessage = '相机初始化失败: $error');
+    } finally {
+      // 离开页面或后台切换后完成的旧初始化不能重新占有摄像头。
+      if (!isCurrent() && createdController != null) {
+        if (identical(_controller, createdController)) _controller = null;
+        await createdController.dispose();
       }
     }
   }
@@ -185,62 +195,56 @@ class _CustomCameraPageState extends State<CustomCameraPage>
   }
 
   Future<void> _takePicture() async {
-    if (_controller == null || !_isInitialized || _isTakingPicture) return;
+    final controller = _controller;
+    if (controller == null ||
+        !_isInitialized ||
+        _isTakingPicture ||
+        _photoSaved) {
+      return;
+    }
 
+    final capture = Stopwatch()..start();
+    // 锁定本次取景参数，避免异步保存期间的布局变化改写照片裁剪。
+    const inset = (1 - (0.65 / 0.82)) / 2;
+    final crop = _logicalWidth > 0 && _logicalHeight > 0
+        ? const CaptureCrop(0, inset, 1, 1 - inset)
+        : CaptureCrop.full;
+    final aspect = _logicalWidth > 0 && _logicalHeight > 0
+        ? _logicalWidth / _logicalHeight
+        : null;
     setState(() {
       _isTakingPicture = true;
-      _showShutterFlash = false;
       _photoSaved = false;
     });
 
     try {
-      final XFile file = await _controller!.takePicture();
-
-      // The plugin returns after the photo is saved, not at button press.
-      HapticFeedback.heavyImpact();
+      final file = await controller.takePicture();
+      if (await file.length() <= 0) throw StateError('照片文件为空');
+      final savedAt = capture.elapsedMilliseconds;
+      if (!mounted) return;
+      // 插件保存完成后才轻触觉反馈；不等待裁剪或重新编码。
+      unawaited(HapticFeedback.lightImpact().catchError((Object _) {}));
+      setState(() => _photoSaved = true);
+      await WidgetsBinding.instance.endOfFrame;
+      if (!mounted) return;
+      // 同一同步步骤内解锁并返回，避免反馈帧期间取消造成重复返回。
+      setState(() => _isTakingPicture = false);
+      debugPrint(
+          'Camera take_picture_ms=$savedAt saved_to_return_ms=${capture.elapsedMilliseconds - savedAt}');
+      Navigator.of(context).pop(CapturedPhoto(
+        imagePath: file.path,
+        crop: crop,
+        previewAspect: aspect,
+      ));
+    } catch (error) {
       if (mounted) {
-        setState(() {
-          _showShutterFlash = true;
-          _photoSaved = true;
-        });
-      }
-      Future.delayed(const Duration(milliseconds: 70), () {
-        if (mounted) setState(() => _showShutterFlash = false);
-      });
-      XFile result = file;
-      if (_logicalWidth > 0 && _logicalHeight > 0) {
-        const inset = (1 - (0.65 / 0.82)) / 2;
-        final processed = await CaptureImageProcessor().process(
-            file.path,
-            const CaptureCrop(0, inset, 1, 1 - inset),
-            '${DateTime.now().microsecondsSinceEpoch}',
-            previewAspect: _logicalWidth / _logicalHeight);
-        result = XFile(processed);
-        // Original remains recoverable if processing fails.
-      }
-      if (mounted) {
-        setState(() => _isTakingPicture = false);
-        await WidgetsBinding.instance.endOfFrame;
-        if (mounted) Navigator.of(context).pop(result);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            backgroundColor: const Color(0xFF1E293B),
-            shape:
-                const RoundedRectangleBorder(borderRadius: BorderRadius.zero),
-            content: Text('拍摄并裁剪失败: $e',
-                style: const TextStyle(color: Colors.white, fontSize: 13)),
-          ),
-        );
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+          backgroundColor: const Color(0xFF1E293B),
+          content: Text('照片保存失败，请重拍：$error'),
+        ));
       }
     } finally {
-      if (mounted) {
-        setState(() {
-          _isTakingPicture = false;
-        });
-      }
+      if (mounted) setState(() => _isTakingPicture = false);
     }
   }
 
@@ -289,31 +293,6 @@ class _CustomCameraPageState extends State<CustomCameraPage>
                                           ),
                                         ),
                                       ),
-                                    ),
-                                  if (_showShutterFlash)
-                                    IgnorePointer(
-                                      child: Container(
-                                        color: Colors.white.withOpacity(0.85),
-                                      ),
-                                    ),
-                                  if (_isTakingPicture && !_showShutterFlash)
-                                    Container(
-                                      color: Colors.black.withOpacity(0.5),
-                                      child: Center(
-                                          child: Column(
-                                              mainAxisSize: MainAxisSize.min,
-                                              children: [
-                                            const CircularProgressIndicator(
-                                                strokeWidth: 2,
-                                                color: Colors.white),
-                                            const SizedBox(height: 12),
-                                            Text(
-                                                _photoSaved
-                                                    ? '已拍下，可以移开'
-                                                    : '正在拍摄或保存，请稍候',
-                                                style: const TextStyle(
-                                                    color: Colors.white)),
-                                          ])),
                                     ),
                                 ],
                               ),
@@ -544,7 +523,7 @@ class _CustomCameraPageState extends State<CustomCameraPage>
         mainAxisAlignment: MainAxisAlignment.spaceBetween,
         children: [
           GestureDetector(
-            onTap: _toggleFlash,
+            onTap: _isTakingPicture ? null : _toggleFlash,
             child: Container(
               width: 48,
               height: 48,
@@ -561,7 +540,21 @@ class _CustomCameraPageState extends State<CustomCameraPage>
               ),
             ),
           ),
-          _buildShutterButton(),
+          Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _buildShutterButton(),
+              const SizedBox(height: 6),
+              Text(
+                _photoSaved
+                    ? '已拍好，可以移开'
+                    : _isTakingPicture
+                        ? '正在保存，请保持稳定'
+                        : '拍照',
+                style: const TextStyle(color: Colors.white70, fontSize: 10),
+              ),
+            ],
+          ),
           GestureDetector(
             onTap: _isTakingPicture ? null : () => Navigator.of(context).pop(),
             child: Container(
@@ -584,7 +577,7 @@ class _CustomCameraPageState extends State<CustomCameraPage>
 
   Widget _buildShutterButton() {
     return GestureDetector(
-      onTap: _takePicture,
+      onTap: _isTakingPicture || _photoSaved ? null : _takePicture,
       child: Container(
         width: 72,
         height: 72,
@@ -594,12 +587,19 @@ class _CustomCameraPageState extends State<CustomCameraPage>
         padding: const EdgeInsets.all(6),
         child: Container(
           color: Colors.white,
-          child: const Center(
-            child: Icon(
-              Icons.camera_alt_outlined,
-              color: Colors.black,
-              size: 24,
-            ),
+          child: Center(
+            child: _isTakingPicture && !_photoSaved
+                ? const SizedBox(
+                    width: 22,
+                    height: 22,
+                    child: CircularProgressIndicator(
+                        strokeWidth: 2, color: Colors.black),
+                  )
+                : Icon(
+                    _photoSaved ? Icons.check : Icons.camera_alt_outlined,
+                    color: Colors.black,
+                    size: 24,
+                  ),
           ),
         ),
       ),

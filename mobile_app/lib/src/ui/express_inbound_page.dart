@@ -7,6 +7,8 @@ import '../application/camera_preferences.dart';
 import '../application/express_capture_state.dart';
 import '../application/express_receipt_committer.dart';
 import '../application/express_processing_queue.dart';
+import '../application/capture_work_coordinator.dart';
+import '../application/ocr_access_policy.dart';
 import '../data/local_inventory_database.dart';
 import '../domain/express_capture.dart';
 import '../domain/models.dart';
@@ -43,6 +45,9 @@ class _ExpressInboundPageState extends State<ExpressInboundPage>
   bool _leaving = false;
   bool _active = true;
   bool _showSaved = false;
+  bool _ocrEnabled = true;
+  VoidCallback? _releaseCapture;
+  VoidCallback? _releaseQueue;
   final _committer = ExpressReceiptCommitter();
   int _viewGeneration = 0;
   Stopwatch? _cycle;
@@ -52,7 +57,9 @@ class _ExpressInboundPageState extends State<ExpressInboundPage>
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    _releaseCapture = CaptureWorkCoordinator.instance.acquire();
     _queue = ExpressProcessingQueue.forDatabase(widget.database);
+    _releaseQueue = _queue.retain();
     _queue.listeners.add(_refreshRecent);
     unawaited(_prepare());
     unawaited(_queue.kick());
@@ -64,10 +71,12 @@ class _ExpressInboundPageState extends State<ExpressInboundPage>
           '${(await getApplicationDocumentsDirectory()).path}/inbound_images');
       await directory.create(recursive: true);
       final torch = await CameraPreferences.loadTorch();
+      final ocrEnabled = await widget.database.loadOcrEnabled();
       if (!mounted) return;
       setState(() {
         _directory = directory.path;
         _torch = torch;
+        _ocrEnabled = ocrEnabled;
       });
       await _refreshRecent();
     } catch (e) {
@@ -95,6 +104,8 @@ class _ExpressInboundPageState extends State<ExpressInboundPage>
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
     _queue.listeners.remove(_refreshRecent);
+    _releaseCapture?.call();
+    _releaseQueue?.call();
     unawaited(_camera?.dispose().catchError((Object _) {}) ?? Future.value());
     super.dispose();
   }
@@ -128,12 +139,12 @@ class _ExpressInboundPageState extends State<ExpressInboundPage>
     };
     camera.onCaptured = (photo) {
       if (!_capture.accept(photo)) return;
-      // onCaptured is sent only after native JPEG save completion, never on shutter press.
-      HapticFeedback.heavyImpact();
+      // 只有正式照片保存完成才能提示可以移开。
+      HapticFeedback.lightImpact();
       if (mounted) {
         setState(() {
           _showSaved = true;
-          _message = '已拍下，可以移开 · 正在记录入库';
+          _message = '已拍好，可以移开 · 正在记录入库';
         });
       }
       debugPrint('Express capture saved_ms=${photo.shutterToSavedMs}');
@@ -168,14 +179,16 @@ class _ExpressInboundPageState extends State<ExpressInboundPage>
       if (!await File(photo.imagePath).exists()) {
         throw const FileSystemException('照片保存失败');
       }
+      final ocrEnabled = await widget.database.loadOcrEnabled();
+      _ocrEnabled = ocrEnabled;
       await _committer.saveOnce(photo.captureId, () async {
         await widget.database.confirmInbound(
             trackingNumber: photo.trackingNumber,
             items: const [],
             imagePath: photo.imagePath,
-            ocrStatus: OcrStatus.pending,
+            ocrStatus: ocrEnabled ? OcrStatus.pending : OcrStatus.needsReview,
             expressCrop: photo.crop,
-            expressToken: photo.captureId);
+            expressToken: ocrEnabled ? photo.captureId : null);
       });
       _capture.committed();
       debugPrint(
@@ -183,7 +196,10 @@ class _ExpressInboundPageState extends State<ExpressInboundPage>
       unawaited(_queue.kick());
       // Arm local state before native reset can deliver a new barcode.
       _capture.reset();
-      if (mounted) setState(() => _message = '已录入，继续扫描下一单 · 清单正在后台识别');
+      if (mounted) {
+        setState(() => _message =
+            ocrEnabled ? '已录入，继续扫描下一单 · 退出拍摄后识别' : '已录入，OCR已关闭 · 仅保存照片，待手工补录');
+      }
       try {
         await _camera?.reset();
       } catch (_) {
@@ -386,7 +402,7 @@ class _ExpressInboundPageState extends State<ExpressInboundPage>
                                                   avatar: Icon(
                                                       Icons.check_circle,
                                                       color: Colors.green),
-                                                  label: Text('已拍下，可以移开'))))),
+                                                  label: Text('已拍好，可以移开'))))),
                               ])))),
           SizedBox(
               height: 64,
@@ -413,7 +429,8 @@ class _ExpressInboundPageState extends State<ExpressInboundPage>
                               : (_capture.phase == ExpressCapturePhase.error
                                   ? _retryCamera
                                   : _takePhoto),
-                          icon: const Icon(Icons.camera_alt),
+                          icon:
+                              Icon(_showSaved ? Icons.check : Icons.camera_alt),
                           label: Text(
                               _capture.savedCapture != null ? '重试保存' : '拍照')),
                     if (locked)
@@ -443,7 +460,7 @@ class _ExpressInboundPageState extends State<ExpressInboundPage>
                                 Row(mainAxisSize: MainAxisSize.min, children: [
                               ActionChip(
                                   label: Text(
-                                      '${receipt.trackingNumber}\n${failed ? '识别失败' : receipt.ocrStatus == OcrStatus.confirmed ? '已识别' : '后台识别中'}'),
+                                      '${receipt.trackingNumber}\n${failed ? '识别失败' : receipt.ocrStatus == OcrStatus.confirmed ? '已识别' : receipt.ocrStatus == OcrStatus.needsReview ? '待补录' : !_ocrEnabled ? '识别已暂停' : '退出拍摄后识别'}'),
                                   onPressed: receipt.imagePath == null
                                       ? null
                                       : () => _showPhoto(receipt)),
@@ -453,8 +470,15 @@ class _ExpressInboundPageState extends State<ExpressInboundPage>
                                     color: Colors.white,
                                     icon: const Icon(Icons.refresh),
                                     onPressed: () async {
-                                      await _queue.retry(receipt.id);
-                                      await _refreshRecent();
+                                      try {
+                                        await _queue.retry(receipt.id);
+                                        await _refreshRecent();
+                                      } on OcrCancelled catch (error) {
+                                        if (mounted) {
+                                          setState(() =>
+                                              _message = error.toString());
+                                        }
+                                      }
                                     }),
                             ]));
                       })),

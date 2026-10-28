@@ -143,7 +143,7 @@ Durable job key: `app_settings.key = express_image_job:<receiptId>`, with JSON `
 ### 3. Contracts
 
 - Keep one CameraX session for preview, barcode analysis and formal JPEG capture. Do not use a barcode analysis/preview frame as the inventory evidence photo. Stop barcode submissions while a tracking number is locked, without rebuilding the camera per receipt.
-- A shutter press means a capture request, not completion. Success flash, success vibration and “可以移开” require the saved-photo event. Do not describe the file-save callback as an exact sensor exposure callback. “已录入” additionally requires the SQLite receipt commit.
+- 按快门仅代表请求，不能代表保存完成。普通及极速拍照禁止全屏闪白/亮度闪烁；成功轻触觉、局部按钮勾和“可以移开”只允许在照片保存事件后出现。文件保存回调不等同精确的传感器曝光完成时刻；“已录入”还要求SQLite单据提交。设备OCR开关、相机优先调度及普通照片交接见[OCR开关与低占用拍摄](./ocr-switch-camera.md)。
 - Show the complete locked tracking number in a fixed top region throughout capture and receipt saving; wrap long values. UI header, capture event and stored receipt must use the same immutable capture identity. Ignore stale/mismatched callbacks and reject duplicate shutter submissions.
 - Use the actual bound preview ViewPort/transform, current rotation and dimensions for crop mapping. If mapping cannot be validated, preserve the full photo rather than guessing a destructive crop. Match output encoding and extension; decode once and process off the UI isolate.
 - Close and durably save a photo before committing its pending receipt and allowing the next scan. Run crop/OCR with bounded workers and durable pending metadata; do not make full-history refresh part of each capture's critical path. A background result may commit only if the receipt, source reference and job generation are still current.

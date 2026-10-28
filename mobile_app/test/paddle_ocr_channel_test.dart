@@ -1,3 +1,4 @@
+import 'package:inventory_mobile_app/src/application/ocr_access_policy.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:inventory_mobile_app/src/platform/paddle_ocr_channel.dart';
@@ -28,7 +29,10 @@ void main() {
       };
     });
 
-    final result = await PaddleOcrChannel().recognizeTable('/tmp/list.jpg');
+    final result = await PaddleOcrChannel(
+            policy: () =>
+                OcrAccessPolicy(read: () async => true, write: (_) async {}))
+        .recognizeTable('/tmp/list.jpg');
 
     expect(result.rawText, '原始识别文本\nA100 测试商品 2');
     expect(result.editableText, '原始识别文本\nA100 测试商品 2');
@@ -44,7 +48,10 @@ void main() {
       };
     });
 
-    final result = await PaddleOcrChannel().recognizeTable('/tmp/list.jpg');
+    final result = await PaddleOcrChannel(
+            policy: () =>
+                OcrAccessPolicy(read: () async => true, write: (_) async {}))
+        .recognizeTable('/tmp/list.jpg');
 
     expect(result.rawText, isEmpty);
     expect(result.editableText, 'A100\t测试商品\t2');
@@ -62,7 +69,10 @@ void main() {
       };
     });
 
-    await PaddleOcrChannel().recognizeTable(
+    await PaddleOcrChannel(
+            policy: () =>
+                OcrAccessPolicy(read: () async => true, write: (_) async {}))
+        .recognizeTable(
       '/tmp/list.jpg',
       rowMergeTolerance: 0.12,
     );
@@ -75,7 +85,10 @@ void main() {
           code: 'OCR_INFERENCE_FAILED', message: '识别失败，请重试');
     });
     await expectLater(
-      PaddleOcrChannel().recognizeTable('/tmp/list.jpg'),
+      PaddleOcrChannel(
+              policy: () =>
+                  OcrAccessPolicy(read: () async => true, write: (_) async {}))
+          .recognizeTable('/tmp/list.jpg'),
       throwsA(isA<PlatformException>()
           .having((e) => e.code, 'code', 'OCR_INFERENCE_FAILED')),
     );

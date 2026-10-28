@@ -74,17 +74,11 @@ class LocalInventoryDatabase {
     'products',
   ];
   static const String _ocrRowMergeToleranceKey = 'ocr_row_merge_tolerance';
-  static const String _geminiApiKey = 'gemini_api_key';
-  static const String _geminiApiUrl = 'gemini_api_url';
-  static const String _geminiModelKey = 'gemini_model';
-  static const String _aiApiFormatKey = 'ai_api_format';
   static const String _authModeKey = 'auth_mode';
   static const String _syncServerUrlKey = 'sync_server_url';
   static const String _authTokenKey = 'auth_token';
   static const String _activeShopIdKey = 'active_shop_id';
   static const String _activeShopNameKey = 'active_shop_name';
-  static const String _ocrModeKey = 'ocr_mode';
-  static const String _selfHostedOcrUrlKey = 'self_hosted_ocr_url';
 
   Database? _database;
 
@@ -308,161 +302,6 @@ class LocalInventoryDatabase {
     );
   }
 
-  Future<String> loadGeminiApiKey() async {
-    final rows = await _settings.query(
-      'app_settings',
-      columns: ['value'],
-      where: 'key = ?',
-      whereArgs: [_geminiApiKey],
-      limit: 1,
-    );
-    if (rows.isEmpty) {
-      return '';
-    }
-    return rows.single['value']! as String;
-  }
-
-  Future<void> saveGeminiApiKey(String value) async {
-    await _settings.insert(
-      'app_settings',
-      {
-        'key': _geminiApiKey,
-        'value': value,
-        'updated_at': DateTime.now().toIso8601String(),
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-  }
-
-  Future<String> loadGeminiApiUrl() async {
-    final rows = await _settings.query(
-      'app_settings',
-      columns: ['value'],
-      where: 'key = ?',
-      whereArgs: [_geminiApiUrl],
-      limit: 1,
-    );
-    if (rows.isEmpty) {
-      return 'https://generativelanguage.googleapis.com';
-    }
-    return rows.single['value']! as String;
-  }
-
-  Future<void> saveGeminiApiUrl(String value) async {
-    await _settings.insert(
-      'app_settings',
-      {
-        'key': _geminiApiUrl,
-        'value': value,
-        'updated_at': DateTime.now().toIso8601String(),
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-  }
-
-  Future<String> loadGeminiModel() async {
-    final rows = await _settings.query(
-      'app_settings',
-      columns: ['value'],
-      where: 'key = ?',
-      whereArgs: [_geminiModelKey],
-      limit: 1,
-    );
-    if (rows.isEmpty) {
-      return '';
-    }
-    return rows.single['value']! as String;
-  }
-
-  Future<void> saveGeminiModel(String value) async {
-    await _settings.insert(
-      'app_settings',
-      {
-        'key': _geminiModelKey,
-        'value': value,
-        'updated_at': DateTime.now().toIso8601String(),
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-  }
-
-  Future<String> loadAiApiFormat() async {
-    final rows = await _settings.query(
-      'app_settings',
-      columns: ['value'],
-      where: 'key = ?',
-      whereArgs: [_aiApiFormatKey],
-      limit: 1,
-    );
-    if (rows.isEmpty) {
-      return 'openai';
-    }
-    return rows.single['value']! as String;
-  }
-
-  Future<void> saveAiApiFormat(String value) async {
-    await _settings.insert(
-      'app_settings',
-      {
-        'key': _aiApiFormatKey,
-        'value': value,
-        'updated_at': DateTime.now().toIso8601String(),
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-  }
-
-  Future<String> loadOcrMode() async {
-    final rows = await _settings.query(
-      'app_settings',
-      columns: ['value'],
-      where: 'key = ?',
-      whereArgs: [_ocrModeKey],
-      limit: 1,
-    );
-    if (rows.isEmpty) {
-      return 'local';
-    }
-    return rows.single['value']! as String;
-  }
-
-  Future<void> saveOcrMode(String value) async {
-    await _settings.insert(
-      'app_settings',
-      {
-        'key': _ocrModeKey,
-        'value': value,
-        'updated_at': DateTime.now().toIso8601String(),
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-  }
-
-  Future<String> loadSelfHostedOcrUrl() async {
-    final rows = await _settings.query(
-      'app_settings',
-      columns: ['value'],
-      where: 'key = ?',
-      whereArgs: [_selfHostedOcrUrlKey],
-      limit: 1,
-    );
-    if (rows.isEmpty) {
-      return '';
-    }
-    return rows.single['value']! as String;
-  }
-
-  Future<void> saveSelfHostedOcrUrl(String value) async {
-    await _settings.insert(
-      'app_settings',
-      {
-        'key': _selfHostedOcrUrlKey,
-        'value': value,
-        'updated_at': DateTime.now().toIso8601String(),
-      },
-      conflictAlgorithm: ConflictAlgorithm.replace,
-    );
-  }
 
   Future<Uint8List> exportBackupBytes({bool includeImages = true}) async {
     final tableRows = <String, List<Map<String, Object?>>>{};

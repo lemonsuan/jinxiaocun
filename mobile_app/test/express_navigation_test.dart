@@ -1,3 +1,4 @@
+import 'package:inventory_mobile_app/src/application/ocr_access_policy.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -9,6 +10,15 @@ import 'package:inventory_mobile_app/src/platform/paddle_ocr_channel.dart';
 import 'package:inventory_mobile_app/src/ui/express_inbound_page.dart';
 
 class EmptyInventoryDatabase extends LocalInventoryDatabase {
+  final _policy = OcrAccessPolicy(read: () async => true, write: (_) async {});
+  @override
+  OcrAccessPolicy get ocrPolicy => _policy;
+  @override
+  Future<bool> loadOcrEnabled() async {
+    await _policy.load();
+    return _policy.enabled;
+  }
+
   @override
   Future<ExpressImageJob?> nextExpressImageJob() async => null;
   @override
@@ -33,7 +43,10 @@ void main() {
                           Navigator.of(context).push(MaterialPageRoute<void>(
                               builder: (_) => ExpressInboundPage(
                                     database: EmptyInventoryDatabase(),
-                                    paddleOcr: PaddleOcrChannel(),
+                                    paddleOcr: PaddleOcrChannel(
+                                        policy: () => OcrAccessPolicy(
+                                            read: () async => true,
+                                            write: (_) async {})),
                                     postProcessor: PpStructurePostProcessor(),
                                     ocrRowMergeTolerance: .3,
                                     onRefreshHomeData: () => refreshes++,

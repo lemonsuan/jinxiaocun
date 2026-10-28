@@ -1,0 +1,4 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "真实拍照反馈、正式静态图、OCR桥、图片代际与测试规范"}
+{"file": ".trellis/spec/frontend/remembered-workspace.md", "reason": "配置库设备设置、纯本地禁网、工作区隔离"}
+{"file": ".trellis/tasks/10-28-ocr-switch-camera-speed/research/ocr-switch.md", "reason": "全入口门禁、历史任务、关闭取消与状态兼容证据"}
+{"file": ".trellis/tasks/10-28-ocr-switch-camera-speed/research/camera-speed.md", "reason": "相机返回契约、ZSL限制和相机优先调度证据"}

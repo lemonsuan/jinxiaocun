@@ -1,6 +1,7 @@
 package com.xcy.yuntuitui.inventory.camera
 
 import android.Manifest
+import android.app.ActivityManager
 import android.content.Context
 import android.content.pm.PackageManager
 import android.graphics.BitmapFactory
@@ -14,6 +15,7 @@ import android.view.View
 import androidx.camera.core.Camera
 import androidx.camera.core.CameraSelector
 import androidx.camera.core.ExperimentalGetImage
+import androidx.camera.core.ExperimentalZeroShutterLag
 import androidx.camera.core.FocusMeteringAction
 import androidx.camera.core.ImageAnalysis
 import androidx.camera.core.ImageCapture
@@ -125,6 +127,7 @@ class ExpressCameraView(
     private var torchEnabled = parameters["torchEnabled"] == true
     private var viewportAspect = 0f
     private var boundRotation = -1
+    private var zslRequested = false
     private val createdAt = SystemClock.elapsedRealtime()
 
     init {
@@ -216,6 +219,7 @@ class ExpressCameraView(
         }
     }
 
+    @androidx.annotation.OptIn(ExperimentalZeroShutterLag::class)
     private fun startCamera() {
         if (disposed || paused || initializing) return
         if (bound) {
@@ -256,48 +260,26 @@ class ExpressCameraView(
             try {
                 val activeProvider = future.get()
                 provider = activeProvider
-                val rotation = previewView.display.rotation
-                val resolution = ResolutionSelector.Builder().setResolutionStrategy(
-                    ResolutionStrategy(Size(1920, 1080), ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER),
-                ).setResolutionFilter { sizes, _ ->
-                    sizes.filter { hasDocumentResolution(it) }
-                }.build()
-                val newPreview = Preview.Builder().setTargetRotation(rotation).build()
-                newPreview.setSurfaceProvider(previewView.surfaceProvider)
-                val newCapture = ImageCapture.Builder()
-                    .setCaptureMode(ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
-                    .setResolutionSelector(resolution)
-                    .setTargetRotation(rotation)
-                    .setFlashMode(ImageCapture.FLASH_MODE_OFF)
-                    .setJpegQuality(95)
-                    .build()
-                val newAnalysis = ImageAnalysis.Builder()
-                    .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
-                    .setTargetRotation(rotation)
-                    .build()
-                newAnalysis.setAnalyzer(analysisExecutor) { image -> analyze(image) }
-                val viewport = previewView.viewPort
-                    ?: throw IllegalStateException("Preview viewport unavailable")
-                val group = UseCaseGroup.Builder().setViewPort(viewport)
-                    .addUseCase(newPreview).addUseCase(newCapture).addUseCase(newAnalysis).build()
-                // Store owned use cases before binding so every failure can unbind them.
-                preview = newPreview
-                analysis = newAnalysis
-                imageCapture = newCapture
-                val activeCamera = activeProvider.bindToLifecycle(activity, CameraSelector.DEFAULT_BACK_CAMERA, group)
-                // ResolutionInfo.resolution is the negotiated stream, not the smaller
-                // ViewPort cropRect or subsequently cropped JPEG. Preserve document detail.
-                val streamResolution = newCapture.resolutionInfo?.resolution
-                if (streamResolution == null || !hasDocumentResolution(streamResolution)) {
-                    throw UnsupportedCaptureResolution()
-                }
+                val lowRam = (activity.getSystemService(Context.ACTIVITY_SERVICE) as? ActivityManager)
+                    ?.isLowRamDevice ?: true
+                val supportsZsl = activeProvider.getCameraInfo(CameraSelector.DEFAULT_BACK_CAMERA).isZslSupported
+                val preferredZsl = CaptureModePolicy.preferZeroShutterLag(supportsZsl, lowRam)
+                val activeCamera = CaptureModePolicy.bindWithFallback(
+                    preferZsl = preferredZsl,
+                    bind = { useZsl -> bindCaptureSession(activeProvider, useZsl) },
+                    onFallback = {
+                        // 只清本视图拥有的流，同画质回退；不触发额外初始化或无限循环。
+                        releaseOwnedUseCases()
+                        Log.w(TAG, "ZSL绑定不兼容，回退低延迟模式")
+                    },
+                )
                 camera = activeCamera
                 viewportAspect = previewView.width.toFloat() / previewView.height
-                boundRotation = rotation
+                boundRotation = previewView.display.rotation
                 bound = true
                 initializing = false
                 if (activeCamera.cameraInfo.hasFlashUnit()) activeCamera.cameraControl.enableTorch(torchEnabled)
-                Log.d(TAG, "camera_ready_ms=${SystemClock.elapsedRealtime() - createdAt}")
+                Log.d(TAG, "camera_ready_ms=${SystemClock.elapsedRealtime() - createdAt} zsl_supported=$supportsZsl low_ram=$lowRam zsl_requested=$zslRequested")
                 emit("onReady", emptyMap())
             } catch (error: Exception) {
                 initializing = false
@@ -310,6 +292,43 @@ class ExpressCameraView(
                 }
             }
         }, ContextCompat.getMainExecutor(activity))
+    }
+
+    @androidx.annotation.OptIn(ExperimentalZeroShutterLag::class)
+    private fun bindCaptureSession(activeProvider: ProcessCameraProvider, useZsl: Boolean): Camera {
+        val rotation = previewView.display.rotation
+        val resolution = ResolutionSelector.Builder().setResolutionStrategy(
+            ResolutionStrategy(Size(1920, 1080), ResolutionStrategy.FALLBACK_RULE_CLOSEST_HIGHER_THEN_LOWER),
+        ).setResolutionFilter { sizes, _ -> sizes.filter { hasDocumentResolution(it) } }.build()
+        val newPreview = Preview.Builder().setTargetRotation(rotation).build()
+        newPreview.setSurfaceProvider(previewView.surfaceProvider)
+        val newCapture = ImageCapture.Builder()
+            .setCaptureMode(if (useZsl) ImageCapture.CAPTURE_MODE_ZERO_SHUTTER_LAG else ImageCapture.CAPTURE_MODE_MINIMIZE_LATENCY)
+            .setResolutionSelector(resolution)
+            .setTargetRotation(rotation)
+            .setFlashMode(ImageCapture.FLASH_MODE_OFF)
+            .setJpegQuality(95)
+            .build()
+        val newAnalysis = ImageAnalysis.Builder()
+            .setBackpressureStrategy(ImageAnalysis.STRATEGY_KEEP_ONLY_LATEST)
+            .setTargetRotation(rotation)
+            .build()
+        newAnalysis.setAnalyzer(analysisExecutor) { image -> analyze(image) }
+        val viewport = previewView.viewPort ?: throw IllegalStateException("Preview viewport unavailable")
+        val group = UseCaseGroup.Builder().setViewPort(viewport)
+            .addUseCase(newPreview).addUseCase(newCapture).addUseCase(newAnalysis).build()
+        // 在绑定前记录本视图拥有的流，任一步失败均能完整释放。
+        preview = newPreview
+        analysis = newAnalysis
+        imageCapture = newCapture
+        val activeCamera = activeProvider.bindToLifecycle(activity, CameraSelector.DEFAULT_BACK_CAMERA, group)
+        // 校验实际协商的原始照片流，不能把较小取景裁剪误作照片分辨率。
+        val streamResolution = newCapture.resolutionInfo?.resolution
+        if (streamResolution == null || !hasDocumentResolution(streamResolution)) {
+            throw UnsupportedCaptureResolution()
+        }
+        zslRequested = useZsl
+        return activeCamera
     }
 
     fun onCameraPermissionResult() {
@@ -397,24 +416,32 @@ class ExpressCameraView(
         val currentAspect = if (previewHeight > 0) previewWidth.toFloat() / previewHeight else 0f
         val stableGeometry = currentRotation == boundRotation && aspect > 0 &&
             abs(currentAspect - aspect) / aspect < 0.015f
-        // A resized/rotated layout must never crop using a stale bound viewport.
+        // 旋转或缩放后不能沿用旧预览几何信息裁剪。
         val sourceTransform = if (stableGeometry) previewView.outputTransform else null
         val options = ImageCapture.OutputFileOptions.Builder(file).build()
         try {
             activeCapture.takePicture(options, captureExecutor, object : ImageCapture.OnImageSavedCallback {
+                override fun onCaptureStarted() {
+                    // 曝光启动仅作计时，绝不能在这里提示照片已保存。
+                    Log.d(TAG, "request_to_capture_started_ms=${SystemClock.elapsedRealtime() - start}")
+                }
+
                 override fun onImageSaved(output: ImageCapture.OutputFileResults) {
+                    val savedAt = SystemClock.elapsedRealtime()
                     try {
                         check(file.isFile && file.length() > 0L) { "Empty capture file" }
                         RandomAccessFile(file, "rw").use { it.fd.sync() }
+                        val syncedAt = SystemClock.elapsedRealtime()
                         val mappedCrop = cropForSavedViewport(file, crop, aspect, sourceTransform, previewWidth, previewHeight)
-                        val elapsed = SystemClock.elapsedRealtime() - start
+                        val mappedAt = SystemClock.elapsedRealtime()
+                        val elapsed = mappedAt - start
                         main.post {
                             capturing = false
                             if (disposed) {
                                 file.delete()
                                 return@post
                             }
-                            Log.d(TAG, "shutter_to_saved_ms=$elapsed")
+                            Log.d(TAG, "shutter_to_saved_ms=$elapsed request_to_image_saved_ms=${savedAt - start} file_sync_ms=${syncedAt - savedAt} crop_map_ms=${mappedAt - syncedAt} request_to_event_ms=${SystemClock.elapsedRealtime() - start} zsl_requested=$zslRequested")
                             emit("onCaptured", mapOf(
                                 "captureId" to id,
                                 "trackingNumber" to tracking,
@@ -457,7 +484,7 @@ class ExpressCameraView(
         return if (crop.width() > 0f && crop.height() > 0f) crop else RectF(0f, 0f, 1f, 1f)
     }
 
-    /** Maps the real preview output transform into the EXIF-oriented saved JPEG. */
+    /** 将实际预览变换映射到按EXIF方向解释的已保存JPEG。 */
     @androidx.annotation.OptIn(TransformExperimental::class)
     private fun cropForSavedViewport(
         file: File, crop: RectF, aspect: Float, source: OutputTransform?,
@@ -484,7 +511,7 @@ class ExpressCameraView(
             val bottom = (rectangle.bottom / height).coerceIn(0f, 1f)
             if (right <= left || bottom <= top) full else mapOf("left" to left, "top" to top, "right" to right, "bottom" to bottom)
         } catch (error: Exception) {
-            // Keeping the original is safer than cropping a mismatched/unavailable transform.
+            // 几何变换不可用时保留原图，不猜测破坏性裁剪。
             Log.w(TAG, "Crop transform unavailable; preserving full photo")
             full
         }
@@ -508,6 +535,10 @@ class ExpressCameraView(
     private fun unbind() {
         generation++
         initializing = false
+        releaseOwnedUseCases()
+    }
+
+    private fun releaseOwnedUseCases() {
         analysis?.clearAnalyzer()
         val useCases = listOfNotNull(preview, imageCapture, analysis)
         if (useCases.isNotEmpty()) provider?.unbind(*useCases.toTypedArray())
