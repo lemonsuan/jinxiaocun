@@ -787,16 +787,6 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
     final valueText = _ocrRowMergeTolerance.toStringAsFixed(2);
 
     return _page([
-      SwitchListTile(
-        key: const ValueKey('ocr-enabled-switch'),
-        title: const Text('OCR图片识别'),
-        subtitle: Text(
-            _ocrEnabled ? '开启后自动识别商品；拍摄期间暂停后台任务。' : '已关闭：只保存单号和照片，可手工补录商品。'),
-        value: _ocrEnabled,
-        onChanged: _savingOcrEnabled ? null : _saveOcrEnabled,
-      ),
-      const SizedBox(height: 8),
-
       // 当前店铺及工作区卡片 (Notion 极简直角风)
       Container(
         width: double.infinity,
@@ -976,6 +966,39 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
                     ),
                   ),
                 ],
+              ),
+              Divider(height: 1, color: Colors.grey.shade200),
+              // OCR 图片识别开关行（Notion 统一样式）
+              SwitchListTile(
+                key: const ValueKey('ocr-enabled-switch'),
+                contentPadding: EdgeInsets.zero,
+                controlAffinity: ListTileControlAffinity.trailing,
+                secondary: Container(
+                  padding: const EdgeInsets.all(8),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    border: Border.all(color: Colors.black, width: 0.8),
+                  ),
+                  child: const Icon(Icons.document_scanner_outlined,
+                      color: Colors.black, size: 18),
+                ),
+                title: const Text('OCR图片识别',
+                    style: TextStyle(
+                        fontSize: 14,
+                        fontFamily: 'monospace',
+                        fontWeight: FontWeight.bold)),
+                subtitle: Text(
+                    _ocrEnabled
+                        ? '开启后自动识别商品；拍摄期间暂停后台任务'
+                        : '已关闭：只保存单号和照片，可手工补录商品',
+                    style: const TextStyle(
+                        fontSize: 11,
+                        fontFamily: 'monospace',
+                        color: Colors.grey)),
+                activeThumbColor: Colors.black,
+                activeTrackColor: Colors.grey.shade400,
+                value: _ocrEnabled,
+                onChanged: _savingOcrEnabled ? null : _saveOcrEnabled,
               ),
               Divider(height: 1, color: Colors.grey.shade200),
               if (_shopSync != null)
