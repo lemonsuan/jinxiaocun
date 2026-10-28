@@ -27,6 +27,12 @@ class BatchQuery(BaseModel):
 
 
 def parse_tracking_numbers(values):
+    """
+    解析、拆分并校验输入的快递单号列表。
+
+    支持任意空白、换行以及中英文标点拆分；
+    通过字典键去重保持原始出现顺序，返回去重后的单号列表以及重复被过滤的项数。
+    """
     if sum(len(value) for value in values) > 60000:
         raise HttpError(400, '输入内容过长，每次最多查询200个快递单号。')
     tokens = []

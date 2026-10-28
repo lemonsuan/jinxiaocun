@@ -20,6 +20,14 @@ import io.flutter.embedding.engine.FlutterEngine
 import io.flutter.plugin.common.MethodChannel
 import java.util.concurrent.atomic.AtomicBoolean
 
+/**
+ * Android 原生宿主主活动。
+ *
+ * 核心平台集成点：
+ * 1. ExpressCameraFactory: 注册原生 CameraX 高帧率相机 PlatformView（支持极速/超清模式与零快门延迟平滑降级）；
+ * 2. inventory_app/paddle_ocr: 离线 PaddleOCR 推理通道，在独立进程/线程池中执行表格与面单识别，保障主进程流畅；
+ * 3. inventory_app/system_utils: 原生公共存储适配（Android 10+ MediaStore 隔离存储与 Android 9- 传统 Downloads 目录流式直写）。
+ */
 class MainActivity : FlutterActivity() {
     private var expressCameraFactory: ExpressCameraFactory? = null
 

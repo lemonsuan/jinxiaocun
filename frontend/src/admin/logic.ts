@@ -1,3 +1,10 @@
+/**
+ * 生成拍手自主注册与免密带入店铺的专用邀请链接。
+ *
+ * @param origin 当前管理后台站点访问的基础 Origin 域名（例如 http://192.168.1.100:5173）
+ * @param shopNumber 目标店铺的数字编号（例如 10003）
+ * @returns 完整的 Hash 路由注册链接，若店铺编号非法或协议不受支持则返回空字符串
+ */
 export function registrationLink(origin: string, shopNumber: string): string {
   if (!/^[1-9]\d{4,18}$/.test(shopNumber)) return '';
   try {
@@ -15,6 +22,17 @@ export function registrationLink(origin: string, shopNumber: string): string {
     return '';
   }
 }
+
+/**
+ * 将指定文本安全写入系统剪贴板。
+ *
+ * 针对移动端或非受信安全上下文（非 HTTPS）下部分浏览器剪贴板权限请求无响应（挂起）的边缘情况，
+ * 采用带有超时竞速（Promise.race）机制。超时后平滑返回 false，由 UI 引导用户长按手动复制。
+ *
+ * @param value 欲复制的目标文本
+ * @param timeoutMs 超时时间，默认 1500ms
+ * @returns 复制成功返回 true，被拒绝或超时返回 false
+ */
 export async function copyVisibleText(
   value: string,
   timeoutMs = 1500,
@@ -37,6 +55,13 @@ export async function copyVisibleText(
     if (timer !== undefined) clearTimeout(timer);
   }
 }
+
+/**
+ * 统一提取 Axios 或未知错误中的用户可读友好中文提示。
+ *
+ * @param error 捕获到的错误对象
+ * @returns 格式化后的中文错误原因字符串
+ */
 export function errorText(error: unknown): string {
   const value = error as {
     response?: { data?: { detail?: unknown; message?: unknown } };

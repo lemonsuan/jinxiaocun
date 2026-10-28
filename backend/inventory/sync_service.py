@@ -1,7 +1,14 @@
-"""Retained document writer. All accepted writes serialize on the shop row.
+"""
+增量同步与持久化单据写入服务 (Sync v2 服务层)。
 
-Immutable revision snapshots avoid timestamp clocks and unseen-page cursor races.
-Existing stock is an opening balance; only subsequent document differences move it.
+核心机制：
+1. 店铺行级悲观锁串行化：所有写操作均在 PostgreSQL 中以 SELECT FOR UPDATE 锁定当前 Shop 行，
+   杜绝多端离线并发同步产生脏读、死锁或库存断层；
+2. 不可变修订版本号快照 (Immutable Revision Snapshots)：通过单调自增的版本号替代物理时间戳，
+   彻底规避客户端系统时钟偏差与分页游标漂移竞态；
+3. 库存结存差量推导：商品即时在库库存 (WarehouseStock) 为开账基线，后续只有单据明细变动才会触发
+   差量计算并生成审计台账 (StockLedger)；
+4. 严格校验与幂等性保证：操作 ID (Operation ID) 保证防重复提交，格式非法或数值超限直接拒绝，永不静默四舍五入。
 """
 import hashlib
 import json

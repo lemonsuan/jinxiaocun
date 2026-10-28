@@ -22,12 +22,23 @@ from .services import (audit, change_worker, filter_order_status, job_data, job_
                        lock_shop, one_order, order_query, reopen_order, require_admin,
                        save_job, save_order, serialize_orders, settle_order, visible_jobs, worker_data)
 
+# 管理端作业与人员管理路由（需要管理员 Bearer 认证和 X-Active-Shop-ID 店铺头）
 admin_router = Router()
+
+# 公开无鉴权路由（包含通过店铺号检索店铺基础信息、拍手账号注册与拍手密码登录）
 public_router = Router(auth=None)
+
+# 拍手端业务路由（使用独立 WorkerBearer 鉴权，仅能读写本人所属作业与订单数据，无权跨入仓储库存）
 worker_router = Router(auth=WorkerBearer())
 
 
 def validate(schema, data):
+    """
+    使用 Pydantic 模型对输入字典进行严格结构化校验。
+
+    转换校验异常为包含具体字段中文业务名称与明确错误原因的 422 状态码异常，
+    便于前端和移动端精准定位表单错误项。
+    """
     try:
         return schema.model_validate(data)
     except ValidationError as error:
@@ -58,6 +69,7 @@ def validate(schema, data):
 
 
 def key(value):
+    """解析并校验 UUID 主键，若格式非法则统一抛出 404 记录不存在错误。"""
     try:
         return UUID(str(value))
     except (TypeError, ValueError):
@@ -65,6 +77,7 @@ def key(value):
 
 
 def paginate(rows, page=1, page_size=20):
+    """通用 QuerySet 分页截取函数，限制每页范围 1~100 条。"""
     if page < 1 or not 1 <= page_size <= 100:
         raise HttpError(400, '分页范围无效，每页最多100条。')
     total = rows.count()
@@ -72,6 +85,7 @@ def paginate(rows, page=1, page_size=20):
 
 
 def page_result(items, total, page, page_size):
+    """构建统一标准的分页响应字典结构。"""
     return {'items': items, 'total': total, 'page': page, 'page_size': page_size}
 
 
@@ -334,6 +348,12 @@ def admin_job_update(request, job_id: str, data: Body[dict]):
 
 
 def register_jobs(api, admin_auth):
+    """
+    将作业报单系统的三大路由组分别挂载到根 NinjaAPI 实例中：
+    1. public_router: 无需鉴权（店铺查询、拍手注册与登录）；
+    2. worker_router: 拍手端独立身份鉴权（WorkerBearer）；
+    3. admin_router: 核心管理端作业与报单审核鉴权（必须具备店铺管理员权限）。
+    """
     api.add_router('', public_router, auth=None)
     api.add_router('', worker_router)
     api.add_router('', admin_router, auth=admin_auth)

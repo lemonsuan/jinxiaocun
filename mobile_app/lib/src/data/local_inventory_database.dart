@@ -10,6 +10,7 @@ import 'package:sqflite/sqflite.dart';
 import 'package:image/image.dart' as img;
 
 import '../application/inventory_service.dart';
+import '../application/ocr_access_policy.dart';
 import '../domain/models.dart';
 import '../domain/workspace_profile.dart';
 import '../domain/express_capture.dart';
@@ -22,6 +23,16 @@ part 'local_inventory_sync.dart';
 part 'local_inventory_scope.dart';
 part 'local_inventory_workspaces.dart';
 
+/// 本地离线优先 SQLite 仓储数据库服务。
+///
+/// 架构特性：
+/// 1. 多租户沙盒物理隔离：每个店铺工作区（或本地未绑定模式）对应独立的本地 SQLite 文件；
+/// 2. 离线全功能闭环：商品检索、扫码核验、批次出入库、单据草稿、快照暂存均在本地零延迟完成；
+/// 3. 双模数据防爆备份：
+///    - 纯业务数据备份：剥离照片物理文件，毫秒级导出，几百KB，永不卡顿；
+///    - 流式 ZIP 归档备份：分块流式直接归档全部单据实物照片，内存稳定低于 10MB，规避 Base64 内存溢出（OOM）；
+///    - 导入还原：双向自适应识别 JSON / ZIP，自动解压照片沙盒并智能修复物理路径映射；
+/// 4. 离线增量同步 (Sync v2)：本地记录单据修订版本号、操作唯一键，支持差量双向推送与拉取。
 class LocalInventoryDatabase {
   LocalInventoryDatabase(
       {Database? database, Directory? directory, DatabaseFactory? factory})
@@ -91,6 +102,39 @@ class LocalInventoryDatabase {
     _syncReady = false;
     _database = null;
   }
+
+  OcrAccessPolicy get ocrPolicy => OcrAccessPolicy.forDevice(
+      _settings.path == ':memory:' ? _settings : _settings.path,
+      read: _readOcrEnabled,
+      write: _writeOcrEnabled);
+
+  Future<bool> _readOcrEnabled() async {
+    final rows = await _settings.query('app_settings',
+        columns: ['value'],
+        where: 'key = ?',
+        whereArgs: ['ocr_enabled'],
+        limit: 1);
+    return rows.isEmpty || rows.single['value'] == 'true';
+  }
+
+  Future<void> _writeOcrEnabled(bool enabled) async {
+    await _settings.insert(
+        'app_settings',
+        {
+          'key': 'ocr_enabled',
+          'value': enabled.toString(),
+          'updated_at': DateTime.now().toIso8601String()
+        },
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<bool> loadOcrEnabled() async {
+    final policy = ocrPolicy;
+    await policy.load();
+    return policy.enabled;
+  }
+
+  Future<void> saveOcrEnabled(bool enabled) => ocrPolicy.setEnabled(enabled);
 
   Future<double> loadOcrRowMergeTolerance() async {
     final rows = await _settings.query(
@@ -947,9 +991,11 @@ class LocalInventoryDatabase {
     String? expectedImagePath,
     String? processedImagePath,
     String? expectedExpressJobValue,
+    void Function()? validateOcrPermit,
   }) async {
     final now = DateTime.now();
     await _db.transaction((txn) async {
+      validateOcrPermit?.call();
       if (expectedExpressJobValue != null) {
         final jobs = await txn.query('app_settings',
             columns: ['value'],
@@ -1030,6 +1076,7 @@ class LocalInventoryDatabase {
           createdAt: now,
         );
       }
+      validateOcrPermit?.call();
     });
   }
 
@@ -1682,15 +1729,58 @@ class LocalInventoryDatabase {
   }
 
   /// 使用 AI 识别后的新明细覆盖指定入库单，直接扣减旧明细库存并追加新明细库存与流水
+  Future<void> _validateReceiptSnapshot(
+      Transaction txn, InboundReceipt expected) async {
+    final rows = await txn
+        .query('inbound_receipts', where: 'id = ?', whereArgs: [expected.id]);
+    final items = await txn.query('inbound_items',
+        where: 'receipt_id = ?', whereArgs: [expected.id]);
+    List<String> canonical(Iterable<Map<String, Object?>> values) => values
+        .map((r) => jsonEncode([
+              r['product_code'],
+              r['product_name'],
+              r['quantity'],
+              (r['purchase_price'] as num?)?.toDouble(),
+              (r['sale_price'] as num?)?.toDouble()
+            ]))
+        .toList()
+      ..sort();
+    final oldItems = canonical(expected.items.map((i) => <String, Object?>{
+          'product_code': i.productCode,
+          'product_name': i.productName,
+          'quantity': i.quantity,
+          'purchase_price': i.purchasePrice,
+          'sale_price': i.salePrice
+        }));
+    if (rows.isEmpty ||
+        rows.single['image_path'] != expected.imagePath ||
+        rows.single['ocr_status'] != expected.ocrStatus.name ||
+        rows.single['tracking_number'] != expected.trackingNumber ||
+        rows.single['seller_order_number'] != expected.sellerOrderNumber ||
+        rows.single['rebate_order_number'] != expected.rebateOrderNumber ||
+        rows.single['scheme_number'] != expected.schemeNumber ||
+        rows.single['is_settled'] != (expected.isSettled ? 1 : 0) ||
+        jsonEncode(canonical(items)) != jsonEncode(oldItems)) {
+      throw InventoryException('单据或商品已被修改，本次识别结果未覆盖，请刷新后重试。');
+    }
+  }
+
   Future<void> overwriteInboundItems({
     required String receiptId,
     required List<InboundDraftItem> items,
     String? sellerOrderNumber,
     String? schemeNumber,
     required OcrStatus ocrStatus,
+    void Function()? validateOcrPermit,
+    InboundReceipt? expectedReceipt,
+    String? replacementImagePath,
   }) async {
     final now = DateTime.now();
     await _db.transaction((txn) async {
+      validateOcrPermit?.call();
+      if (expectedReceipt != null) {
+        await _validateReceiptSnapshot(txn, expectedReceipt);
+      }
       await txn.delete('app_settings',
           where: 'key = ?', whereArgs: ['express_image_job:$receiptId']);
       // 1. 获取原入库单的创建时间，用于台账流水的生成
@@ -1739,6 +1829,7 @@ class LocalInventoryDatabase {
       // 5. 更新主表状态及相关单号
       final updateValues = <String, Object?>{
         'ocr_status': ocrStatus.name,
+        if (replacementImagePath != null) 'image_path': replacementImagePath,
       };
       if (sellerOrderNumber != null && sellerOrderNumber.trim().isNotEmpty) {
         updateValues['seller_order_number'] = sellerOrderNumber.trim();
@@ -1794,6 +1885,7 @@ class LocalInventoryDatabase {
           throw InventoryException('无法覆写：冲销后商品 (编码: $code) 的库存不足 (结余小于0)。');
         }
       }
+      validateOcrPermit?.call();
     });
   }
 

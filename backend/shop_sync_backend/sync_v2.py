@@ -1,4 +1,12 @@
-"""Authenticated incremental sync and read-only shop archive endpoints."""
+"""
+基于 Bearer 鉴权的多租户增量同步（Sync v2）与私有媒体库接口路由。
+
+包含：
+- /sync/v2/push: 客户端离线增量推送到服务端，支持操作级幂等与原子行锁；
+- /sync/v2/pull: 基于递增 revision 版本号游标差量拉取最新数据快照；
+- /sync/v2/media: 凭证照片私有安全上传与基于 SHA256 防重/下载保护；
+- /view/...: 业务商品、入库、出库、在库库存及变动台账列表与详情查询。
+"""
 import re
 from datetime import date
 from pathlib import Path
