@@ -1031,16 +1031,33 @@ class LocalInventoryDatabase {
     return attachments.isNotEmpty;
   }
 
-  Future<void> setReceiptSettled(String receiptId, bool isSettled) async {
-    final count = await _db.update(
-      'inbound_receipts',
-      {'is_settled': isSettled ? 1 : 0},
-      where: 'id = ?',
-      whereArgs: [receiptId],
-    );
-    if (count == 0) {
-      throw InventoryException('Inbound receipt not found.');
+  Future<void> setReceiptSettled(String receiptId, bool isSettled) =>
+      setReceiptsSettled([receiptId], isSettled);
+
+  /// 同一事务批量标记，缺失任一单据时整批回滚，正常同步触发器继续生效。
+  Future<void> setReceiptsSettled(
+      Iterable<String> receiptIds, bool isSettled) async {
+    final ids = receiptIds.toSet().toList(growable: false);
+    if (ids.isEmpty) return;
+    await _ensureSync();
+    if (_openedScope != null && await _selectedScope() != _openedScope) {
+      throw InventoryException('工作区已变化，请返回当前店铺后重试。');
     }
+    await _db.transaction((txn) async {
+      // 每组留出参数余量，兼容旧版Android SQLite的绑定参数上限。
+      for (var offset = 0; offset < ids.length; offset += 400) {
+        final group = ids.skip(offset).take(400).toList(growable: false);
+        final placeholders = List.filled(group.length, '?').join(',');
+        final rows = await txn.query('inbound_receipts',
+            columns: ['id'], where: 'id IN ($placeholders)', whereArgs: group);
+        if (rows.length != group.length) {
+          throw InventoryException('部分入库单已不存在，未修改任何结算状态，请刷新后重试。');
+        }
+        await txn.update('inbound_receipts', {'is_settled': isSettled ? 1 : 0},
+            where: 'id IN ($placeholders) AND is_settled != ?',
+            whereArgs: [...group, isSettled ? 1 : 0]);
+      }
+    });
   }
 
   Future<void> updateInboundReceiptItems(

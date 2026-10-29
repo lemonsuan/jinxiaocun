@@ -1,0 +1,5 @@
+{"file": ".trellis/spec/frontend/quality-guidelines.md", "reason": "移动端异步与检查"}
+{"file": ".trellis/spec/backend/database-guidelines.md", "reason": "本地账本事务与库存不变"}
+{"file": ".trellis/spec/backend/shop-incremental-sync.md", "reason": "dirty及工作区增量协议"}
+{"file": ".trellis/spec/frontend/remembered-workspace.md", "reason": "作用域与离线边界"}
+{"file": ".trellis/tasks/archive/2026-10/10-29-jobs-usability-demo-ios/research/mobile-settlement-latency.md", "reason": "已定位慢路径"}

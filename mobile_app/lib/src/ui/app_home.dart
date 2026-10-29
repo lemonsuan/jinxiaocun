@@ -63,6 +63,9 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
   ShopSyncService? _shopSync;
   ExpressProcessingQueue? _registeredQueue;
   int _syncVersion = 0;
+  int _dataRefreshGeneration = 0;
+  int _settlementRevision = 0;
+  final Set<String> _settlingReceiptIds = {};
   bool _openingWorkspaceSettings = false;
 
   @override
@@ -2162,19 +2165,10 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
                 Expanded(
                   flex: 3,
                   child: GestureDetector(
-                    onTap: () async {
-                      try {
-                        await _database.setReceiptSettled(
-                            receipt.id, !receipt.isSettled);
-                        await _refreshData();
-                      } catch (e) {
-                        if (mounted) {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(content: Text('更新结算状态失败: $e')),
-                          );
-                        }
-                      }
-                    },
+                    key: ValueKey('receipt-settlement-${receipt.id}'),
+                    onTap: _settlingReceiptIds.contains(receipt.id)
+                        ? null
+                        : () => _toggleReceiptSettlement(receipt),
                     child: Container(
                       alignment: Alignment.center,
                       padding: const EdgeInsets.symmetric(vertical: 6),
@@ -2935,10 +2929,7 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
         fullscreenDialog: true,
         builder: (_) => _ReviewCartPage(
           allReceipts: _inboundHistory,
-          database: _database,
-          onSettlementChanged: () async {
-            await _refreshData();
-          },
+          onSettlementChanged: _changeReceiptSettlements,
         ),
       ),
     );
@@ -3334,10 +3325,26 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
   }
 
   Future<void> _refreshData() async {
+    final generation = ++_dataRefreshGeneration;
+    final settlementRevision = _settlementRevision;
+    final scope = _database.processingScope;
     final stockTotals = await _database.loadStockTotals();
     final inboundHistory = await _database.loadInboundHistory();
     final outboundHistory = await _database.loadOutboundHistory();
-    if (!mounted) {
+    if (!mounted ||
+        generation != _dataRefreshGeneration ||
+        !identical(scope, _database.processingScope)) {
+      return;
+    }
+    if (settlementRevision != _settlementRevision) {
+      // 仅最新的过时请求补读一次，接回同期库存或OCR变化；按钮不等待该刷新。
+      unawaited(_refreshData().catchError((Object error) {
+        if (mounted && identical(scope, _database.processingScope)) {
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('后台数据刷新失败，已保存的结算状态不受影响，请稍后重试：$error'),
+          ));
+        }
+      }));
       return;
     }
     setState(() {
@@ -3345,6 +3352,50 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
       _inboundHistory = inboundHistory;
       _outboundHistory = outboundHistory;
     });
+  }
+
+  Future<List<InboundReceipt>> _changeReceiptSettlements(
+      Set<String> ids, bool isSettled) async {
+    if (ids.any(_settlingReceiptIds.contains)) {
+      throw InventoryException('部分单据正在保存结算状态，请稍后重试。');
+    }
+    final scope = _database.processingScope;
+    // 保存开始和完成均淘汰旧刷新；之后的新同步刷新照常读取服务器合法变更。
+    setState(() {
+      _settlingReceiptIds.addAll(ids);
+      _settlementRevision++;
+    });
+    try {
+      await _database.setReceiptsSettled(ids, isSettled);
+      if (mounted && identical(scope, _database.processingScope)) {
+        setState(() {
+          _settlementRevision++;
+          _inboundHistory = _inboundHistory
+              .map((receipt) => ids.contains(receipt.id)
+                  ? receipt.copyWith(isSettled: isSettled)
+                  : receipt)
+              .toList(growable: false);
+        });
+      }
+      return List<InboundReceipt>.of(_inboundHistory);
+    } finally {
+      if (mounted) {
+        setState(() => _settlingReceiptIds.removeAll(ids));
+      }
+    }
+  }
+
+  Future<void> _toggleReceiptSettlement(InboundReceipt receipt) async {
+    if (_settlingReceiptIds.contains(receipt.id)) return;
+    try {
+      await _changeReceiptSettlements({receipt.id}, !receipt.isSettled);
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('更新结算状态失败：$error')),
+        );
+      }
+    }
   }
 
   void _showClearStockConfirmDialog() {
@@ -3879,13 +3930,12 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
 class _ReviewCartPage extends StatefulWidget {
   const _ReviewCartPage({
     required this.allReceipts,
-    required this.database,
     required this.onSettlementChanged,
   });
 
   final List<InboundReceipt> allReceipts;
-  final LocalInventoryDatabase database;
-  final Future<void> Function() onSettlementChanged;
+  final Future<List<InboundReceipt>> Function(Set<String>, bool)
+      onSettlementChanged;
 
   @override
   State<_ReviewCartPage> createState() => _ReviewCartPageState();
@@ -3908,10 +3958,12 @@ class _ReviewCartPageState extends State<_ReviewCartPage>
   List<String> _unmatchedNumbers = [];
   bool _hasSearched = false;
   bool _isSettling = false;
+  late List<InboundReceipt> _allReceipts;
 
   @override
   void initState() {
     super.initState();
+    _allReceipts = List<InboundReceipt>.of(widget.allReceipts);
     _trackingInputController.addListener(_onInputChanged);
   }
 
@@ -3953,7 +4005,7 @@ class _ReviewCartPageState extends State<_ReviewCartPage>
 
     for (final number in numbers) {
       final cleanNumber = number.trim().toLowerCase();
-      for (final receipt in widget.allReceipts) {
+      for (final receipt in _allReceipts) {
         final cleanReceiptTracking =
             receipt.trackingNumber.trim().toLowerCase();
         if (cleanReceiptTracking == cleanNumber) {
@@ -3982,39 +4034,22 @@ class _ReviewCartPageState extends State<_ReviewCartPage>
     if (_isSettling || _matchedReceipts.isEmpty) return;
 
     // 先快照当前待修改的目标清单与数量，防止异步过程中用户清空输入框导致 _matchedReceipts 被重置
-    final targets = List<InboundReceipt>.from(_matchedReceipts);
-    final targetIds = targets.map((r) => r.id).toSet();
-    final targetCount = targets.length;
+    final targetIds = _matchedReceipts.map((r) => r.id).toSet();
+    final targetCount = targetIds.length;
 
     setState(() {
       _isSettling = true;
     });
 
     try {
-      for (final receipt in targets) {
-        await widget.database.setReceiptSettled(receipt.id, isSettled);
-      }
-
-      // 同步更新外部 AppHome 中的原始状态，确保主页历史记录在关闭核验车后立即可见最新状态
-      await widget.onSettlementChanged();
-
-      // 在内存中直接批量更新 widget.allReceipts，保证在当前页面重新匹配单号时仍获取最新数据
-      for (int i = 0; i < widget.allReceipts.length; i++) {
-        final r = widget.allReceipts[i];
-        if (targetIds.contains(r.id)) {
-          widget.allReceipts[i] = r.copyWith(isSettled: isSettled);
-        }
-      }
-
-      // 同步重绘当前展示的 _matchedReceipts 以便结算红绿状态标签在点击的瞬间立即刷新
+      final receipts = await widget.onSettlementChanged(targetIds, isSettled);
       if (mounted) {
+        final latest = {for (final receipt in receipts) receipt.id: receipt};
         setState(() {
-          _matchedReceipts = _matchedReceipts.map((receipt) {
-            if (targetIds.contains(receipt.id)) {
-              return receipt.copyWith(isSettled: isSettled);
-            }
-            return receipt;
-          }).toList();
+          _allReceipts = List<InboundReceipt>.of(receipts);
+          _matchedReceipts = _matchedReceipts
+              .map((receipt) => latest[receipt.id] ?? receipt)
+              .toList(growable: false);
         });
       }
 
