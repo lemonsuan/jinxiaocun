@@ -412,6 +412,7 @@ class ShopSyncService extends ChangeNotifier {
       }
       await _guard(context);
       await database.attachSyncMedia(reference, file.path);
+      await database.retryLocalPurgeFiles();
       dataVersion++;
     }
   }

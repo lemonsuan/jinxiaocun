@@ -1039,6 +1039,16 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
                     MaterialPageRoute(
                       builder: (context) => DataManagementPage(
                         database: _database,
+                        acquireMaintenance: () async {
+                          final service = _shopSync;
+                          await service?.pauseAndDrain();
+                          var released = false;
+                          return () {
+                            if (released) return;
+                            released = true;
+                            service?.resume();
+                          };
+                        },
                         onDatabaseRestored: () async {
                           unawaited(
                               ExpressProcessingQueue.forDatabase(_database)

@@ -8,15 +8,18 @@ import 'package:share_plus/share_plus.dart';
 import 'package:path/path.dart' as p;
 import 'package:path_provider/path_provider.dart';
 import '../data/local_inventory_database.dart';
+import '../domain/local_purge.dart';
 
 class DataManagementPage extends StatefulWidget {
   final LocalInventoryDatabase database;
   final VoidCallback? onDatabaseRestored;
+  final Future<VoidCallback> Function()? acquireMaintenance;
 
   const DataManagementPage({
     super.key,
     required this.database,
     this.onDatabaseRestored,
+    this.acquireMaintenance,
   });
 
   @override
@@ -26,6 +29,12 @@ class DataManagementPage extends StatefulWidget {
 class _DataManagementPageState extends State<DataManagementPage> {
   bool _isLoading = false;
   bool _online = false;
+  bool _purging = false;
+  DateTime _purgeFrom = DateUtils.dateOnly(DateTime.now());
+  DateTime _purgeTo = _endOfMinute(DateTime.now());
+
+  static DateTime _endOfMinute(DateTime value) => DateTime(value.year,
+      value.month, value.day, value.hour, value.minute, 59, 999, 999);
   List<FileSystemEntity> _backupFiles = [];
 
   // 清理数据复选框状态
@@ -117,12 +126,13 @@ class _DataManagementPageState extends State<DataManagementPage> {
       list.sort((a, b) {
         return b.statSync().modified.compareTo(a.statSync().modified);
       });
+      if (!mounted) return;
       setState(() {
         _backupFiles = list;
         _isLoading = false;
       });
     } catch (_) {
-      setState(() => _isLoading = false);
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
@@ -878,178 +888,186 @@ class _DataManagementPageState extends State<DataManagementPage> {
                 color: Color(0xFF1E293B),
               ),
             )
-          : ListView(
-              padding: const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
-              children: [
-                // 1. 导出/导入操作卡片
-                _actionCard(colorScheme),
-                const SizedBox(height: 24),
+          : AbsorbPointer(
+              absorbing: _purging,
+              child: ListView(
+                padding:
+                    const EdgeInsets.symmetric(horizontal: 24, vertical: 16),
+                children: [
+                  // 1. 导出/导入操作卡片
+                  _actionCard(colorScheme),
+                  const SizedBox(height: 24),
 
-                // 2. 压缩历史大图卡片
-                _imageCompressionCard(),
-                const SizedBox(height: 24),
+                  // 2. 压缩历史大图卡片
+                  _imageCompressionCard(),
+                  const SizedBox(height: 24),
 
-                // 3. 清理已结算数据卡片
-                _clearSettledCard(),
-                const SizedBox(height: 24),
+                  _datePurgeCard(),
+                  const SizedBox(height: 24),
 
-                // 4. 备份历史标头
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 12),
-                  child: Text(
-                    '本地历史备份 (${_backupFiles.length})',
-                    style: const TextStyle(
-                      fontSize: 12,
-                      fontWeight: FontWeight.w600,
-                      letterSpacing: 1.0,
-                      color: Color(0xFF64748B),
+                  // 3. 清理已结算数据卡片
+                  _clearSettledCard(),
+                  const SizedBox(height: 24),
+
+                  // 4. 备份历史标头
+                  Padding(
+                    padding: const EdgeInsets.only(bottom: 12),
+                    child: Text(
+                      '本地历史备份 (${_backupFiles.length})',
+                      style: const TextStyle(
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                        letterSpacing: 1.0,
+                        color: Color(0xFF64748B),
+                      ),
                     ),
                   ),
-                ),
-                const Divider(height: 1, color: Color(0xFFF1F5F9)),
-                const SizedBox(height: 12),
+                  const Divider(height: 1, color: Color(0xFFF1F5F9)),
+                  const SizedBox(height: 12),
 
-                // 5. 备份历史列表
-                if (_backupFiles.isEmpty)
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 48),
-                    child: Column(
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Icon(
-                          Icons.inventory_2_outlined,
-                          size: 32,
-                          color: Color(0xFFCBD5E1),
-                        ),
-                        SizedBox(height: 16),
-                        Text(
-                          '暂无本地备份记录\n点击上方“导出备份”创建还原点',
-                          textAlign: TextAlign.center,
-                          style: TextStyle(
-                            color: Color(0xFF94A3B8),
-                            fontSize: 12,
-                            height: 1.6,
-                            letterSpacing: 0.5,
+                  // 5. 备份历史列表
+                  if (_backupFiles.isEmpty)
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 48),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            Icons.inventory_2_outlined,
+                            size: 32,
+                            color: Color(0xFFCBD5E1),
                           ),
-                        ),
-                      ],
-                    ),
-                  )
-                else
-                  ..._backupFiles.map((entity) {
-                    final file = File(entity.path);
-                    final stat = file.statSync();
-                    final sizeStr = _formatFileSize(stat.size);
-                    final timeStr = _formatDateTime(stat.modified);
-                    final name = p.basename(file.path);
-                    final isZip = name.toLowerCase().endsWith('.zip');
-                    final isLightData = name.contains('_data_');
-                    final icon = isZip
-                        ? Icons.folder_zip_outlined
-                        : (isLightData
-                            ? Icons.bolt_outlined
-                            : Icons.insert_drive_file_outlined);
-                    final iconColor = isZip
-                        ? const Color(0xFF2563EB)
-                        : (isLightData
-                            ? const Color(0xFF0F766E)
-                            : const Color(0xFF64748B));
-                    final typeTag = isZip
-                        ? '全量ZIP (含照片)'
-                        : (isLightData ? '⚡ 极速纯数据' : '传统JSON');
-
-                    return Container(
-                      decoration: const BoxDecoration(
-                        border: Border(
-                          bottom: BorderSide(
-                            color: Color(0xFFF1F5F9),
-                            width: 0.8,
-                          ),
-                        ),
-                      ),
-                      child: ListTile(
-                        contentPadding:
-                            const EdgeInsets.symmetric(vertical: 12),
-                        onLongPress: _isLoading
-                            ? null
-                            : () async {
-                                if (await file.exists()) {
-                                  await Share.shareXFiles(
-                                    [XFile(file.path)],
-                                    text: '分享商品管理系统数据备份：$name',
-                                  );
-                                }
-                              },
-                        leading: Icon(
-                          icon,
-                          color: iconColor,
-                          size: 22,
-                        ),
-                        title: Text(
-                          name,
-                          style: const TextStyle(
-                            fontSize: 13,
-                            fontWeight: FontWeight.w500,
-                            color: Color(0xFF1E293B),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                        subtitle: Padding(
-                          padding: const EdgeInsets.only(top: 6),
-                          child: Text(
-                            '$timeStr  ·  $sizeStr  ·  $typeTag',
-                            style: const TextStyle(
-                              fontSize: 10,
-                              fontFamily: 'monospace',
+                          SizedBox(height: 16),
+                          Text(
+                            '暂无本地备份记录\n点击上方“导出备份”创建还原点',
+                            textAlign: TextAlign.center,
+                            style: TextStyle(
                               color: Color(0xFF94A3B8),
-                              fontWeight: FontWeight.w400,
+                              fontSize: 12,
+                              height: 1.6,
+                              letterSpacing: 0.5,
+                            ),
+                          ),
+                        ],
+                      ),
+                    )
+                  else
+                    ..._backupFiles.map((entity) {
+                      final file = File(entity.path);
+                      final stat = file.statSync();
+                      final sizeStr = _formatFileSize(stat.size);
+                      final timeStr = _formatDateTime(stat.modified);
+                      final name = p.basename(file.path);
+                      final isZip = name.toLowerCase().endsWith('.zip');
+                      final isLightData = name.contains('_data_');
+                      final icon = isZip
+                          ? Icons.folder_zip_outlined
+                          : (isLightData
+                              ? Icons.bolt_outlined
+                              : Icons.insert_drive_file_outlined);
+                      final iconColor = isZip
+                          ? const Color(0xFF2563EB)
+                          : (isLightData
+                              ? const Color(0xFF0F766E)
+                              : const Color(0xFF64748B));
+                      final typeTag = isZip
+                          ? '全量ZIP (含照片)'
+                          : (isLightData ? '⚡ 极速纯数据' : '传统JSON');
+
+                      return Container(
+                        decoration: const BoxDecoration(
+                          border: Border(
+                            bottom: BorderSide(
+                              color: Color(0xFFF1F5F9),
+                              width: 0.8,
                             ),
                           ),
                         ),
-                        trailing: Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            TextButton(
-                              style: TextButton.styleFrom(
-                                foregroundColor: const Color(0xFF1E293B),
-                                padding: const EdgeInsets.symmetric(
-                                    horizontal: 12, vertical: 4),
-                                minimumSize: Size.zero,
-                                tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                        child: ListTile(
+                          contentPadding:
+                              const EdgeInsets.symmetric(vertical: 12),
+                          onLongPress: _isLoading
+                              ? null
+                              : () async {
+                                  if (await file.exists()) {
+                                    await Share.shareXFiles(
+                                      [XFile(file.path)],
+                                      text: '分享商品管理系统数据备份：$name',
+                                    );
+                                  }
+                                },
+                          leading: Icon(
+                            icon,
+                            color: iconColor,
+                            size: 22,
+                          ),
+                          title: Text(
+                            name,
+                            style: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w500,
+                              color: Color(0xFF1E293B),
+                            ),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                          subtitle: Padding(
+                            padding: const EdgeInsets.only(top: 6),
+                            child: Text(
+                              '$timeStr  ·  $sizeStr  ·  $typeTag',
+                              style: const TextStyle(
+                                fontSize: 10,
+                                fontFamily: 'monospace',
+                                color: Color(0xFF94A3B8),
+                                fontWeight: FontWeight.w400,
                               ),
-                              onPressed: _isLoading
-                                  ? null
-                                  : () => _restoreFromLocalFile(file),
-                              child: const Text(
-                                '还原',
-                                style: TextStyle(
-                                  fontWeight: FontWeight.w600,
-                                  fontSize: 12,
-                                  letterSpacing: 1.0,
+                            ),
+                          ),
+                          trailing: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              TextButton(
+                                style: TextButton.styleFrom(
+                                  foregroundColor: const Color(0xFF1E293B),
+                                  padding: const EdgeInsets.symmetric(
+                                      horizontal: 12, vertical: 4),
+                                  minimumSize: Size.zero,
+                                  tapTargetSize:
+                                      MaterialTapTargetSize.shrinkWrap,
+                                ),
+                                onPressed: (_isLoading || _purging)
+                                    ? null
+                                    : () => _restoreFromLocalFile(file),
+                                child: const Text(
+                                  '还原',
+                                  style: TextStyle(
+                                    fontWeight: FontWeight.w600,
+                                    fontSize: 12,
+                                    letterSpacing: 1.0,
+                                  ),
                                 ),
                               ),
-                            ),
-                            const SizedBox(width: 8),
-                            IconButton(
-                              icon: const Icon(
-                                Icons.delete_outline,
-                                color: Color(0xFF94A3B8),
-                                size: 18,
+                              const SizedBox(width: 8),
+                              IconButton(
+                                icon: const Icon(
+                                  Icons.delete_outline,
+                                  color: Color(0xFF94A3B8),
+                                  size: 18,
+                                ),
+                                onPressed: (_isLoading || _purging)
+                                    ? null
+                                    : () => _deleteBackupFile(file),
+                                padding: EdgeInsets.zero,
+                                constraints: const BoxConstraints(),
+                                splashRadius: 16,
                               ),
-                              onPressed: _isLoading
-                                  ? null
-                                  : () => _deleteBackupFile(file),
-                              padding: EdgeInsets.zero,
-                              constraints: const BoxConstraints(),
-                              splashRadius: 16,
-                            ),
-                          ],
+                            ],
+                          ),
                         ),
-                      ),
-                    );
-                  }),
-              ],
+                      );
+                    }),
+                ],
+              ),
             ),
     );
   }
@@ -1080,7 +1098,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
                   letterSpacing: 1.5,
                 ),
               ),
-              onPressed: _isLoading ? null : _showExportOptionsDialog,
+              onPressed:
+                  (_isLoading || _purging) ? null : _showExportOptionsDialog,
               child: const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -1107,7 +1126,8 @@ class _DataManagementPageState extends State<DataManagementPage> {
                   letterSpacing: 1.5,
                 ),
               ),
-              onPressed: _isLoading ? null : _importExternalBackup,
+              onPressed:
+                  (_isLoading || _purging) ? null : _importExternalBackup,
               child: const Row(
                 mainAxisAlignment: MainAxisAlignment.center,
                 children: [
@@ -1122,6 +1142,170 @@ class _DataManagementPageState extends State<DataManagementPage> {
       ),
     );
   }
+
+  String _purgeTime(DateTime value) =>
+      '${value.year}-${value.month.toString().padLeft(2, '0')}-${value.day.toString().padLeft(2, '0')} '
+      '${value.hour.toString().padLeft(2, '0')}:${value.minute.toString().padLeft(2, '0')}';
+
+  Future<void> _pickPurgeTime(bool start) async {
+    final current = start ? _purgeFrom : _purgeTo;
+    final date = await showDatePicker(
+      context: context,
+      initialDate: current,
+      firstDate: DateTime(2000),
+      lastDate: DateTime(2100),
+    );
+    if (date == null || !mounted) return;
+    final time = await showTimePicker(
+      context: context,
+      initialTime: TimeOfDay.fromDateTime(current),
+    );
+    if (time == null || !mounted) return;
+    setState(() {
+      final value = DateTime(date.year, date.month, date.day, time.hour,
+          time.minute, start ? 0 : 59, start ? 0 : 999, start ? 0 : 999);
+      if (start) {
+        _purgeFrom = value;
+      } else {
+        _purgeTo = value;
+      }
+    });
+  }
+
+  Future<bool> _confirmPurge(
+          String title, String message, String action) async =>
+      await showDialog<bool>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title: Text(title),
+          content: SingleChildScrollView(child: Text(message)),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, false),
+              child: const Text('取消'),
+            ),
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext, true),
+              child: Text(action, style: const TextStyle(color: Colors.red)),
+            ),
+          ],
+        ),
+      ) ==
+      true;
+
+  Future<void> _runDatePurge() async {
+    if (_purging || _isLoading) return;
+    if (_purgeFrom.isAfter(_purgeTo)) {
+      ScaffoldMessenger.of(context)
+          .showSnackBar(const SnackBar(content: Text('开始时间不能晚于结束时间')));
+      return;
+    }
+    setState(() => _purging = true);
+    VoidCallback? release;
+    try {
+      release = await widget.acquireMaintenance?.call();
+      if (!mounted) return;
+      final plan = await widget.database
+          .prepareLocalPurge(from: _purgeFrom, to: _purgeTo);
+      if (!mounted) return;
+      final skips = plan.skippedReasons.entries
+          .map((entry) => '${entry.key}：${entry.value} 条')
+          .join('\n');
+      final summary = '${_purgeTime(plan.from)} 至 ${_purgeTime(plan.to)}\n'
+          '可清理已结算入库：${plan.receiptCount} 条\n'
+          '关联图片：${plan.imageCount} 张；共享引用保留：${plan.sharedImageCount} 张'
+          '${skips.isEmpty ? '' : '\n跳过：\n$skips'}';
+      if (plan.receiptCount == 0) {
+        await showDialog<void>(
+          context: context,
+          builder: (dialogContext) => AlertDialog(
+            title: const Text('没有可清理的记录'),
+            content: Text(summary),
+            actions: [
+              TextButton(
+                  onPressed: () => Navigator.pop(dialogContext),
+                  child: const Text('知道了'))
+            ],
+          ),
+        );
+        return;
+      }
+      if (!await _confirmPurge('确认清理范围（1/2）',
+          '$summary\n\n仅清理已结算入库及关联图片，当前库存、商品、未结算入库和出库不变。', '继续确认')) {
+        return;
+      }
+      if (!mounted) return;
+      if (!await _confirmPurge(
+          '彻底清除本机数据（2/2）',
+          '$summary\n\n将物理移除本机记录及无其他引用的图片。服务器和其他设备保留，当前库存不变。'
+              '\n不能通过“恢复本机隐藏”找回，之后同步也不会自动下载这些记录。'
+              '\n已导出的旧备份不在此次清理范围内。确定清除？',
+          '彻底清除')) {
+        return;
+      }
+      if (!mounted) return;
+      final result = await widget.database.executeLocalPurge(plan);
+      if (!mounted) return;
+      widget.onDatabaseRestored?.call();
+      await showDialog<void>(
+        context: context,
+        builder: (dialogContext) => AlertDialog(
+          title:
+              Text(result.pendingImageCount > 0 ? '记录已移除，图片回收未完成' : '本机清理完成'),
+          content: Text(
+              '已清除 ${result.receiptCount} 条记录、${result.deletedImageCount} 张图片。'
+              '\n共享引用保留 ${result.sharedImageCount} 张。'
+              '\n待回收图片 ${result.pendingImageCount} 张。'
+              '${result.pendingImageCount > 0 ? '\n部分图片暂未删除，将保留回收任务重试。' : ''}'),
+          actions: [
+            TextButton(
+                onPressed: () => Navigator.pop(dialogContext),
+                child: const Text('完成'))
+          ],
+        ),
+      );
+    } on LocalPurgePlanChanged {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('记录已经变化，未执行清理。请重新预览确认。')));
+      }
+    } catch (error) {
+      if (mounted) {
+        ScaffoldMessenger.of(context)
+            .showSnackBar(SnackBar(content: Text('本机清理未完成：$error')));
+      }
+    } finally {
+      release?.call();
+      if (mounted) setState(() => _purging = false);
+    }
+  }
+
+  Widget _datePurgeCard() => Card(
+        margin: EdgeInsets.zero,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child:
+              Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [
+            const Text('按时间段彻底清除本机数据',
+                style: TextStyle(fontWeight: FontWeight.bold)),
+            const SizedBox(height: 8),
+            const Text('按入库时间（本机时区，包含起止分钟）清理已结算入库及关联图片。'
+                '当前库存不变，服务器和其他设备保留。未同步、冲突或处理中记录跳过；共享图片保留。'),
+            TextButton(
+                onPressed:
+                    _purging || _isLoading ? null : () => _pickPurgeTime(true),
+                child: Text('开始：${_purgeTime(_purgeFrom)}')),
+            TextButton(
+                onPressed:
+                    _purging || _isLoading ? null : () => _pickPurgeTime(false),
+                child: Text('结束：${_purgeTime(_purgeTo)}')),
+            OutlinedButton(
+              onPressed: _purging || _isLoading ? null : _runDatePurge,
+              child: Text(_purging ? '正在处理，请稍候…' : '预览清理范围'),
+            ),
+          ]),
+        ),
+      );
 
   Widget _clearSettledCard() {
     return Container(
@@ -1192,7 +1376,9 @@ class _DataManagementPageState extends State<DataManagementPage> {
                     borderRadius: BorderRadius.zero),
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),
-              onPressed: _isLoading ? null : _showClearConfirmationDialog,
+              onPressed: (_isLoading || _purging)
+                  ? null
+                  : _showClearConfirmationDialog,
               icon: const Icon(Icons.delete_forever, size: 16),
               label: const Text('一键清空所选数据',
                   style: TextStyle(fontSize: 12, fontWeight: FontWeight.bold)),
@@ -1259,7 +1445,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
                           borderRadius: BorderRadius.zero),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
-                    onPressed: _isLoading
+                    onPressed: (_isLoading || _purging)
                         ? null
                         : () => _startCompression(force: false),
                     icon: const Icon(Icons.compress, size: 16),
@@ -1278,7 +1464,7 @@ class _DataManagementPageState extends State<DataManagementPage> {
                           borderRadius: BorderRadius.zero),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                     ),
-                    onPressed: _isLoading
+                    onPressed: (_isLoading || _purging)
                         ? null
                         : () => _startCompression(force: true),
                     icon: const Icon(Icons.refresh, size: 16),

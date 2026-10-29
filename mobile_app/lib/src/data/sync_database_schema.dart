@@ -1,6 +1,11 @@
 /// Internal per-workspace state. None of these tables is a backup payload.
 class SyncDatabaseSchema {
+  static List<String> get purgeStatements => [
+        'CREATE TABLE IF NOT EXISTS sync_purged(kind TEXT NOT NULL,id TEXT NOT NULL,PRIMARY KEY(kind,id))',
+        'CREATE TABLE IF NOT EXISTS local_purge_gc(path TEXT PRIMARY KEY)',
+      ];
   static List<String> get statements => [
+        ...purgeStatements,
         'CREATE TABLE IF NOT EXISTS sync_control(id INTEGER PRIMARY KEY CHECK(id=1),suppressed INTEGER NOT NULL DEFAULT 0,cursor INTEGER NOT NULL DEFAULT 0)',
         'INSERT OR IGNORE INTO sync_control(id) VALUES(1)',
         'CREATE TABLE IF NOT EXISTS sync_dirty(kind TEXT NOT NULL,id TEXT NOT NULL,generation INTEGER NOT NULL,PRIMARY KEY(kind,id))',

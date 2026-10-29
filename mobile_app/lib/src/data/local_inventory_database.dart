@@ -12,6 +12,7 @@ import 'package:image/image.dart' as img;
 import '../application/inventory_service.dart';
 import '../application/ocr_access_policy.dart';
 import '../domain/models.dart';
+import '../domain/local_purge.dart';
 import '../domain/workspace_profile.dart';
 import '../domain/express_capture.dart';
 import '../domain/ocr_settings.dart';
@@ -20,6 +21,7 @@ import 'local_database_schema.dart';
 import 'sync_database_schema.dart';
 
 part 'local_inventory_sync.dart';
+part 'local_inventory_purge.dart';
 part 'local_inventory_scope.dart';
 part 'local_inventory_workspaces.dart';
 

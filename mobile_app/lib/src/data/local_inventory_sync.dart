@@ -226,6 +226,7 @@ extension InventorySyncPersistence on LocalInventoryDatabase {
         if (revision > cursor) {
           throw const FormatException('Record exceeds pull cursor');
         }
+        if (await _isPurged(txn, kind, id)) continue;
         final previous = await txn.query('sync_meta',
             where: 'kind=? AND id=?', whereArgs: [kind, id]);
         if (previous.isNotEmpty &&
@@ -272,6 +273,7 @@ extension InventorySyncPersistence on LocalInventoryDatabase {
 
   Future<void> _saveMeta(DatabaseExecutor txn, String kind, String id,
       int revision, Map data) async {
+    if (await _isPurged(txn, kind, id)) return;
     final previous = await txn
         .query('sync_meta', where: 'kind=? AND id=?', whereArgs: [kind, id]);
     if (previous.isNotEmpty && (previous.first['revision'] as int) > revision) {
@@ -405,6 +407,7 @@ extension InventorySyncPersistence on LocalInventoryDatabase {
 
   Future<void> _writeRemote(Transaction txn, String kind, String id,
       Map<String, Object?> data) async {
+    if (await _isPurged(txn, kind, id)) return;
     if (kind == 'product') {
       await txn.insert(
           'products',
@@ -763,6 +766,10 @@ extension InventorySyncPersistence on LocalInventoryDatabase {
       _validateRecord(record);
       final kind = record['kind'] as String;
       final id = record['id'] as String;
+      if (kind != conflict['kind'] || id != conflict['id']) {
+        throw const FormatException('冲突单据身份不一致');
+      }
+      if (await _isPurged(txn, kind, id)) return;
       // The latest received server copy wins explicit resolution, never an old
       // conflict snapshot if a newer snapshot was already committed.
       final meta = await txn
@@ -803,13 +810,20 @@ extension InventorySyncPersistence on LocalInventoryDatabase {
     await _ensureSync();
     return _db.rawQuery(
         '''SELECT kind,id,position AS "index",sha256 FROM sync_media m WHERE local_path IS NULL
-      AND NOT EXISTS(SELECT 1 FROM sync_hidden h WHERE h.kind=m.kind AND h.id=m.id) LIMIT ?''',
+      AND NOT EXISTS(SELECT 1 FROM sync_hidden h WHERE h.kind=m.kind AND h.id=m.id)
+      AND NOT EXISTS(SELECT 1 FROM sync_purged p WHERE p.kind=m.kind AND p.id=m.id) LIMIT ?''',
         [limit]);
   }
 
   Future<void> attachSyncMedia(Map reference, String localPath) async {
     await _ensureSync();
     await _db.transaction((txn) async {
+      if (await _isPurged(
+          txn, reference['kind'] as String, reference['id'] as String)) {
+        await txn.insert('local_purge_gc', {'path': localPath},
+            conflictAlgorithm: ConflictAlgorithm.ignore);
+        return;
+      }
       final args = [
         reference['kind'],
         reference['id'],

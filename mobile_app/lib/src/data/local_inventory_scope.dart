@@ -102,6 +102,7 @@ extension _InventoryScope on LocalInventoryDatabase {
 
     _database = await factory.openDatabase(dbPath, options: _businessOptions());
     await _ensureSync();
+    await retryLocalPurgeFiles();
   }
 
   Future<String> _setting(String key) async {

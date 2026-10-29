@@ -1,7 +1,7 @@
 import 'sync_database_schema.dart';
 
 class LocalDatabaseSchema {
-  static const int version = 7;
+  static const int version = 8;
 
   static List<String> get createStatements => [
         '''
@@ -142,5 +142,6 @@ class LocalDatabaseSchema {
         ],
         6: [],
         7: SyncDatabaseSchema.statements,
+        8: SyncDatabaseSchema.purgeStatements,
       };
 }

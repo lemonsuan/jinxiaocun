@@ -4,6 +4,8 @@
 
 Applies to `backend/`, Flutter online workspaces and the Vue read-only viewer. User decision on 2026-10-27: deleting on one phone must not delete on any other phone or on the server. Adds and edits synchronize incrementally. Offline workspaces keep their existing local inventory behavior.
 
+2026-10-29用户新增按时间段彻底清理本机的要求：这是独立于原隐藏动作的物理清理，不改变服务器协议。具体双确认、库存保留、仅ID的本机purge标记、同步防复活及文件回收契约见[本机物理清理](../frontend/local-date-purge.md)。不能将原“在线删除仅隐藏”规则套到这个新入口而保留完整业务副本。
+
 ## 2. Signatures
 
 - `POST /api/sync/v2/push`: `{device_id,operations:[{operation_id,kind,id,base_revision,data}]}` → `{results,server_revision}`. Writable kinds: product/inbound/outbound; item arrays belong to atomic whole documents.
