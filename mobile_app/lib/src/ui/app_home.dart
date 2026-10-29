@@ -893,7 +893,6 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
                   );
                 },
               ),
-
             ],
           ),
         ),
@@ -1093,7 +1092,6 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
     ]);
   }
 
-
   Widget _scanInboundHeader() {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
@@ -1232,7 +1230,6 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
                     fontSize: 12,
                     fontWeight: FontWeight.bold)),
           ),
-
         ],
       ),
     );
@@ -1568,6 +1565,17 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
     }
     if (!mounted) return;
     final temporaryImages = <String>{};
+    var dialogOpen = true;
+    Future<void> discardUnusedImage(String candidate) async {
+      try {
+        if (await _database.isImagePathReferenced(candidate)) return;
+        final file = File(candidate);
+        if (await file.exists()) await file.delete();
+      } catch (_) {
+        // 工作区已关闭或引用无法核实时保留文件，避免清理误删有效凭证。
+      }
+    }
+
     String? recognitionImagePath;
     await showDialog<void>(
       context: context,
@@ -1735,15 +1743,11 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
                                                       'review_${DateTime.now().microsecondsSinceEpoch}',
                                                       quarterTurns:
                                                           quarterTurns);
-                                          if (!dialogContext.mounted) {
-                                            if (sourcePath != path &&
-                                                !await _database
-                                                    .isImagePathReferenced(
-                                                        sourcePath)) {
-                                              final unused = File(sourcePath);
-                                              if (await unused.exists()) {
-                                                await unused.delete();
-                                              }
+                                          if (!dialogOpen ||
+                                              !dialogContext.mounted) {
+                                            if (sourcePath != path) {
+                                              await discardUnusedImage(
+                                                  sourcePath);
                                             }
                                             return;
                                           }
@@ -1768,8 +1772,8 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
                                               ocrResult.editableText;
 
                                           // 使用本地处理器提取商品
-                                          var processedItems = _postProcessor
-                                              .processRows(rows);
+                                          var processedItems =
+                                              _postProcessor.processRows(rows);
                                           if (processedItems.isEmpty &&
                                               ocrText.isNotEmpty) {
                                             processedItems = _postProcessor
@@ -1777,11 +1781,9 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
                                           }
                                           final items = processedItems
                                               .map((e) => InboundDraftItem(
-                                                    productName:
-                                                        e.productName,
+                                                    productName: e.productName,
                                                     quantity: e.quantity,
-                                                    productCode:
-                                                        e.productCode,
+                                                    productCode: e.productCode,
                                                     purchasePrice:
                                                         e.purchasePrice,
                                                     salePrice: e.salePrice,
@@ -1789,7 +1791,10 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
                                               .toList();
 
                                           recognitionPermit!.validate();
-                                          if (!dialogContext.mounted) return;
+                                          if (!dialogOpen ||
+                                              !dialogContext.mounted) {
+                                            return;
+                                          }
                                           newDraftItems = items
                                               .map((item) => InboundDraftItem(
                                                     productName:
@@ -1809,11 +1814,15 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
                                             isLoading = false;
                                           });
                                         } catch (e) {
-                                          if (!dialogContext.mounted) return;
+                                          if (!dialogOpen ||
+                                              !dialogContext.mounted) {
+                                            return;
+                                          }
                                           setDialogState(() {
                                             isLoading = false;
                                           });
-                                          if (dialogContext.mounted) {
+                                          if (dialogOpen &&
+                                              dialogContext.mounted) {
                                             ScaffoldMessenger.of(dialogContext)
                                                 .showSnackBar(SnackBar(
                                                     content: Text('识别失败: $e')));
@@ -1978,7 +1987,8 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
                                             replacementImagePath:
                                                 recognitionImagePath,
                                           );
-                                          if (dialogContext.mounted) {
+                                          if (dialogOpen &&
+                                              dialogContext.mounted) {
                                             Navigator.pop(dialogContext);
                                             ScaffoldMessenger.of(context)
                                                 .showSnackBar(const SnackBar(
@@ -1991,11 +2001,15 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
                                             _expandedReceiptId = null;
                                           });
                                         } catch (e) {
-                                          if (!dialogContext.mounted) return;
+                                          if (!dialogOpen ||
+                                              !dialogContext.mounted) {
+                                            return;
+                                          }
                                           setDialogState(() {
                                             isLoading = false;
                                           });
-                                          if (dialogContext.mounted) {
+                                          if (dialogOpen &&
+                                              dialogContext.mounted) {
                                             ScaffoldMessenger.of(dialogContext)
                                                 .showSnackBar(SnackBar(
                                                     content:
@@ -2031,12 +2045,12 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
           },
         );
       },
-    );
+    ).whenComplete(() {
+      // 路由返回后立即失效；退出动画期间 mounted 仍可能为 true。
+      dialogOpen = false;
+    });
     for (final temporary in temporaryImages) {
-      if (!await _database.isImagePathReferenced(temporary)) {
-        final file = File(temporary);
-        if (await file.exists()) await file.delete();
-      }
+      await discardUnusedImage(temporary);
     }
   }
 
@@ -3303,7 +3317,6 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
     }
   }
 
-
   void _refreshWhenHomeVisible() {
     if (mounted && (ModalRoute.of(context)?.isCurrent ?? false)) {
       unawaited(_refreshData());
@@ -3727,7 +3740,6 @@ class _AppHomeState extends State<AppHome> with WidgetsBindingObserver {
       });
     }
   }
-
 
   Future<void> _scanDraftItem() async {
     final barcode = await Navigator.of(context).push<String>(

@@ -302,7 +302,6 @@ class LocalInventoryDatabase {
     );
   }
 
-
   Future<Uint8List> exportBackupBytes({bool includeImages = true}) async {
     final tableRows = <String, List<Map<String, Object?>>>{};
     for (final table in _backupTables) {
@@ -366,7 +365,7 @@ class LocalInventoryDatabase {
     return Uint8List.fromList(utf8.encode(jsonEncode(backup)));
   }
 
-  /// 稳妥的全量 ZIP 备份：以流式方式打包核心数据库表和物理单据照片，杜绝内存爆满卡死
+  /// 业务JSON先导出，照片逐张写入ZIP；等待文件关闭后才报告导出完成。
   Future<void> exportBackupZipFile(
     File destinationZipFile, {
     void Function(int current, int total, String status)? onProgress,
@@ -385,7 +384,7 @@ class LocalInventoryDatabase {
 
     final encoder = ZipFileEncoder();
     encoder.create(destinationZipFile.path);
-    encoder.addFile(tempJsonFile, 'backup_data.json');
+    await encoder.addFile(tempJsonFile, 'backup_data.json');
 
     // 收集所有需要备份的实际存在的图片文件
     final imageFiles = <String, File>{}; // relativeName -> File
@@ -418,11 +417,11 @@ class LocalInventoryDatabase {
       current++;
       onProgress?.call(
           current, totalImages, '正在流式压缩单据照片 ($current/$totalImages)...');
-      encoder.addFile(entry.value, 'images/${entry.key}');
+      await encoder.addFile(entry.value, 'images/${entry.key}');
     }
 
     onProgress?.call(totalImages, totalImages, '正在完成归档封装...');
-    encoder.close();
+    await encoder.close();
 
     try {
       if (tempJsonFile.existsSync()) {
@@ -459,7 +458,14 @@ class LocalInventoryDatabase {
     await extractDir.create(recursive: true);
 
     try {
-      extractFileToDisk(zipFile.path, extractDir.path);
+      // 此入口已确认是ZIP，显式解码而不再依赖原文件扩展名。
+      final input = InputFileStream(zipFile.path);
+      try {
+        final archive = ZipDecoder().decodeBuffer(input);
+        await extractArchiveToDiskAsync(archive, extractDir.path);
+      } finally {
+        await input.close();
+      }
 
       final jsonFile = File(path.join(extractDir.path, 'backup_data.json'));
       if (!jsonFile.existsSync()) {

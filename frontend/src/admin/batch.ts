@@ -18,7 +18,7 @@ export interface BatchPage<T> {
  * 批量查询到的入库单据详情。
  */
 export interface BatchDocument {
-  /** 入库单全局唯一 UUID */
+  /** 入库单同步键，可能为客户端单据键或服务器UUID */
   id: string;
   /** 数据修改版本号 */
   revision: number;
@@ -52,7 +52,7 @@ export interface BatchDocument {
  * 批量快递查单与查图的完整响应结果。
  */
 export interface InboundBatch {
-  /** 成功识别提取出的全部输入快递单号列表（去重后） */
+  /** 去重后的输入单号，包含尚未匹配入库记录的单号 */
   tracking_numbers: string[];
   /** 输入文本中被剔除的重复单号计数 */
   duplicate_count: number;
@@ -79,7 +79,7 @@ export interface InboundBatch {
  * 解析用户在批量查询输入框中粘贴的文本内容。
  *
  * 支持以空格、换行、中文/英文逗号、分号等任意常见标点混合分隔；
- * 自动执行去重、空字符剔除、长度截断保护与上限校验（最多200个不同单号）。
+ * 自动执行去重、空字符剔除、长度校验与上限校验（最多200个不同单号），不截断单号。
  *
  * @param value 用户输入的原始多行/多分隔符文本
  * @returns 包含解析去重后的单号数组 [numbers]、重复计数 [duplicates] 及校验错误提示 [error]

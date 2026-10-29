@@ -15,6 +15,7 @@ import '../domain/models.dart';
 import '../ocr/pp_structure_post_processor.dart';
 import '../platform/express_camera_channel.dart';
 import '../platform/paddle_ocr_channel.dart';
+import 'express_camera_chrome.dart';
 
 class ExpressInboundPage extends StatefulWidget {
   const ExpressInboundPage(
@@ -320,170 +321,286 @@ class _ExpressInboundPageState extends State<ExpressInboundPage>
         if (!didPop) unawaited(_leave());
       },
       child: Scaffold(
-        backgroundColor: Colors.black,
+        backgroundColor: Colors.white,
         appBar: AppBar(
-            backgroundColor: Colors.black,
-            foregroundColor: Colors.white,
-            title: const Text('极速入库'),
-            leading: IconButton(
-                onPressed: _capture.busy ? null : _leave,
-                icon: const Icon(Icons.arrow_back))),
+          backgroundColor: Colors.white,
+          foregroundColor: const Color(0xFF252525),
+          surfaceTintColor: Colors.transparent,
+          elevation: 0,
+          centerTitle: true,
+          title: const Text('极速入库',
+              style: TextStyle(
+                  fontSize: 15, fontWeight: FontWeight.w400, letterSpacing: 1)),
+          leading: IconButton(
+              onPressed: _capture.busy ? null : _leave,
+              icon: const Icon(Icons.arrow_back)),
+        ),
         body: SafeArea(
-            child: Column(children: [
-          Container(
-              height: 100,
-              width: double.infinity,
-              color: const Color(0xFF202020),
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: SingleChildScrollView(
-                  child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                    Text(locked ? '快递单号' : '请扫描快递条码',
-                        style: const TextStyle(
-                            color: Colors.white70, fontSize: 12)),
-                    if (locked)
-                      Text(_capture.trackingNumber!,
-                          softWrap: true,
-                          style: const TextStyle(
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                              fontSize: 21)),
-                  ]))),
-          Expanded(
-              child: _directory == null
-                  ? const Center(child: CircularProgressIndicator())
-                  : !Platform.isAndroid
+          top: false,
+          child: Column(children: [
+            ExpressTrackingHeader(trackingNumber: _capture.trackingNumber),
+            Expanded(
+              child: Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: ColoredBox(
+                  color: Colors.black,
+                  child: _directory == null
                       ? const Center(
-                          child: Text('极速相机目前支持 Android，请使用普通入库',
-                              style: TextStyle(color: Colors.white)))
-                      : LayoutBuilder(
-                          builder: (context, size) => GestureDetector(
-                              behavior: HitTestBehavior.opaque,
-                              onTapDown: (details) {
-                                if (_capture.busy) return;
-                                unawaited((_camera?.focus(
-                                            details.localPosition.dx /
-                                                size.maxWidth,
-                                            details.localPosition.dy /
-                                                size.maxHeight) ??
-                                        Future.value())
-                                    .catchError((Object _) {}));
-                              },
-                              child: Stack(fit: StackFit.expand, children: [
-                                AndroidView(
+                          child: CircularProgressIndicator(color: Colors.white))
+                      : !Platform.isAndroid
+                          ? const Center(
+                              child: Text('极速相机目前支持 Android，请使用普通入库',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                      color: Colors.white, fontSize: 12)))
+                          : LayoutBuilder(
+                              builder: (context, size) => GestureDetector(
+                                behavior: HitTestBehavior.opaque,
+                                onTapDown: (details) {
+                                  if (_capture.busy) return;
+                                  unawaited((_camera?.focus(
+                                              details.localPosition.dx /
+                                                  size.maxWidth,
+                                              details.localPosition.dy /
+                                                  size.maxHeight) ??
+                                          Future.value())
+                                      .catchError((Object _) {}));
+                                },
+                                child: ExpressCameraFrame(
+                                  locked: locked,
+                                  crop: _crop,
+                                  showSaved: _showSaved,
+                                  child: AndroidView(
                                     key: ValueKey(_viewGeneration),
                                     viewType: ExpressCameraChannel.viewType,
                                     creationParams: {
                                       'outputDirectory': _directory,
-                                      'torchEnabled': _torch
+                                      'torchEnabled': _torch,
                                     },
                                     creationParamsCodec:
                                         const StandardMessageCodec(),
-                                    onPlatformViewCreated: _attach),
-                                IgnorePointer(
-                                    child: Align(
-                                        alignment: Alignment.center,
-                                        child: FractionallySizedBox(
-                                            widthFactor: locked ? .92 : .9,
-                                            heightFactor: locked ? .76 : .32,
-                                            child: Container(
-                                                decoration: BoxDecoration(
-                                                    border: Border.all(
-                                                        color: Colors.white,
-                                                        width: 2)))))),
-                                if (_showSaved)
-                                  const IgnorePointer(
-                                      child: Align(
-                                          alignment: Alignment.topCenter,
-                                          child: Padding(
-                                              padding: EdgeInsets.all(12),
-                                              child: Chip(
-                                                  avatar: Icon(
-                                                      Icons.check_circle,
-                                                      color: Colors.green),
-                                                  label: Text('已拍好，可以移开'))))),
-                              ])))),
-          SizedBox(
-              height: 64,
+                                    onPlatformViewCreated: _attach,
+                                  ),
+                                ),
+                              ),
+                            ),
+                ),
+              ),
+            ),
+            SizedBox(
+              height: 48,
               child: SingleChildScrollView(
-                  child: Padding(
-                      padding: const EdgeInsets.all(12),
-                      child: Text(_message,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                              color: Colors.white, fontSize: 13))))),
-          SizedBox(
-              height: 64,
+                child: Padding(
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 20, vertical: 12),
+                  child: Text(_message,
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(
+                          color: Color(0xFF777773),
+                          fontSize: 12,
+                          height: 1.35)),
+                ),
+              ),
+            ),
+            SizedBox(
+              height: 80,
               child: Row(
                   mainAxisAlignment: MainAxisAlignment.spaceEvenly,
                   children: [
-                    IconButton(
-                        onPressed: _capture.busy ? null : _toggleTorch,
-                        color: Colors.white,
-                        icon: Icon(_torch ? Icons.flash_on : Icons.flash_off)),
-                    if (locked)
-                      FilledButton.icon(
-                          onPressed: _capture.busy
-                              ? null
-                              : (_capture.phase == ExpressCapturePhase.error
-                                  ? _retryCamera
-                                  : _takePhoto),
-                          icon:
-                              Icon(_showSaved ? Icons.check : Icons.camera_alt),
-                          label: Text(
-                              _capture.savedCapture != null ? '重试保存' : '拍照')),
-                    if (locked)
-                      TextButton(
-                          onPressed: _capture.busy ? null : _reset,
-                          child: const Text('取消本单')),
-                    if (!locked && _capture.phase == ExpressCapturePhase.error)
-                      TextButton(
-                          onPressed: _retryCamera, child: const Text('重试相机')),
-                  ])),
-          SizedBox(
-              height: 90,
-              child: locked
-                  ? const Center(
-                      child: Text('轻触画面对焦 · 照片保存后再提示完成',
-                          style:
-                              TextStyle(color: Colors.white70, fontSize: 12)))
-                  : ListView.builder(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: _recent.length,
-                      itemBuilder: (context, index) {
-                        final receipt = _recent[index];
-                        final failed = receipt.ocrStatus == OcrStatus.failed;
-                        return Padding(
-                            padding: const EdgeInsets.all(6),
-                            child:
-                                Row(mainAxisSize: MainAxisSize.min, children: [
-                              ActionChip(
-                                  label: Text(
-                                      '${receipt.trackingNumber}\n${failed ? '识别失败' : receipt.ocrStatus == OcrStatus.confirmed ? '已识别' : receipt.ocrStatus == OcrStatus.needsReview ? '待补录' : !_ocrEnabled ? '识别已暂停' : '退出拍摄后识别'}'),
-                                  onPressed: receipt.imagePath == null
-                                      ? null
-                                      : () => _showPhoto(receipt)),
-                              if (failed)
-                                IconButton(
-                                    tooltip: '重试识别',
-                                    color: Colors.white,
-                                    icon: const Icon(Icons.refresh),
-                                    onPressed: () async {
-                                      try {
-                                        await _queue.retry(receipt.id);
-                                        await _refreshRecent();
-                                      } on OcrCancelled catch (error) {
-                                        if (mounted) {
-                                          setState(() =>
-                                              _message = error.toString());
-                                        }
-                                      }
-                                    }),
-                            ]));
-                      })),
-        ])),
+                    _cameraControl(
+                      icon: _torch ? Icons.flash_on : Icons.flash_off,
+                      label: _torch ? '补光已开' : '补光',
+                      onPressed: _capture.busy ? null : _toggleTorch,
+                    ),
+                    SizedBox(
+                      width: 108,
+                      child: Center(
+                        child: locked
+                            ? Semantics(
+                                button: true,
+                                label: _capture.savedCapture != null
+                                    ? '重试保存'
+                                    : '拍照',
+                                child: SizedBox(
+                                  width: 70,
+                                  height: 70,
+                                  child: OutlinedButton(
+                                    style: OutlinedButton.styleFrom(
+                                      padding: EdgeInsets.zero,
+                                      foregroundColor: Colors.white,
+                                      backgroundColor: const Color(0xFF252525),
+                                      disabledBackgroundColor:
+                                          const Color(0xFF666666),
+                                      disabledForegroundColor: Colors.white,
+                                      side: const BorderSide(
+                                          color: Color(0xFF252525), width: 1),
+                                      shape: const CircleBorder(),
+                                    ),
+                                    onPressed: _capture.busy
+                                        ? null
+                                        : (_capture.phase ==
+                                                ExpressCapturePhase.error
+                                            ? _retryCamera
+                                            : _takePhoto),
+                                    child: _capture.busy
+                                        ? const SizedBox(
+                                            width: 20,
+                                            height: 20,
+                                            child: CircularProgressIndicator(
+                                                strokeWidth: 2,
+                                                color: Colors.white))
+                                        : Icon(
+                                            _showSaved
+                                                ? Icons.check
+                                                : Icons.camera_alt_outlined,
+                                            size: 28),
+                                  ),
+                                ),
+                              )
+                            : const Text('等待识别',
+                                style: TextStyle(
+                                    color: Color(0xFF969692), fontSize: 12)),
+                      ),
+                    ),
+                    locked
+                        ? _cameraControl(
+                            icon: Icons.qr_code_scanner,
+                            label: '重扫',
+                            onPressed: _capture.busy ? null : _reset)
+                        : _capture.phase == ExpressCapturePhase.error
+                            ? _cameraControl(
+                                icon: Icons.refresh,
+                                label: '重试相机',
+                                onPressed: _retryCamera)
+                            : const SizedBox(width: 72),
+                  ]),
+            ),
+            SizedBox(
+              height: 74,
+              child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 20),
+                      child: Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('最近入库',
+                                style: TextStyle(
+                                    color: Color(0xFF969692), fontSize: 10)),
+                            Text(_ocrEnabled ? '退出拍摄后识别' : 'OCR已关闭',
+                                style: const TextStyle(
+                                    color: Color(0xFF969692), fontSize: 10)),
+                          ]),
+                    ),
+                    Expanded(
+                      child: _recent.isEmpty
+                          ? const Center(
+                              child: Text('暂无入库记录',
+                                  style: TextStyle(
+                                      color: Color(0xFFB1B1AD), fontSize: 11)))
+                          : ListView.builder(
+                              padding:
+                                  const EdgeInsets.symmetric(horizontal: 12),
+                              scrollDirection: Axis.horizontal,
+                              itemCount: _recent.length,
+                              itemBuilder: (context, index) {
+                                final receipt = _recent[index];
+                                final failed =
+                                    receipt.ocrStatus == OcrStatus.failed;
+                                final status = failed
+                                    ? '识别失败'
+                                    : receipt.ocrStatus == OcrStatus.confirmed
+                                        ? '已识别'
+                                        : receipt.ocrStatus ==
+                                                OcrStatus.needsReview
+                                            ? '待补录'
+                                            : !_ocrEnabled
+                                                ? '识别已暂停'
+                                                : '待识别';
+                                return Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      TextButton(
+                                        style: TextButton.styleFrom(
+                                          foregroundColor:
+                                              const Color(0xFF555551),
+                                          padding: const EdgeInsets.symmetric(
+                                              horizontal: 9),
+                                          shape: const RoundedRectangleBorder(),
+                                        ),
+                                        onPressed:
+                                            locked || receipt.imagePath == null
+                                                ? null
+                                                : () => _showPhoto(receipt),
+                                        child: Column(
+                                            mainAxisSize: MainAxisSize.min,
+                                            crossAxisAlignment:
+                                                CrossAxisAlignment.start,
+                                            children: [
+                                              Text(receipt.trackingNumber,
+                                                  style: const TextStyle(
+                                                      fontSize: 11)),
+                                              const SizedBox(height: 2),
+                                              Text(status,
+                                                  style: const TextStyle(
+                                                      fontSize: 10,
+                                                      color:
+                                                          Color(0xFF969692))),
+                                            ]),
+                                      ),
+                                      if (failed)
+                                        IconButton(
+                                          tooltip: '重试识别',
+                                          visualDensity: VisualDensity.compact,
+                                          color: const Color(0xFF777773),
+                                          iconSize: 18,
+                                          icon: const Icon(Icons.refresh),
+                                          onPressed: locked
+                                              ? null
+                                              : () async {
+                                                  try {
+                                                    await _queue
+                                                        .retry(receipt.id);
+                                                    await _refreshRecent();
+                                                  } on OcrCancelled catch (error) {
+                                                    if (mounted) {
+                                                      setState(() => _message =
+                                                          error.toString());
+                                                    }
+                                                  }
+                                                },
+                                        ),
+                                    ]);
+                              },
+                            ),
+                    ),
+                  ]),
+            ),
+          ]),
+        ),
       ),
     );
   }
+
+  Widget _cameraControl(
+          {required IconData icon,
+          required String label,
+          required VoidCallback? onPressed}) =>
+      SizedBox(
+        width: 72,
+        child: TextButton(
+          style: TextButton.styleFrom(
+            foregroundColor: const Color(0xFF555551),
+            shape: const RoundedRectangleBorder(),
+            padding: const EdgeInsets.symmetric(vertical: 8),
+          ),
+          onPressed: onPressed,
+          child: Column(mainAxisSize: MainAxisSize.min, children: [
+            Icon(icon, size: 22),
+            const SizedBox(height: 5),
+            Text(label, style: const TextStyle(fontSize: 10)),
+          ]),
+        ),
+      );
 }
