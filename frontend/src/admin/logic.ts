@@ -23,6 +23,19 @@ export function registrationLink(origin: string, shopNumber: string): string {
   }
 }
 
+/** 链接只带公开店铺号和作业目标，注册或登录后仍按本人权限进入。 */
+export function jobReportLink(origin: string, shopNumber: string, jobId: string): string {
+  const base = registrationLink(origin, shopNumber);
+  if (!base || BigInt(shopNumber) > 9223372036854775807n ||
+      !/^[a-f0-9]{8}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{4}-[a-f0-9]{12}$/i.test(jobId)) return '';
+  const url = new URL(base);
+  url.hash = `/worker/login?${new URLSearchParams({
+    shop: shopNumber,
+    redirect: `/worker/jobs/${jobId}`,
+  })}`;
+  return url.toString();
+}
+
 /**
  * 将指定文本安全写入系统剪贴板。
  *

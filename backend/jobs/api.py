@@ -8,19 +8,20 @@ from django.contrib.auth.hashers import make_password
 from django.db import transaction
 from django.db.models import Count, Q
 from django.http import FileResponse
-from ninja import Body, File, Router
+from ninja import Body, File, Form, Router
 from ninja.errors import HttpError
 from ninja.files import UploadedFile
 from pydantic import ValidationError
 from inventory.media import MAX_IMAGE_BYTES, store_image
 from shops.models import Shop
 from .auth import WorkerBearer, worker_token
-from .models import Job, JobOrder, JobPhoto, WorkerAccount
-from .schemas import (JobData, JobUpdate, OrderCreate, OrderUpdate, Reopen, Settle, ShopNumber,
+from .models import Job, JobOrder, JobPhoto, WorkerAccount, WorkerMediaUpload
+from .schemas import (JobData, JobUpdate, OrderCreate, OrderUpdate, PayoutUpdate, Reopen, Settle, ShopNumber,
                       WorkerEnabled, WorkerLogin, WorkerPassword, WorkerRegister)
 from .services import (audit, change_worker, filter_order_status, job_data, job_query,
                        lock_shop, one_order, order_query, reopen_order, require_admin,
-                       save_job, save_order, serialize_orders, settle_order, visible_jobs, worker_data)
+                       save_job, save_order, serialize_orders, settle_order, visible_jobs, worker_data,
+                       live_worker, payout_data, save_payout, worker_order_summary)
 
 # 管理端作业与人员管理路由（需要管理员 Bearer 认证和 X-Active-Shop-ID 店铺头）
 admin_router = Router()
@@ -158,6 +159,60 @@ def worker_login(request, data: Body[dict]):
 @worker_router.get('/worker/me')
 def worker_me(request):
     return worker_data(request.worker)
+
+
+@worker_router.get('/worker/payout')
+def worker_payout(request):
+    return payout_data(request.worker)
+
+
+@worker_router.patch('/worker/payout')
+def worker_payout_update(request, data: Body[dict]):
+    return save_payout(request, validate(PayoutUpdate, data))
+
+
+@worker_router.post('/worker/media')
+@transaction.atomic
+def worker_upload(request, file: File[UploadedFile], purpose: Form[str]):
+    shop = lock_shop(request.worker.shop)
+    worker = live_worker(request)
+    if purpose not in ('order', 'payout'):
+        raise HttpError(422, '图片用途只能为订单补充或收款码。')
+    limit_attempt(attempt_key(request, 'media', shop, str(worker.pk)), 200)
+    if file.size > MAX_IMAGE_BYTES:
+        raise HttpError(413, '图片超过15MB，请压缩后上传。')
+    try:
+        media = store_image(shop, file.read(MAX_IMAGE_BYTES + 1))
+    except ValueError:
+        raise HttpError(400, '请上传15MB以内的有效JPEG、PNG或WebP图片。')
+    name = Path(file.name.replace('\\', '/')).name
+    name = ''.join(char for char in name if ord(char) >= 32 and ord(char) != 127)[:150] or '图片'
+    upload, _ = WorkerMediaUpload.objects.get_or_create(worker=worker, media=media, purpose=purpose,
+                                                       defaults={'name': name})
+    return {'sha256': media.sha256, 'name': upload.name, 'size': media.size, 'content_type': media.content_type}
+
+
+@worker_router.get('/worker/media/{sha256}')
+def worker_upload_read(request, sha256: str):
+    upload = WorkerMediaUpload.objects.select_related('media').filter(
+        worker=request.worker, media__shop=request.worker.shop, media__sha256=sha256).first()
+    if upload is None:
+        raise HttpError(404, '找不到本人上传的图片。')
+    target = Path(settings.PRIVATE_MEDIA_ROOT) / str(request.worker.shop_id) / upload.media.sha256
+    try:
+        stream = target.open('rb')
+    except FileNotFoundError:
+        raise HttpError(404, '图片暂不可用，请重新上传。')
+    response = FileResponse(stream, content_type=upload.media.content_type)
+    response['Cache-Control'] = 'private, no-store'
+    response['X-Content-Type-Options'] = 'nosniff'
+    return response
+
+
+# 必须先于订单动态路径，否则summary会被误当作订单UUID。
+@worker_router.get('/worker/orders/summary')
+def worker_summary(request):
+    return worker_order_summary(request.worker)
 
 
 @worker_router.get('/worker/orders')

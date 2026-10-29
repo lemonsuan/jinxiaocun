@@ -61,6 +61,8 @@ export interface WorkerOrder {
   arrived_count: number;
   parcels: WorkerParcel[];
   settled_at: string | null;
+  note: string;
+  photos: WorkerMedia[];
   settlement?: {
     cost_amount: string;
     refund_amount: string;
@@ -74,10 +76,42 @@ export interface CreateOrderInput {
   order_number: string;
   tracking_numbers: string[];
   operation_id: string;
+  note?: string;
+  photo_sha256s?: string[];
 }
 export interface UpdateOrderInput {
   order_number: string;
   tracking_numbers: string[];
   expected_version: number;
   operation_id: string;
+  note?: string;
+  photo_sha256s?: string[];
+}
+
+export interface WorkerMedia {
+  sha256: string;
+  name: string;
+  size?: number;
+  content_type?: string;
+}
+export interface WorkerPayout {
+  wechat: string;
+  alipay_phone: string;
+  alipay_name: string;
+  qr_sha256: string | null;
+  version: number;
+  updated_at: string | null;
+}
+export interface WorkerPayoutInput {
+  wechat: string;
+  alipay_phone: string;
+  alipay_name: string;
+  qr_sha256: string | null;
+  expected_version: number;
+  operation_id: string;
+}
+export interface WorkerOrderSummary {
+  in_transit: number;
+  arrived: number;
+  total: number;
 }

@@ -8,7 +8,8 @@ from django.utils import timezone
 from ninja.errors import HttpError
 from inventory.models import InboundItem, InboundReceipt, PrivateMedia
 from shops.models import Shop, ShopMembership
-from .models import Job, JobAudit, JobOrder, JobParcel, JobPhoto, OperationReceipt, Settlement, WorkerAccount
+from .models import (Job, JobAudit, JobOrder, JobOrderPhoto, JobParcel, JobPhoto,
+                     OperationReceipt, Settlement, WorkerAccount, WorkerMediaUpload, WorkerPayoutProfile)
 
 
 def require_admin(request):
@@ -92,7 +93,9 @@ def order_query(shop):
         _parcel_count=Coalesce(Subquery(active.values('order_id').annotate(n=Count('id')).values('n')[:1]), 0),
         _arrived_count=Coalesce(Subquery(arrived.filter(_arrived=True).values('order_id').annotate(n=Count('id')).values('n')[:1]), 0),
         _has_settlement=Exists(Settlement.objects.filter(order_id=OuterRef('pk'), is_active=True)),
-    ).prefetch_related(Prefetch('parcels', queryset=JobParcel.objects.filter(is_active=True), to_attr='current_parcels'))
+    ).prefetch_related(
+        Prefetch('parcels', queryset=JobParcel.objects.filter(is_active=True), to_attr='current_parcels'),
+        Prefetch('photos', queryset=JobOrderPhoto.objects.select_related('media'), to_attr='supplemental_photos'))
 
 
 def filter_order_status(rows, status):
@@ -184,7 +187,8 @@ def serialize_orders(orders, admin=False, detail=False):
         result = {'id': str(order.pk), 'job': {'id': str(order.job_id), 'title': order.job.title,
                   'status': order.job.status, 'version': order.job.version,
                   'cost_amount': format(order.job.cost_amount, '.2f'), 'refund_amount': format(order.job.refund_amount, '.2f')},
-                  'order_number': order.order_number, 'version': order.version, 'status': status,
+                  'order_number': order.order_number, 'note': order.note,
+                  'photos': order_photo_data(order), 'version': order.version, 'status': status,
                   'parcel_count': len(parcels), 'arrived_count': arrived_count, 'parcels': parcels,
                   'settled_at': settled.created_at.isoformat() if settled else None,
                   'created_at': order.created_at.isoformat(), 'updated_at': order.updated_at.isoformat()}
@@ -197,6 +201,8 @@ def serialize_orders(orders, admin=False, detail=False):
                 history = list(order.settlements.select_related('operator').order_by('-created_at'))
                 result['settlement'] = settlement_data(settled) if settled else None
                 result['settlement_history'] = [settlement_data(row) for row in history]
+                result['payout'] = settled.snapshot.get('payout') if settled else payout_data(order.worker)
+                result['payout_is_snapshot'] = settled is not None
                 result['evidence_changed'] = bool(settled and settled.snapshot.get('evidence') != evidence_for(order.current_parcels, receipts))
         results.append(result)
     return results
@@ -253,6 +259,10 @@ def save_job(request, data, pk=None):
 
 def operation_hash(action, data):
     raw = data.model_dump(mode='json')
+    # 新增可选字段省略时沿用旧哈希，升级前已发出的请求仍可安全重试。
+    for field in ('note', 'photo_sha256s', 'expected_payout_version'):
+        if field not in data.model_fields_set:
+            raw.pop(field, None)
     return hashlib.sha256(json.dumps({'action': action, 'data': raw}, sort_keys=True, ensure_ascii=False, separators=(',', ':')).encode()).hexdigest()
 
 
@@ -289,7 +299,8 @@ def save_order(request, data, pk=None):
         valid_version(order, data.expected_version)
         if order.settlements.filter(is_active=True).exists():
             raise HttpError(409, '订单已经结算，需由管理员撤销结算后才能修改。')
-        before = {'order_number': order.order_number, 'tracking_numbers': _tracking_snapshot(order)}
+        before = {'order_number': order.order_number, 'tracking_numbers': _tracking_snapshot(order),
+                  'note': order.note, 'photos': order_photo_data(order)}
     else:
         job = Job.objects.filter(pk=data.job_id, shop=shop, status='open').first()
         if not job:
@@ -299,9 +310,19 @@ def save_order(request, data, pk=None):
     if JobOrder.objects.filter(job=order.job, worker=worker, order_number=data.order_number).exclude(pk=order.pk).exists():
         raise HttpError(409, '你已在此作业提交该订单，请直接编辑已有报单。')
     order.order_number = data.order_number
+    if data.note is not None:
+        order.note = data.note
+    if data.photo_sha256s is not None:
+        uploads = owned_uploads(worker, data.photo_sha256s, 'order')
+    else:
+        uploads = None
     if pk:
         order.version += 1
     order.save()
+    if uploads is not None:
+        order.photos.all().delete()
+        JobOrderPhoto.objects.bulk_create([JobOrderPhoto(order=order, media=uploads[digest].media,
+            name=uploads[digest].name, position=i) for i, digest in enumerate(data.photo_sha256s)])
     now = timezone.now()
     # 已移除的快递行留档，当前列表产生新版本快递行，不删除历史证据。
     order.parcels.filter(is_active=True).update(is_active=False, retired_at=now)
@@ -332,6 +353,10 @@ def settle_order(request, order_id, data):
         raise HttpError(404, '找不到该订单。')
     valid_version(order, data.expected_version)
     valid_version(order.job, data.expected_job_version)
+    payout = payout_data(order.worker, lock=True)
+    if (data.expected_payout_version is None and payout['version'] > 0) or (
+            data.expected_payout_version is not None and data.expected_payout_version != payout['version']):
+        raise HttpError(409, '收款信息已变化，请刷新订单并重新核对收款信息。')
     if order.settlements.filter(is_active=True).exists():
         raise HttpError(409, '此订单已经结算，请勿重复确认。')
     parcels = list(order.parcels.filter(is_active=True))
@@ -346,6 +371,8 @@ def settle_order(request, order_id, data):
     snapshot = {'order_number': order.order_number, 'tracking_numbers': [p.tracking_number for p in parcels],
                 'job_title': order.job.title, 'job_version': order.job.version, 'evidence': current,
                 'worker_id': str(order.worker_id), 'worker_name': order.worker.display_name,
+                'payout': payout, 'note': order.note, 'photos': order_photo_data(order),
+                'photo_sha256s': list(order.photos.order_by('position', 'id').values_list('media__sha256', flat=True)),
                 'receipt_snapshots': [{'tracking_number': parcel.tracking_number, **receipt_data(receipts[parcel.tracking_number])} for parcel in parcels],
                 'job': {'title': order.job.title, 'version': order.job.version,
                         'cost_amount': format(order.job.cost_amount, '.2f'), 'refund_amount': format(order.job.refund_amount, '.2f'),
@@ -407,3 +434,63 @@ def change_worker(request, worker_id, data, password=False):
     audit(shop, 'WORKER_PASSWORD_RESET' if password else 'WORKER_ENABLED' if worker.is_active else 'WORKER_DISABLED',
           worker=worker, operator=request.user, detail={'was_enabled': before, 'enabled': worker.is_active, 'version': worker.auth_version})
     return worker_data(worker, admin=True)
+
+
+def order_photo_data(order):
+    photos = getattr(order, 'supplemental_photos', None)
+    if photos is None:
+        photos = order.photos.select_related('media').all()
+    return [{'sha256': photo.media.sha256, 'name': photo.name} for photo in photos]
+
+
+def owned_uploads(worker, digests, purpose):
+    rows = WorkerMediaUpload.objects.select_related('media').filter(
+        worker=worker, purpose=purpose, media__shop_id=worker.shop_id, media__sha256__in=digests)
+    found = {row.media.sha256: row for row in rows}
+    if len(found) != len(digests):
+        raise HttpError(400, '请先由本人上传全部照片，不能使用其他拍手或其他用途的图片。')
+    return found
+
+
+def payout_data(worker, lock=False):
+    rows = WorkerPayoutProfile.objects.select_related('qr_media').filter(worker=worker)
+    if lock:
+        rows = rows.select_for_update(of=('self',))
+    profile = rows.first()
+    if profile is None:
+        return {'wechat': '', 'alipay_phone': '', 'alipay_name': '', 'qr_sha256': None,
+                'version': 0, 'updated_at': None}
+    return {'wechat': profile.wechat, 'alipay_phone': profile.alipay_phone,
+            'alipay_name': profile.alipay_name, 'qr_sha256': profile.qr_media.sha256 if profile.qr_media else None,
+            'version': profile.version, 'updated_at': profile.updated_at.isoformat()}
+
+
+@transaction.atomic
+def save_payout(request, data):
+    shop = lock_shop(request.worker.shop)
+    worker = live_worker(request)
+    profile, _ = WorkerPayoutProfile.objects.get_or_create(worker=worker)
+    fingerprint = operation_hash('payout', data)
+    if profile.last_operation_id == data.operation_id:
+        if profile.last_request_hash != fingerprint:
+            raise HttpError(409, '操作标识已用于其他收款信息，请核对后重试。')
+        return payout_data(worker)
+    valid_version(profile, data.expected_version)
+    uploads = owned_uploads(worker, [data.qr_sha256], 'payout') if data.qr_sha256 else {}
+    profile.wechat = data.wechat
+    profile.alipay_phone = data.alipay_phone
+    profile.alipay_name = data.alipay_name
+    profile.qr_media = uploads[data.qr_sha256].media if data.qr_sha256 else None
+    profile.version += 1
+    profile.last_operation_id = data.operation_id
+    profile.last_request_hash = fingerprint
+    profile.save()
+    # 审计只记录资料版本，不把手机号、姓名和收款码复制到一般操作日志。
+    audit(shop, 'WORKER_PAYOUT_UPDATED', worker=worker, detail={'version': profile.version})
+    return payout_data(worker)
+
+
+def worker_order_summary(worker):
+    rows = order_query(worker.shop).filter(worker=worker)
+    return {'total': rows.count(), 'in_transit': filter_order_status(rows, 'in_transit').count(),
+            'arrived': filter_order_status(rows, 'arrived').count()}

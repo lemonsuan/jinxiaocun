@@ -1,4 +1,5 @@
 import request from '../utils/request';
+import { settlementInput } from './order-actions';
 import type { Page } from '../worker/types';
 import type {
   AdminJob,
@@ -59,18 +60,7 @@ export function getOrder(id: string, signal?: AbortSignal) {
 export function settleOrder(order: AdminOrder, operationId: string) {
   return request.post<never, AdminOrder>(
     `/api/jobs/orders/${encodeURIComponent(order.id)}/settle`,
-    {
-      expected_version: order.version,
-      expected_job_version: order.job.version,
-      operation_id: operationId,
-      evidence: order.parcels
-        .filter((parcel) => parcel.receipt)
-        .map((parcel) => ({
-          tracking_number: parcel.tracking_number,
-          receipt_id: parcel.receipt!.receipt_id,
-          revision: parcel.receipt!.revision,
-        })),
-    },
+    settlementInput(order, operationId),
   );
 }
 export function reopenOrder(

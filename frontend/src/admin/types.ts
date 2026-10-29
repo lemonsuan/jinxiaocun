@@ -1,4 +1,4 @@
-import type { WorkerJob, WorkerOrder, WorkerParcel } from '../worker/types';
+import type { WorkerJob, WorkerOrder, WorkerParcel, WorkerPayout, WorkerMedia } from '../worker/types';
 export interface ProductSummary {
   key: string;
   product_code: string;
@@ -29,6 +29,10 @@ export interface SettlementSnapshot {
   job_version: number;
   worker_id: string;
   worker_name: string;
+  payout?: WorkerPayout | null;
+  note?: string;
+  photos?: WorkerMedia[];
+  photo_sha256s?: string[];
   evidence: { tracking_number: string; receipt_id: string; revision: number }[];
   receipt_snapshots: (ReceiptEvidence & { tracking_number: string })[];
   job: {
@@ -61,6 +65,8 @@ export type AdminOrder = Omit<WorkerOrder, 'parcels' | 'settlement'> & {
   settlement?: AdminSettlement | null;
   settlement_history?: AdminSettlement[];
   evidence_changed?: boolean;
+  payout?: WorkerPayout | null;
+  payout_is_snapshot?: boolean;
 };
 export interface AdminJob extends WorkerJob {
   order_count: number;

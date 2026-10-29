@@ -1,0 +1,30 @@
+{
+  "id": "jobs-usability-demo-ios",
+  "name": "jobs-usability-demo-ios",
+  "title": "作业流程易用性与浏览器验收及iPhone适配规划",
+  "description": "优化管理员发布核对与拍手手机报单，准备浏览器演示假数据，并单列iPhone原生适配难点",
+  "status": "in_progress",
+  "dev_type": null,
+  "scope": null,
+  "package": null,
+  "priority": "P2",
+  "creator": "chongyang",
+  "assignee": "chongyang",
+  "createdAt": "2026-10-29",
+  "completedAt": null,
+  "branch": "codex/jobs-usability-demo-ios",
+  "base_branch": "codex/ocr-switch-camera-speed",
+  "worktree_path": null,
+  "commit": null,
+  "pr_url": null,
+  "subtasks": [],
+  "children": [
+    "10-29-jobs-usability-web",
+    "10-29-jobs-demo-browser",
+    "10-29-iphone-port-plan"
+  ],
+  "parent": null,
+  "relatedFiles": [],
+  "notes": "用户要求先完成10-29-local-date-purge（日期范围彻底本机清除、两次确认），之后继续本作业任务。原三个执行代理因额度中断，backend/frontend已存在未完成WIP，不应作为可验收版本，不还原或混进日期清理提交。",
+  "meta": {}
+}

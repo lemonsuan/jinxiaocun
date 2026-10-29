@@ -110,6 +110,13 @@ class OrderData(Input):
             raise ValueError('订单号或操作标识不能为空或含控制字符')
         return value
 
+    @field_validator('note', check_fields=False)
+    @classmethod
+    def valid_note(cls, value):
+        if value is not None and re.search(r'[\x00-\x08\x0b\x0c\x0e-\x1f\x7f]', value):
+            raise ValueError('补充文字不能包含不支持的控制字符')
+        return value
+
     @field_validator('tracking_numbers')
     @classmethod
     def clean_tracking(cls, values):
@@ -129,10 +136,25 @@ class OrderData(Input):
 
 class OrderCreate(OrderData):
     job_id: UUID
+    note: Annotated[str, Field(max_length=2000)] = ''
+    photo_sha256s: Annotated[list[Digest], Field(max_length=10)] = []
+
+    @field_validator('photo_sha256s')
+    @classmethod
+    def deduplicate_photos(cls, values):
+        return list(dict.fromkeys(values))
 
 
 class OrderUpdate(OrderData):
     expected_version: Version
+    # None表示旧客户端省略字段；显式空字符串/列表才会清空。
+    note: Annotated[str, Field(max_length=2000)] | None = None
+    photo_sha256s: Annotated[list[Digest], Field(max_length=10)] | None = None
+
+    @field_validator('photo_sha256s')
+    @classmethod
+    def deduplicate_photos(cls, values):
+        return list(dict.fromkeys(values)) if values is not None else None
 
 
 class Evidence(Input):
@@ -142,6 +164,7 @@ class Evidence(Input):
 
 
 class Settle(Input):
+    expected_payout_version: Annotated[int, Field(strict=True, ge=0)] | None = None
     expected_version: Version
     expected_job_version: Version
     operation_id: Key
@@ -169,3 +192,27 @@ class WorkerEnabled(Input):
 class WorkerPassword(Input):
     new_password: Annotated[str, Field(min_length=8, max_length=128)]
     expected_version: Version
+
+
+class PayoutUpdate(Input):
+    wechat: Annotated[str, Field(max_length=80)] = ''
+    alipay_phone: Annotated[str, Field(max_length=20)] = ''
+    alipay_name: Annotated[str, Field(max_length=100)] = ''
+    qr_sha256: Digest | None = None
+    expected_version: Annotated[int, Field(strict=True, ge=0)]
+    operation_id: Key
+
+    @field_validator('wechat', 'alipay_phone', 'alipay_name')
+    @classmethod
+    def clean_details(cls, value):
+        value = value.strip()
+        if re.search(r'[\x00-\x1f\x7f]', value):
+            raise ValueError('收款资料不能包含控制字符')
+        return value
+
+    @field_validator('alipay_phone')
+    @classmethod
+    def phone_format(cls, value):
+        if value and not re.fullmatch(r'[+0-9 -]+', value):
+            raise ValueError('支付宝手机号只能包含数字、加号、空格或连字符')
+        return value

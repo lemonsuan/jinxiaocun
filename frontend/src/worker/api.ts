@@ -8,6 +8,10 @@ import type {
   WorkerOrder,
   WorkerSession,
   WorkerShop,
+  WorkerMedia,
+  WorkerPayout,
+  WorkerPayoutInput,
+  WorkerOrderSummary,
 } from './types';
 
 export function lookupShop(shopNumber: string, signal?: AbortSignal) {
@@ -86,4 +90,20 @@ export function loadJobPhoto(
     `/jobs/${encodeURIComponent(jobId)}/photos/${encodeURIComponent(digest)}`,
     { responseType: 'blob', signal },
   );
+}
+
+export function loadPayout(signal?: AbortSignal) {
+  return workerRequest.get<never, WorkerPayout>('/payout', { signal });
+}
+export function savePayout(data: WorkerPayoutInput) {
+  return workerRequest.patch<never, WorkerPayout>('/payout', data);
+}
+export function loadOrderSummary(signal?: AbortSignal) {
+  return workerRequest.get<never, WorkerOrderSummary>('/orders/summary', { signal });
+}
+export function uploadWorkerMedia(file: File, purpose: 'order' | 'payout', signal?: AbortSignal) {
+  const data = new FormData();
+  data.append('file', file);
+  data.append('purpose', purpose);
+  return workerRequest.post<never, WorkerMedia>('/media', data, { timeout: 60000, signal });
 }

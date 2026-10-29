@@ -70,6 +70,7 @@ class JobOrder(models.Model):
     job = models.ForeignKey(Job, on_delete=models.PROTECT, related_name='orders')
     worker = models.ForeignKey(WorkerAccount, on_delete=models.PROTECT, related_name='orders')
     order_number = models.CharField(max_length=100)
+    note = models.TextField(blank=True, default='')
     version = models.PositiveIntegerField(default=1)
     created_at = models.DateTimeField(auto_now_add=True)
     updated_at = models.DateTimeField(auto_now=True)
@@ -134,3 +135,39 @@ class OperationReceipt(models.Model):
 
     class Meta:
         constraints = [models.UniqueConstraint(fields=['shop', 'actor_key', 'operation_id'], name='job_actor_operation')]
+
+
+class WorkerMediaUpload(models.Model):
+    """同店媒体还需校验上传拍手与用途，摘要不是读取凭据。"""
+    worker = models.ForeignKey(WorkerAccount, on_delete=models.PROTECT, related_name='media_uploads')
+    media = models.ForeignKey('inventory.PrivateMedia', on_delete=models.PROTECT)
+    purpose = models.CharField(max_length=10, choices=[('order', '订单补充'), ('payout', '收款码')])
+    name = models.CharField(max_length=150)
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['worker', 'media', 'purpose'], name='worker_media_purpose')]
+
+
+class WorkerPayoutProfile(models.Model):
+    """资料版本只保护收款变更，不改变拍手登录认证版本。"""
+    worker = models.OneToOneField(WorkerAccount, on_delete=models.PROTECT, related_name='payout_profile')
+    wechat = models.CharField(max_length=80, blank=True, default='')
+    alipay_phone = models.CharField(max_length=20, blank=True, default='')
+    alipay_name = models.CharField(max_length=100, blank=True, default='')
+    qr_media = models.ForeignKey('inventory.PrivateMedia', null=True, blank=True, on_delete=models.PROTECT)
+    version = models.PositiveIntegerField(default=0)
+    last_operation_id = models.CharField(max_length=100, blank=True, default='')
+    last_request_hash = models.CharField(max_length=64, blank=True, default='')
+    updated_at = models.DateTimeField(auto_now=True)
+
+
+class JobOrderPhoto(models.Model):
+    order = models.ForeignKey(JobOrder, on_delete=models.PROTECT, related_name='photos')
+    media = models.ForeignKey('inventory.PrivateMedia', on_delete=models.PROTECT)
+    name = models.CharField(max_length=150)
+    position = models.PositiveIntegerField()
+
+    class Meta:
+        constraints = [models.UniqueConstraint(fields=['order', 'media'], name='order_supplement_photo')]
+        ordering = ['position', 'id']

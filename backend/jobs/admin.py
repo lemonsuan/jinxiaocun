@@ -1,6 +1,6 @@
 """业务表只读，避免后台编辑绕过版本、所有权和结算留痕。"""
 from django.contrib import admin
-from .models import Job, JobAudit, JobOrder, JobParcel, JobPhoto, OperationReceipt, Settlement, WorkerAccount
+from .models import Job, JobAudit, JobOrder, JobParcel, JobPhoto, OperationReceipt, Settlement, WorkerAccount, WorkerMediaUpload, WorkerPayoutProfile, JobOrderPhoto
 
 
 class ReadOnlyJobAdmin(admin.ModelAdmin):
@@ -30,5 +30,5 @@ class ReadOnlyJobAdmin(admin.ModelAdmin):
         return [field.name for field in self.model._meta.fields if field.name != 'password']
 
 
-for model in [Job, JobAudit, JobOrder, JobParcel, JobPhoto, OperationReceipt, Settlement, WorkerAccount]:
+for model in [Job, JobAudit, JobOrder, JobParcel, JobPhoto, OperationReceipt, Settlement, WorkerAccount, WorkerMediaUpload, WorkerPayoutProfile, JobOrderPhoto]:
     admin.site.register(model, ReadOnlyJobAdmin)

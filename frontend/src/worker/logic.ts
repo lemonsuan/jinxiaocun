@@ -108,7 +108,7 @@ export function dateText(value: string | null | undefined): string {
  */
 export function safeWorkerReturn(value: unknown): string {
   return typeof value === 'string' &&
-    /^\/worker\/(jobs|orders)(\/|\?|$)/.test(value)
+    /^\/worker\/(jobs|orders|profile)(\/|\?|$)/.test(value)
     ? value
     : '/worker/jobs';
 }
@@ -127,4 +127,9 @@ export function operationId(): string {
   return [...bytes]
     .map((value) => value.toString(16).padStart(2, '0'))
     .join('');
+}
+
+/** 拍手使用业务文字，底层仍沿用三态契约。 */
+export function workerStatusText(value: OrderStatus): string {
+  return { in_transit: '运输中', arrived: '已签收待返款', settled: '已返款' }[value];
 }

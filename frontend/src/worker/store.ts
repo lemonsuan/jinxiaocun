@@ -1,5 +1,6 @@
 import { defineStore } from 'pinia';
 import { ref } from 'vue';
+import { clearWorkerDrafts } from './drafts.ts';
 import type { WorkerInfo, WorkerScope, WorkerSession } from './types.ts';
 
 const TOKEN_KEY = 'worker_token';
@@ -36,6 +37,7 @@ export const useWorkerStore = defineStore('worker-auth', () => {
     };
   }
   function setSession(session: WorkerSession) {
+    if (worker.value && (worker.value.id !== session.worker.id || worker.value.shop_number !== session.worker.shop_number)) clearWorkerDrafts(scope());
     epoch.value++;
     worker.value = session.worker;
     token.value = session.token;
@@ -60,6 +62,7 @@ export const useWorkerStore = defineStore('worker-auth', () => {
     localStorage.setItem(SHOP_KEY, value);
   }
   function logout(message = '') {
+    if (worker.value) clearWorkerDrafts(scope());
     epoch.value++;
     token.value = '';
     worker.value = null;
