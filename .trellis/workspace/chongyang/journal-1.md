@@ -723,3 +723,25 @@ Flutter/Django/Vue三端完成增量同步、持久重试与冲突、私有图�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 23: 手机结算标记局部更新提速交付
+<!-- trellis-session: v=2 fp=edf088cdfcfeca96 -->
+
+**Date**: 2026-10-30
+**Task**: 手机结算标记局部更新提速交付
+**Branch**: `codex/mobile-settlement-response`
+
+### Summary
+
+单条与核验车结算只等待最小本机事务，局部更新不整库读取；批量400分片同事务、防重复及旧刷新覆盖、后台补刷异常保护。全量148通过1跳过、分析仅22既有info，Android1.0.13+15归档签名版本通过。未操作真实库、无真机时延结论，旧拍照/OCR任务保留。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `6d65c7e` | perf(mobile): 结算标记改为局部更新与原子批量写入 |
+
+### Status
+
+[OK] **Completed**
