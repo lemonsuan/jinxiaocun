@@ -679,3 +679,25 @@ Flutter/Django/Vue三端完成增量同步、持久重试与冲突、私有图�
 ### Next Steps
 
 - 用户安装releases/app-v1.0.11+13.apk，验收真实界面、相同设备拍照延迟与清晰度；无真机不承诺系统相机速度。
+
+
+## Session 21: 按时间段物理清理本机记录交付
+<!-- trellis-session: v=2 fp=9b4fb7a567c20fd5 -->
+
+**Date**: 2026-10-29
+**Task**: 按时间段物理清理本机记录交付
+**Branch**: `codex/jobs-usability-demo-ios`
+
+### Summary
+
+完成已结算入库时间段双确认物理清理、同步禁止恢复、共享图片保护与持久回收；全量136通过1跳过、分析仅22既有info，构建归档app-v1.0.12+14.apk。未清理真实业务数据；作业报单进度63a57d3仍暂停，拍照/OCR待真机验收。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `ab36efd` | feat(mobile): 按时间段双确认物理清理本机记录 |
+
+### Status
+
+[OK] **Completed**

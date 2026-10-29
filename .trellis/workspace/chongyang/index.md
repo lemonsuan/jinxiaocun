@@ -8,7 +8,7 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 20
+- **Total Sessions**: 21
 - **Last Active**: 2026-10-29
 <!-- @@@/auto:current-status -->
 
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~681 | Active |
+| `journal-1.md` | ~703 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 21 | 2026-10-29 | 按时间段物理清理本机记录交付 | `ab36efd` | `codex/jobs-usability-demo-ios` |
 | 20 | 2026-10-29 | 极速扫码界面恢复与用户提交复核交付 | `70d978b` | `codex/ocr-switch-camera-speed` |
 | 19 | 2026-10-28 | 数字店铺与拍手作业报单联调交付 | `b5f2520` | `codex/work-order-reporting` |
 | 18 | 2026-10-28 | 默认店铺离线直达完成并启动前后端 | `b6a4890` | `codex/shop-incremental-sync` |
