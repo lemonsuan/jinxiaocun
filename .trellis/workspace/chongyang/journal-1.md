@@ -701,3 +701,25 @@ Flutter/Django/Vue三端完成增量同步、持久重试与冲突、私有图�
 ### Status
 
 [OK] **Completed**
+
+
+## Session 22: 极简作业报单与收款核对及演示交付
+<!-- trellis-session: v=2 fp=b1efcf017758dde5 -->
+
+**Date**: 2026-10-29
+**Task**: 极简作业报单与收款核对及演示交付
+**Branch**: `codex/jobs-usability-demo-ios`
+
+### Summary
+
+恢复并完成Web三Tab与弹窗填报、本人补图和收款资料、管理员快递核对与版本化返款；PG91项前端35项及生产构建通过，Web0.3.0归档，10003演示店5作业10订单含原数据，双身份浏览器已打开。iPhone仅规划；手机结算标记慢定位到全量刷新及N+1，未改手机代码。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `f01d770` | feat(jobs): 完成极简拍手填报与收款核对及演示验收 |
+
+### Status
+
+[OK] **Completed**
