@@ -642,3 +642,40 @@ Flutter/Django/Vue三端完成增量同步、持久重试与冲突、私有图�
 ### Next Steps
 
 - 用户按docs/作业报单验收说明.md验收；相机/OCR旧任务及新版APK真机验收仍待设备。
+
+
+## Session 20: 极速扫码界面恢复与用户提交复核交付
+<!-- trellis-session: v=2 fp=1c3aafde1623ba0e -->
+
+**Date**: 2026-10-29
+**Task**: 极速扫码界面恢复与用户提交复核交付
+**Branch**: `codex/ocr-switch-camera-speed`
+
+### Summary
+
+极速页恢复简洁白底扫码窗、去说明、单号居中；保留用户纯本地OCR与开关位置，修复历史识别退出及ZIP异步收尾/扩展名兼容。
+
+### Main Changes
+
+- 扫码锁号保存保持同一AndroidView身份与尺寸，角标画框对应原crop，窄屏长单号完整居中显示。
+- 复核09c5729、28ea767、8adae3f，保留已提交功能删除和中文说明，修正未经验证的性能文档。
+- App升至1.0.11+13，APK及两张UI示意图归档根releases；本轮任务归档，旧相机/OCR真机任务继续待验。
+
+### Git Commits
+
+| Hash | Message |
+|------|---------|
+| `70d978b` | feat(mobile): 简化极速扫码界面并修复备份与识别退出边界 |
+
+### Testing
+
+- [OK] 完整Flutter121通过1可选联网跳过；分析0错误0警告22既有信息；Android原生8通过；Web25通过及类型构建；后端4文件可执行AST不变。
+- [OK] Android release构建、版本/ABI/签名检查通过；ZIP实际文件恢复3例、退出动画迟到结果、长号布局及原生create1次零额外resize均已覆盖。
+
+### Status
+
+[OK] **Completed**
+
+### Next Steps
+
+- 用户安装releases/app-v1.0.11+13.apk，验收真实界面、相同设备拍照延迟与清晰度；无真机不承诺系统相机速度。

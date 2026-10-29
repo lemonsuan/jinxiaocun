@@ -8,8 +8,8 @@
 
 <!-- @@@auto:current-status -->
 - **Active File**: `journal-1.md`
-- **Total Sessions**: 19
-- **Last Active**: 2026-10-28
+- **Total Sessions**: 20
+- **Last Active**: 2026-10-29
 <!-- @@@/auto:current-status -->
 
 ---
@@ -19,7 +19,7 @@
 <!-- @@@auto:active-documents -->
 | File | Lines | Status |
 |------|-------|--------|
-| `journal-1.md` | ~644 | Active |
+| `journal-1.md` | ~681 | Active |
 <!-- @@@/auto:active-documents -->
 
 ---
@@ -29,6 +29,7 @@
 <!-- @@@auto:session-history -->
 | # | Date | Title | Commits | Branch |
 |---|------|-------|---------|--------|
+| 20 | 2026-10-29 | 极速扫码界面恢复与用户提交复核交付 | `70d978b` | `codex/ocr-switch-camera-speed` |
 | 19 | 2026-10-28 | 数字店铺与拍手作业报单联调交付 | `b5f2520` | `codex/work-order-reporting` |
 | 18 | 2026-10-28 | 默认店铺离线直达完成并启动前后端 | `b6a4890` | `codex/shop-incremental-sync` |
 | 17 | 2026-10-27 | 同店铺增量同步与本机删除隔离完成 | `d509ac7` | `codex/shop-incremental-sync` |
