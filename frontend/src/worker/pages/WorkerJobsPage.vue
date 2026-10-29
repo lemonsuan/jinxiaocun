@@ -60,8 +60,8 @@ onBeforeUnmount(() => controller?.abort());
   <div>
     <div class="worker-page-heading">
       <div>
-        <h1>本店作业</h1>
-        <p class="worker-muted">选择作业直接报单，无需报名。</p>
+        <h1>作业</h1>
+        <p class="worker-muted">选择作业，填写订单。</p>
       </div>
       <button
         type="button"
@@ -116,7 +116,7 @@ onBeforeUnmount(() => controller?.abort());
         <span>{{
           job.own_order_count
             ? `我已填写 ${job.own_order_count} 单`
-            : '打开作业查看照片和说明'
+            : '打开作业填写订单'
         }}</span
         ><RouterLink
           :to="`/worker/jobs/${job.id}`"

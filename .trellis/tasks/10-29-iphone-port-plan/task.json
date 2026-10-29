@@ -21,6 +21,6 @@
   "children": [],
   "parent": "10-29-jobs-usability-demo-ios",
   "relatedFiles": [],
-  "notes": "用户在最新极简拍手功能、收款规则、弹窗及固定填报结构确认后明确“开始开发”；仅实施已确认范围，iPhone仅研究。",
+  "notes": "用户授权恢复已暂停工作，极简Web/后端、演示数据与浏览器验收以及iPhone规划均完成；91项PG及35项前端通过，Web0.3.0已归档。手机结算刷新慢仅定位未修，原相机/OCR仍待真机。",
   "meta": {}
 }

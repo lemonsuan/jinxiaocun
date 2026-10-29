@@ -364,7 +364,12 @@ class JobsTests(TestCase):
         self.assertEqual(response.status_code, 200, response.content)
         self.assertEqual(response.json()['total'], 6)
         self.assertEqual(len(response.json()['items']), 3)
-        self.assertLessEqual(len(queries), 12)
+        # 补充图片通过单次预取新增一条查询，订单数增加不能产生逐单查询。
+        self.assertLessEqual(len(queries), 13)
+        with CaptureQueriesContext(connection) as expanded_queries:
+            expanded = self.get('/jobs/orders', page_size=6, status='arrived')
+        self.assertEqual(len(expanded.json()['items']), 6)
+        self.assertLessEqual(len(expanded_queries), len(queries))
 
     def test_worker_claim_rejects_malformed_or_wrong_purpose_tokens(self):
         malformed = jwt.encode({'sub': 'invalid', 'shop': str(self.shop.pk), 'version': 1, 'purpose': 'worker',

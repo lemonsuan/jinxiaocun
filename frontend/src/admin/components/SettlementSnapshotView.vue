@@ -1,5 +1,7 @@
 <script setup lang="ts">
 import ProtectedImage from '../../components/ProtectedImage.vue';
+import OrderPayoutDetails from './OrderPayoutDetails.vue';
+import OrderSupplementDetails from './OrderSupplementDetails.vue';
 import { dateText, moneyText } from '../../worker/logic';
 import type { SettlementSnapshot } from '../types';
 defineProps<{ snapshot: SettlementSnapshot | null }>();
@@ -24,6 +26,8 @@ defineProps<{ snapshot: SettlementSnapshot | null }>();
         </p>
         <p>原快递号 {{ snapshot.tracking_numbers?.join('、') }}</p>
       </div>
+      <OrderPayoutDetails :payout="snapshot.payout" snapshot />
+      <OrderSupplementDetails :note="snapshot.note" :photos="snapshot.photos" snapshot />
       <div class="admin-notice">
         以下为本次确认结算时保存的原凭证及商品。上方到货和商品区域显示当前入库信息。
       </div>

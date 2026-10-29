@@ -1,10 +1,10 @@
 <script setup lang="ts">
-import { statusText } from '../logic';
+import { workerStatusText } from '../logic';
 import type { OrderStatus } from '../types';
 defineProps<{ status: OrderStatus }>();
 </script>
 <template>
-  <span class="worker-status" :class="status">{{ statusText(status) }}</span>
+  <span class="worker-status" :class="status">{{ workerStatusText(status) }}</span>
 </template>
 <style scoped>
 .worker-status {

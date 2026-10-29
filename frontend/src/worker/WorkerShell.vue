@@ -73,10 +73,10 @@ onBeforeUnmount(() => {
       aria-label="拍手工作区导航"
     >
       <RouterLink to="/worker/jobs" class="worker-nav-item"
-        ><span aria-hidden="true">▦</span>本店作业</RouterLink
+        ><span aria-hidden="true">▦</span>作业</RouterLink
       ><RouterLink to="/worker/orders" class="worker-nav-item"
-        ><span aria-hidden="true">▤</span>我的报单</RouterLink
-      >
+        ><span aria-hidden="true">▤</span>已做作业</RouterLink
+      ><RouterLink to="/worker/profile" class="worker-nav-item"><span aria-hidden="true">○</span>我的</RouterLink>
     </nav>
   </div>
 </template>

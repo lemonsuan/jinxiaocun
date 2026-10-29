@@ -6,6 +6,7 @@ import { errorText } from './logic';
 import { moneyText } from '../worker/logic';
 import type { AdminJob } from './types';
 import JobEditor from './components/JobEditor.vue';
+import JobShareLink from './components/JobShareLink.vue';
 import JobOrdersPanel from './components/JobOrdersPanel.vue';
 import ProtectedImage from '../components/ProtectedImage.vue';
 const route = useRoute();
@@ -51,7 +52,7 @@ onBeforeUnmount(() => controller?.abort());
               · {{ job.order_count }} 笔报单
             </p>
           </div>
-          <button class="admin-btn" @click="editing = true">编辑作业</button>
+          <div class="admin-actions"><JobShareLink :job-id="job.id" :job-title="job.title" /><button class="admin-btn" @click="editing = true">编辑作业</button></div>
         </div>
         <div class="job-detail-money">
           <div>

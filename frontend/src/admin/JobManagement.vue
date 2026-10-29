@@ -5,6 +5,7 @@ import { listJobs } from './api';
 import { errorText } from './logic';
 import { moneyText, dateText } from '../worker/logic';
 import JobEditor from './components/JobEditor.vue';
+import JobShareLink from './components/JobShareLink.vue';
 import type { AdminJob } from './types';
 const rows = ref<AdminJob[]>([]);
 const total = ref(0);
@@ -123,7 +124,7 @@ onBeforeUnmount(() => controller?.abort());
         <div class="admin-actions">
           <RouterLink class="admin-btn primary" :to="`/shop/jobs/${job.id}`"
             >订单、快递与结算</RouterLink
-          ><button class="admin-btn" @click="edit(job)">编辑作业</button>
+          ><button class="admin-btn" @click="edit(job)">编辑作业</button><JobShareLink :job-id="job.id" :job-title="job.title" />
         </div>
         <small class="job-updated"
           >更新 {{ dateText(job.updated_at) }} ·

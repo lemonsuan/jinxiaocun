@@ -1,6 +1,15 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref, watch } from 'vue';
-import { getOrder, listOrders, reopenOrder, settleOrder } from '../api';
+import { getOrder, listOrders, submitOrderAttempt } from '../api';
+import { useAuthStore } from '../../store/auth';
+import {
+  attemptStorageKey,
+  readOrderAttempt,
+  settlementAttempt,
+  type AdminOrderAttempt,
+} from '../order-attempts';
+import OrderPayoutDetails from './OrderPayoutDetails.vue';
+import OrderSupplementDetails from './OrderSupplementDetails.vue';
 import { errorText } from '../logic';
 import { dateText, moneyText, operationId } from '../../worker/logic';
 import WorkerStatus from '../../worker/components/WorkerStatus.vue';
@@ -24,12 +33,22 @@ const notice = ref('');
 const stale = ref(false);
 const undoOpen = ref(false);
 const reason = ref('');
-const settleAttempt = ref<{ order: AdminOrder; key: string } | null>(null);
-const undoAttempt = ref<{
-  order: AdminOrder;
-  key: string;
-  reason: string;
-} | null>(null);
+const auth = useAuthStore();
+const storageKey = attemptStorageKey(auth.username, auth.activeShopId);
+function savedAttempt() {
+  try { return readOrderAttempt(sessionStorage, storageKey); } catch { return null; }
+}
+const pendingAttempt = ref<AdminOrderAttempt | null>(savedAttempt());
+let alive = true;
+function preserveAttempt(value: AdminOrderAttempt) {
+  // 必须先可靠记录，再提交，避免刷新后换操作键重复确认。
+  sessionStorage.setItem(storageKey, JSON.stringify(value));
+  pendingAttempt.value = value;
+}
+function clearAttempt() {
+  try { sessionStorage.removeItem(storageKey); } catch { /* 存储不可用时仍展示已确认的服务端结果。 */ }
+  pendingAttempt.value = null;
+}
 let controller: AbortController | undefined;
 let detailController: AbortController | undefined;
 async function load() {
@@ -64,6 +83,7 @@ function search() {
   void load();
 }
 async function openOrder(id: string) {
+  if (actionBusy.value) return;
   detailController?.abort();
   const current = new AbortController();
   detailController = current;
@@ -77,7 +97,6 @@ async function openOrder(id: string) {
     const value = await getOrder(id, current.signal);
     if (!current.signal.aborted) {
       detail.value = value;
-      settleAttempt.value = null;
     }
   } catch (failure) {
     if (!current.signal.aborted) actionError.value = errorText(failure);
@@ -85,81 +104,68 @@ async function openOrder(id: string) {
     if (!current.signal.aborted) detailLoading.value = false;
   }
 }
-async function settle() {
-  if (!detail.value || actionBusy.value) return;
-  if (
-    !settleAttempt.value &&
-    !window.confirm(
-      `确认订单“${detail.value.order_number}”已经给拍手结算？\n已到货 ${detail.value.arrived_count}/${detail.value.parcel_count} 件\n作业成本 ¥${moneyText(detail.value.job.cost_amount)}，返款金额 ¥${moneyText(detail.value.job.refund_amount)}。\n此操作记录结算状态，不执行转账。`,
-    )
-  )
-    return;
-  settleAttempt.value ??= {
-    order: JSON.parse(JSON.stringify(detail.value)) as AdminOrder,
-    key: operationId(),
-  };
+async function sendAttempt() {
+  const attempt = pendingAttempt.value;
+  if (!alive || !attempt || actionBusy.value) return;
   actionBusy.value = true;
   actionError.value = '';
   try {
-    detail.value = await settleOrder(
-      settleAttempt.value.order,
-      settleAttempt.value.key,
-    );
-    settleAttempt.value = null;
-    notice.value = '该订单已确认结算，拍手可看到已结算状态。';
+    const result = await submitOrderAttempt(attempt);
+    if (!alive) return;
+    clearAttempt();
+    detail.value = result;
+    undoOpen.value = false;
+    notice.value = attempt.action === 'settle'
+      ? '已确认返款，拍手可查看结果。'
+      : '已撤销结算标记，原记录已保留，拍手可修改订单。';
     await load();
   } catch (failure) {
+    if (!alive) return;
     actionError.value = errorText(failure);
-    const code = (failure as { response?: { status: number } }).response
-      ?.status;
+    const code = (failure as { response?: { status: number } }).response?.status;
     if (code && code < 500) {
-      settleAttempt.value = null;
+      clearAttempt();
       if (code === 409) stale.value = true;
-    } else actionError.value += ' 上次结果未确认，请重试确认，避免重复操作。';
+    } else {
+      actionError.value += ' 上次结果尚未确认，请点击“确认上次操作结果”继续核对。';
+    }
   } finally {
-    actionBusy.value = false;
+    if (alive) actionBusy.value = false;
   }
 }
+async function settle() {
+  const order = detail.value;
+  if (!order || actionBusy.value || pendingAttempt.value) return;
+  const payout = order.payout;
+  if (!window.confirm(
+    `确认订单“${order.order_number}”已经给拍手返款？\n已到货 ${order.arrived_count}/${order.parcel_count} 件\n返款金额 ¥${moneyText(order.job.refund_amount)}\n支付宝：${payout?.alipay_name || '未填写姓名'} / ${payout?.alipay_phone || '未填写手机号'}\n微信号：${payout?.wechat || '未填写'}\n请核对收款资料与收款码。此操作只记录结果，不执行转账。`,
+  )) return;
+  try { preserveAttempt(settlementAttempt(order, operationId())); }
+  catch { actionError.value = '浏览器无法保存待确认操作，请检查存储权限后重试，尚未提交。'; return; }
+  await sendAttempt();
+}
 function openUndo() {
+  if (pendingAttempt.value) return;
   reason.value = '';
-  undoAttempt.value = null;
   undoOpen.value = true;
   actionError.value = '';
 }
 async function undo() {
-  if (!detail.value || actionBusy.value) return;
-  if (!reason.value.trim()) {
-    actionError.value = '请填写撤销结算的原因。';
-    return;
-  }
-  undoAttempt.value ??= {
-    order: JSON.parse(JSON.stringify(detail.value)) as AdminOrder,
-    key: operationId(),
-    reason: reason.value.trim(),
-  };
-  actionBusy.value = true;
-  actionError.value = '';
+  if (!detail.value || actionBusy.value || pendingAttempt.value) return;
+  if (!reason.value.trim()) { actionError.value = '请填写撤销结算的原因。'; return; }
   try {
-    detail.value = await reopenOrder(
-      undoAttempt.value.order,
-      undoAttempt.value.key,
-      undoAttempt.value.reason,
-    );
-    undoAttempt.value = null;
-    undoOpen.value = false;
-    notice.value = '已撤销结算标记并保留原记录，拍手可修改该订单。';
-    await load();
-  } catch (failure) {
-    actionError.value = errorText(failure);
-    const code = (failure as { response?: { status: number } }).response
-      ?.status;
-    if (code && code < 500) {
-      undoAttempt.value = null;
-      if (code === 409) stale.value = true;
-    } else actionError.value += ' 上次结果未确认，请保留当前原因并重试。';
-  } finally {
-    actionBusy.value = false;
-  }
+    preserveAttempt({
+      action: 'reopen', orderId: detail.value.id, orderNumber: detail.value.order_number,
+      input: { expected_version: detail.value.version, operation_id: operationId(), reason: reason.value.trim() },
+    });
+  } catch { actionError.value = '浏览器无法保存待确认操作，尚未提交，请检查存储权限。'; return; }
+  await sendAttempt();
+}
+async function resumeAttempt() {
+  if (!pendingAttempt.value || actionBusy.value) return;
+  await openOrder(pendingAttempt.value.orderId);
+  // 详情仅用于展示，提交始终使用原操作键和原版本，不采纳刚加载的新资料。
+  await sendAttempt();
 }
 watch(
   () => props.jobId,
@@ -173,11 +179,11 @@ watch(detailOpen, (open) => {
   if (!open) {
     detailController?.abort();
     detail.value = null;
-    settleAttempt.value = null;
     actionError.value = '';
   }
 });
 onBeforeUnmount(() => {
+  alive = false;
   controller?.abort();
   detailController?.abort();
 });
@@ -192,6 +198,10 @@ onBeforeUnmount(() => {
       <button class="admin-btn" :disabled="loading" @click="load">
         刷新到货状态
       </button>
+    </div>
+    <div v-if="pendingAttempt" class="admin-notice pending-order-attempt" role="status">
+      <span>订单 {{ pendingAttempt.orderNumber }} 有一笔{{ pendingAttempt.action === 'settle' ? '返款确认' : '撤销结算' }}结果尚未确认。请先确认，避免重复操作。</span>
+      <button class="admin-btn primary" :disabled="actionBusy" @click="resumeAttempt">{{ actionBusy ? '正在确认…' : '确认上次操作结果' }}</button>
     </div>
     <form class="admin-toolbar" @submit.prevent="search">
       <input
@@ -337,6 +347,8 @@ onBeforeUnmount(() => {
             ></span
           >
         </div>
+        <OrderPayoutDetails :payout="detail.payout" :snapshot="detail.payout_is_snapshot" />
+        <OrderSupplementDetails :note="detail.note" :photos="detail.photos" :snapshot="detail.payout_is_snapshot" />
         <div v-if="detail.evidence_changed" class="admin-notice">
           入库凭证后来发生过更新；本订单保留确认结算时的原记录，请留意核对。
         </div>
@@ -344,7 +356,7 @@ onBeforeUnmount(() => {
           <h3>全部快递及入库凭证</h3>
           <button
             class="admin-btn"
-            :disabled="actionBusy"
+            :disabled="actionBusy || !!pendingAttempt"
             @click="openOrder(detail.id)"
           >
             刷新证据
@@ -445,12 +457,16 @@ onBeforeUnmount(() => {
             <SettlementSnapshotView :snapshot="record.snapshot" />
           </div>
         </div>
+        <div v-if="pendingAttempt" class="admin-notice">
+          当前有未确认操作，不会改用当前收款资料重复提交。
+          <button class="admin-btn primary" :disabled="actionBusy" @click="resumeAttempt">{{ actionBusy ? '正在确认…' : '确认上次操作结果' }}</button>
+        </div>
         <div class="settlement-controls">
           <template v-if="detail.status === 'settled'"
             ><span class="admin-subtle">已结算订单已锁定拍手修改。</span
             ><button
               class="admin-btn danger"
-              :disabled="actionBusy"
+              :disabled="actionBusy || !!pendingAttempt"
               @click="openUndo"
             >
               撤销结算标记
@@ -465,6 +481,7 @@ onBeforeUnmount(() => {
               class="admin-btn primary"
               :disabled="
                 actionBusy ||
+                !!pendingAttempt ||
                 stale ||
                 detail.arrived_count !== detail.parcel_count ||
                 !detail.parcel_count
@@ -474,9 +491,7 @@ onBeforeUnmount(() => {
               {{
                 actionBusy
                   ? '处理中…'
-                  : settleAttempt
-                    ? '确认上次结算结果'
-                    : '确认已给拍手结算'
+                  : '确认已给拍手返款'
               }}
             </button></template
           >
@@ -499,7 +514,7 @@ onBeforeUnmount(() => {
           class="admin-input"
           rows="3"
           maxlength="1000"
-          :disabled="actionBusy || !!undoAttempt"
+          :disabled="actionBusy || !!pendingAttempt"
           placeholder="请填写更正原因"
         />
       </label>
@@ -519,6 +534,9 @@ onBeforeUnmount(() => {
   </section>
 </template>
 <style scoped>
+.pending-order-attempt { display: flex; align-items: center; flex-wrap: wrap; gap: 10px; }
+.pending-order-attempt span { flex: 1; min-width: 180px; }
+
 .admin-orders-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(min(350px, 100%), 1fr));

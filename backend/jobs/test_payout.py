@@ -65,7 +65,8 @@ class PayoutTests(TestCase):
         read = self.get('/worker/media/' + photo['sha256'], self.headers)
         self.assertEqual(read.status_code, 200)
         self.assertEqual(read['Cache-Control'], 'private, no-store')
-        read.close()
+        # 消费流让测试客户端释放响应，避免直接close触发关闭外层测试事务连接。
+        self.assertTrue(b''.join(read.streaming_content))
         self.assertEqual(self.get('/worker/media/' + photo['sha256'], self.second_headers).status_code, 404)
         self.assertEqual(self.client.get('/api/worker/media/' + photo['sha256']).status_code, 401)
         wrong_purpose = self.payout(qr_sha256=photo['sha256'])
@@ -82,6 +83,21 @@ class PayoutTests(TestCase):
         # 同一内容由另一个拍手本人重新上传后，才拥有自己的使用权限。
         self.upload(headers=self.second_headers)
         self.assertEqual(self.post('/worker/orders', order_body, self.second_headers).status_code, 200)
+
+    def test_cross_shop_and_disabled_workers_cannot_read_or_bind_payout_media(self):
+        code = self.upload('payout')
+        outsider, outsider_headers = self.register('outsider', self.other_shop)
+        self.assertEqual(self.get('/worker/media/' + code['sha256'], outsider_headers).status_code, 404)
+        self.assertEqual(self.post('/worker/payout', self.payout(qr_sha256=code['sha256']),
+                                   outsider_headers, 'patch').status_code, 400)
+        self.assertEqual(self.get('/worker/payout', outsider_headers).json()['version'], 0)
+        self.worker.is_active = False
+        self.worker.auth_version += 1
+        self.worker.save()
+        for endpoint in ['/worker/payout', '/worker/orders/summary', '/worker/media/' + code['sha256']]:
+            self.assertEqual(self.get(endpoint, self.headers).status_code, 403)
+        self.assertEqual(self.post('/worker/payout', self.payout(), self.headers, 'patch').status_code, 403)
+        self.assertEqual(WorkerPayoutProfile.objects.count(), 0)
 
     def test_upload_rejects_bad_image_oversize_and_invalid_purpose(self):
         for purpose, content, expected in [('order', b'not-image', 400), ('wrong', b'not-image', 422)]:
@@ -243,3 +259,14 @@ class PayoutConcurrencyTests(TransactionTestCase):
             ('/worker/payout', self.profile_payload('two', '二'), self.worker_headers, 'patch')])
         self.assertEqual(sorted(r[0] for r in results), [200, 409], results)
         self.assertEqual(WorkerPayoutProfile.objects.get().version, 2)
+
+    def test_disable_and_profile_change_recheck_live_worker(self):
+        results = self.race([('/jobs/workers/' + str(self.worker.pk) + '/enabled',
+            {'expected_version': 1, 'enabled': False}, self.admin_headers, 'post'),
+            ('/worker/payout', self.profile_payload(), self.worker_headers, 'patch')])
+        self.assertEqual(results[0][0], 200, results)
+        self.assertIn(results[1][0], [200, 403], results)
+        profile = WorkerPayoutProfile.objects.get()
+        self.assertEqual(profile.version, 2 if results[1][0] == 200 else 1)
+        self.worker.refresh_from_db()
+        self.assertFalse(self.worker.is_active)

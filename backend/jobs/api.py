@@ -47,7 +47,10 @@ def validate(schema, data):
         labels = {'shop_number': '店铺ID', 'username': '账号', 'password': '密码', 'new_password': '新密码',
                   'display_name': '姓名', 'phone': '手机号', 'title': '作业名称', 'cost_amount': '作业成本',
                   'refund_amount': '返款金额', 'tracking_numbers': '快递单号', 'order_number': '订单号',
-                  'expected_version': '内容版本', 'expected_job_version': '作业版本', 'operation_id': '操作标识'}
+                  'expected_version': '内容版本', 'expected_job_version': '作业版本', 'operation_id': '操作标识',
+                  'note': '补充文字', 'photo_sha256s': '补充照片', 'wechat': '微信号',
+                  'alipay_phone': '支付宝手机号', 'alipay_name': '支付宝收款人姓名',
+                  'qr_sha256': '支付宝收款码', 'expected_payout_version': '收款资料版本'}
         for item in error.errors()[:5]:
             name = labels.get(str(item['loc'][0]) if item['loc'] else '', '提交内容')
             kind = item['type']

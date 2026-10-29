@@ -372,3 +372,54 @@
     padding-right: 13px;
   }
 }
+/* 固定三入口与填报按钮共用底部安全区。 */
+.worker-navigation { height: calc(64px + env(safe-area-inset-bottom)); box-sizing: border-box; }
+.worker-nav-item { max-width: 240px; flex-direction: column; gap: 2px; font-size: 12px; min-height: 64px; }
+.worker-header { padding-top: 14px; padding-bottom: 14px; }
+.worker-eyebrow { display: none; }
+.worker-page-heading h1, .worker-section-heading h1 { font-size: 22px; }
+.worker-job-page { padding-bottom: 65px; }
+.worker-job-title { font-size: 22px; line-height: 1.5; overflow-wrap: anywhere; }
+.worker-detail-strip { width: 100%; display: flex; align-items: center; justify-content: space-between; margin: 14px 0 18px; padding: 10px 12px; min-height: 44px; border: 0; border-radius: 8px; background: #f0f6f3; color: #426858; font-size: 13px; cursor: pointer; }
+.worker-section-heading { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 12px; }
+.worker-section-heading h2 { font-size: 16px; }
+.worker-section-heading h2 small { font-size: 12px; color: #7d8c83; font-weight: 400; }
+.worker-report-bar { position: fixed; z-index: 99; left: 0; right: 0; bottom: calc(64px + env(safe-area-inset-bottom)); padding: 10px 18px; background: #f5f8f7f5; }
+.worker-report-bar .worker-button { display: flex; max-width: 684px; margin: auto; }
+.worker-list-tools { display: flex; justify-content: flex-end; margin: -10px 0 0; }
+.worker-list-tools .worker-button { font-size: 12px; min-height: 40px; }
+.worker-order-row { border-bottom: 1px solid #e5ece7; padding: 14px 0; }
+.worker-order-row:last-child { border-bottom: 0; }
+.worker-order-toggle { display: flex; align-items: center; gap: 8px; width: 100%; padding: 0; min-height: 44px; border: 0; background: none; text-align: left; color: inherit; cursor: pointer; }
+.worker-order-toggle .worker-order-number { flex: 1; min-width: 0; font-size: 15px; }
+.worker-order-toggle .worker-status { padding: 4px 7px; font-size: 11px; }
+.worker-order-job { display: block; margin-top: 4px; color: #667d70; font-size: 12px; text-decoration: none; overflow-wrap: anywhere; }
+.worker-order-brief { font-size: 12px; color: #718378; line-height: 1.8; margin: 4px 0 0; }
+.worker-order-note { white-space: pre-wrap; overflow-wrap: anywhere; font-size: 13px; color: #526c5d; }
+.worker-summary { display: grid; grid-template-columns: 1fr 1.45fr 1fr; padding: 20px 8px; margin-bottom: 22px; border-radius: 12px; background: white; border: 1px solid #e0e9e3; }
+.worker-summary > div { display: flex; flex-direction: column; align-items: center; gap: 8px; text-align: center; }
+.worker-summary strong { font-size: 25px; color: #0f766e; font-variant-numeric: tabular-nums; }
+.worker-summary span { font-size: 11px; color: #718378; }
+.worker-profile-fields { margin: 20px 0; font-size: 14px; }
+.worker-profile-fields > div { padding: 12px 0; border-bottom: 1px solid #edf1ee; }
+.worker-profile-fields dt { color: #718378; font-size: 12px; margin-bottom: 5px; }
+.worker-profile-fields dd { margin: 0; overflow-wrap: anywhere; }
+/* 弹窗独立挂载到body，不继承管理端布局。 */
+.worker-modal-shade { position: fixed; inset: 0; background: #132b2466; display: flex; align-items: center; justify-content: center; padding: 0; color: #18332e; }
+.worker-modal { width: min(94vw, 560px); max-height: 90vh; max-height: 90dvh; background: #fff; border-radius: 16px; box-shadow: 0 15px 70px #102b2433; display: flex; flex-direction: column; overflow: hidden; outline: none; }
+.worker-modal-detail { width: 90vw; height: 90vh; height: 90dvh; max-height: none; }
+.worker-modal-heading { display: flex; flex: none; justify-content: space-between; align-items: center; gap: 10px; padding: 13px 18px; border-bottom: 1px solid #e5ece7; }
+.worker-modal-heading h2 { font-size: 17px; margin: 0; overflow-wrap: anywhere; }
+.worker-modal-close { flex: none; width: 44px; height: 44px; font-size: 26px; border: 0; border-radius: 9px; color: #5b7365; background: #f2f6f3; }
+.worker-modal-body { padding: 0 18px 20px; overflow-y: auto; overscroll-behavior: contain; min-height: 0; }
+.worker-modal-body .worker-field { margin-top: 17px; }
+.worker-job-description { white-space: pre-wrap; overflow-wrap: anywhere; line-height: 1.9; font-size: 15px; }
+.modal-job-title { padding: 12px 0; overflow-wrap: anywhere; }
+.payout-entry { margin-top: 6px; border-color: #84b6a0 !important; }
+.worker-warning { color: #a16d1d; }
+.upload-label { position: relative; overflow: hidden; margin-top: 8px; }
+.upload-label input { position: absolute; width: 1px; height: 1px; opacity: 0; }
+.upload-label.disabled { opacity: .55; cursor: not-allowed; }
+.worker-upload-row { display: flex; align-items: center; gap: 4px; font-size: 12px; color: #62796a; margin-top: 8px; }
+.worker-upload-row > span { flex: 1; min-width: 0; overflow-wrap: anywhere; }
+.worker-upload-row .worker-button { flex: none; padding: 6px; min-height: 42px; font-size: 12px; }

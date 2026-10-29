@@ -36,6 +36,11 @@ export const workerRoutes: RouteRecordRaw[] = [
         component: () => import('./pages/WorkerOrdersPage.vue'),
       },
       {
+        path: 'profile',
+        name: 'WorkerProfile',
+        component: () => import('./pages/WorkerProfilePage.vue'),
+      },
+      {
         path: 'orders/new',
         name: 'WorkerNewOrder',
         component: () => import('./pages/WorkerOrderEditor.vue'),

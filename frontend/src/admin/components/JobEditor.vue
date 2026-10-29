@@ -184,7 +184,7 @@ async function save() {
           >
             {{ uploading ? '正在上传…' : '＋ 上传作业照片' }}</button
           ><small
-            >支持JPEG、PNG、WebP，每张不超过15MB；拍手可在作业详情放大查看。</small
+            >支持JPEG、PNG、WebP，每张不超过15MB；用于管理员留档核对。拍手端仅展示作业文字与金额。</small
           >
           <div class="editor-photo-grid">
             <div

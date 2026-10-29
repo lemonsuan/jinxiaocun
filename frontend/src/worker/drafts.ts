@@ -4,6 +4,7 @@ const PREFIX = 'worker_order_draft_v1:';
 const DIGEST = /^[a-f0-9]{64}$/;
 export interface PendingPhoto { id: string; name: string }
 export interface WorkerOrderDraft {
+  baseVersion?: number;
   orderNumber: string;
   trackingText: string;
   note: string;
@@ -34,7 +35,7 @@ export function readOrderDraft(key: string): WorkerOrderDraft | null {
     const raw = storage()?.getItem(key);
     if (!raw || raw.length > 30000) return null;
     const x = JSON.parse(raw);
-    if (typeof x.orderNumber !== 'string' || x.orderNumber.length > 100 ||
+    if ((x.baseVersion !== undefined && (!Number.isInteger(x.baseVersion) || x.baseVersion < 1)) || typeof x.orderNumber !== 'string' || x.orderNumber.length > 100 ||
       typeof x.trackingText !== 'string' || x.trackingText.length > 5000 ||
       typeof x.note !== 'string' || x.note.length > 2000 ||
       !Array.isArray(x.photos) || !Array.isArray(x.pendingPhotos) || x.photos.length + x.pendingPhotos.length > 10 ||
@@ -42,7 +43,7 @@ export function readOrderDraft(key: string): WorkerOrderDraft | null {
       !x.pendingPhotos.every((p: PendingPhoto) => typeof p?.id === 'string' && typeof p.name === 'string' && p.name.length <= 255) ||
       (x.attempt !== null && !validAttempt(x.attempt))) return null;
     // 仅恢复明确字段，草稿不能夹带令牌、收款资料或其他账号信息。
-    return { orderNumber: x.orderNumber, trackingText: x.trackingText, note: x.note,
+    return { baseVersion: x.baseVersion, orderNumber: x.orderNumber, trackingText: x.trackingText, note: x.note,
       photos: x.photos.map((p: WorkerMedia) => ({ sha256: p.sha256, name: p.name })),
       pendingPhotos: x.pendingPhotos.map((p: PendingPhoto) => ({ id: p.id, name: p.name })),
       attempt: x.attempt ? { order_number: x.attempt.order_number, tracking_numbers: x.attempt.tracking_numbers,
@@ -66,7 +67,7 @@ export function clearWorkerDrafts(scope: WorkerScope) {
     if (!target) return;
     for (let i = target.length - 1; i >= 0; i--) {
       const key = target.key(i);
-      if (key?.startsWith(start)) target.removeItem(key);
+      if (key?.startsWith(start) || key === `worker_payout_draft_v1:${scope.shopNumber}:${scope.workerId}`) target.removeItem(key);
     }
   } catch { /* 隐私模式拒绝存储时仍允许退出。 */ }
 }

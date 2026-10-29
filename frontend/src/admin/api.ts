@@ -1,5 +1,5 @@
 import request from '../utils/request';
-import { settlementInput } from './order-actions';
+import type { AdminOrderAttempt } from './order-attempts';
 import type { Page } from '../worker/types';
 import type {
   AdminJob,
@@ -57,20 +57,11 @@ export function getOrder(id: string, signal?: AbortSignal) {
     { signal },
   );
 }
-export function settleOrder(order: AdminOrder, operationId: string) {
+/** 重试直接发送已冻结的原请求，不能从刷新后的详情重建确认内容。 */
+export function submitOrderAttempt(attempt: AdminOrderAttempt) {
   return request.post<never, AdminOrder>(
-    `/api/jobs/orders/${encodeURIComponent(order.id)}/settle`,
-    settlementInput(order, operationId),
-  );
-}
-export function reopenOrder(
-  order: AdminOrder,
-  operationId: string,
-  reason: string,
-) {
-  return request.post<never, AdminOrder>(
-    `/api/jobs/orders/${encodeURIComponent(order.id)}/reopen`,
-    { expected_version: order.version, operation_id: operationId, reason },
+    `/api/jobs/orders/${encodeURIComponent(attempt.orderId)}/${attempt.action}`,
+    attempt.input,
   );
 }
 export function listWorkers(
