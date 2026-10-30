@@ -1,0 +1,439 @@
+{
+  "items": [
+    {
+      "arrived_count": 0,
+      "created_at": "2026-10-28T05:15:15.247623+00:00",
+      "id": "compact-fixture-0",
+      "job": {
+        "cost_amount": "10.00",
+        "id": "a23a74f8-1b00-46da-9d6a-0520804b4417",
+        "refund_amount": "12.50",
+        "status": "open",
+        "title": "手机多快递报单演示",
+        "version": 1
+      },
+      "note": "",
+      "order_number": "DEMO-ORDER-001",
+      "parcel_count": 2,
+      "parcels": [
+        {
+          "arrived": false,
+          "arrived_at": null,
+          "id": "c89d786e-571f-4905-841a-0673d3016cd5",
+          "tracking_number": "DEMO-SF-001"
+        },
+        {
+          "arrived": false,
+          "arrived_at": null,
+          "id": "e2ea4c8e-59c8-40ad-9545-e012d09bbfe0",
+          "tracking_number": "DEMO-SF-002"
+        }
+      ],
+      "photos": [],
+      "settled_at": null,
+      "settlement": null,
+      "status": "in_transit",
+      "updated_at": "2026-10-28T05:15:15.247630+00:00",
+      "version": 1
+    },
+    {
+      "arrived_count": 0,
+      "created_at": "2026-10-28T05:15:15.247623+00:00",
+      "id": "compact-fixture-1",
+      "job": {
+        "cost_amount": "10.00",
+        "id": "a23a74f8-1b00-46da-9d6a-0520804b4417",
+        "refund_amount": "12.50",
+        "status": "open",
+        "title": "手机多快递报单演示",
+        "version": 1
+      },
+      "note": "",
+      "order_number": "DEMO-ORDER-002",
+      "parcel_count": 2,
+      "parcels": [
+        {
+          "arrived": false,
+          "arrived_at": null,
+          "id": "c89d786e-571f-4905-841a-0673d3016cd5",
+          "tracking_number": "DEMO-SF-001"
+        },
+        {
+          "arrived": false,
+          "arrived_at": null,
+          "id": "e2ea4c8e-59c8-40ad-9545-e012d09bbfe0",
+          "tracking_number": "DEMO-SF-002"
+        }
+      ],
+      "photos": [],
+      "settled_at": null,
+      "settlement": null,
+      "status": "in_transit",
+      "updated_at": "2026-10-28T05:15:15.247630+00:00",
+      "version": 1
+    },
+    {
+      "arrived_count": 0,
+      "created_at": "2026-10-28T05:15:15.247623+00:00",
+      "id": "compact-fixture-2",
+      "job": {
+        "cost_amount": "10.00",
+        "id": "a23a74f8-1b00-46da-9d6a-0520804b4417",
+        "refund_amount": "12.50",
+        "status": "open",
+        "title": "手机多快递报单演示",
+        "version": 1
+      },
+      "note": "",
+      "order_number": "DEMO-ORDER-003",
+      "parcel_count": 2,
+      "parcels": [
+        {
+          "arrived": false,
+          "arrived_at": null,
+          "id": "c89d786e-571f-4905-841a-0673d3016cd5",
+          "tracking_number": "DEMO-SF-001"
+        },
+        {
+          "arrived": false,
+          "arrived_at": null,
+          "id": "e2ea4c8e-59c8-40ad-9545-e012d09bbfe0",
+          "tracking_number": "DEMO-SF-002"
+        }
+      ],
+      "photos": [],
+      "settled_at": null,
+      "settlement": null,
+      "status": "in_transit",
+      "updated_at": "2026-10-28T05:15:15.247630+00:00",
+      "version": 1
+    },
+    {
+      "arrived_count": 0,
+      "created_at": "2026-10-28T05:15:15.247623+00:00",
+      "id": "compact-fixture-3",
+      "job": {
+        "cost_amount": "10.00",
+        "id": "a23a74f8-1b00-46da-9d6a-0520804b4417",
+        "refund_amount": "12.50",
+        "status": "open",
+        "title": "手机多快递报单演示",
+        "version": 1
+      },
+      "note": "",
+      "order_number": "DEMO-ORDER-004",
+      "parcel_count": 2,
+      "parcels": [
+        {
+          "arrived": false,
+          "arrived_at": null,
+          "id": "c89d786e-571f-4905-841a-0673d3016cd5",
+          "tracking_number": "DEMO-SF-001"
+        },
+        {
+          "arrived": false,
+          "arrived_at": null,
+          "id": "e2ea4c8e-59c8-40ad-9545-e012d09bbfe0",
+          "tracking_number": "DEMO-SF-002"
+        }
+      ],
+      "photos": [],
+      "settled_at": null,
+      "settlement": null,
+      "status": "in_transit",
+      "updated_at": "2026-10-28T05:15:15.247630+00:00",
+      "version": 1
+    },
+    {
+      "arrived_count": 0,
+      "created_at": "2026-10-28T05:15:15.247623+00:00",
+      "id": "compact-fixture-4",
+      "job": {
+        "cost_amount": "10.00",
+        "id": "a23a74f8-1b00-46da-9d6a-0520804b4417",
+        "refund_amount": "12.50",
+        "status": "open",
+        "title": "手机多快递报单演示",
+        "version": 1
+      },
+      "note": "",
+      "order_number": "DEMO-ORDER-005",
+      "parcel_count": 2,
+      "parcels": [
+        {
+          "arrived": false,
+          "arrived_at": null,
+          "id": "c89d786e-571f-4905-841a-0673d3016cd5",
+          "tracking_number": "DEMO-SF-001"
+        },
+        {
+          "arrived": false,
+          "arrived_at": null,
+          "id": "e2ea4c8e-59c8-40ad-9545-e012d09bbfe0",
+          "tracking_number": "DEMO-SF-002"
+        }
+      ],
+      "photos": [],
+      "settled_at": null,
+      "settlement": null,
+      "status": "in_transit",
+      "updated_at": "2026-10-28T05:15:15.247630+00:00",
+      "version": 1
+    },
+    {
+      "arrived_count": 0,
+      "created_at": "2026-10-28T05:15:15.247623+00:00",
+      "id": "compact-fixture-5",
+      "job": {
+        "cost_amount": "10.00",
+        "id": "a23a74f8-1b00-46da-9d6a-0520804b4417",
+        "refund_amount": "12.50",
+        "status": "open",
+        "title": "手机多快递报单演示",
+        "version": 1
+      },
+      "note": "",
+      "order_number": "DEMO-ORDER-006",
+      "parcel_count": 2,
+      "parcels": [
+        {
+          "arrived": false,
+          "arrived_at": null,
+          "id": "c89d786e-571f-4905-841a-0673d3016cd5",
+          "tracking_number": "DEMO-SF-001"
+        },
+        {
+          "arrived": false,
+          "arrived_at": null,
+          "id": "e2ea4c8e-59c8-40ad-9545-e012d09bbfe0",
+          "tracking_number": "DEMO-SF-002"
+        }
+      ],
+      "photos": [],
+      "settled_at": null,
+      "settlement": null,
+      "status": "in_transit",
+      "updated_at": "2026-10-28T05:15:15.247630+00:00",
+      "version": 1
+    },
+    {
+      "arrived_count": 0,
+      "created_at": "2026-10-28T05:15:15.247623+00:00",
+      "id": "compact-fixture-6",
+      "job": {
+        "cost_amount": "10.00",
+        "id": "a23a74f8-1b00-46da-9d6a-0520804b4417",
+        "refund_amount": "12.50",
+        "status": "open",
+        "title": "手机多快递报单演示",
+        "version": 1
+      },
+      "note": "",
+      "order_number": "DEMO-ORDER-007",
+      "parcel_count": 2,
+      "parcels": [
+        {
+          "arrived": false,
+          "arrived_at": null,
+          "id": "c89d786e-571f-4905-841a-0673d3016cd5",
+          "tracking_number": "DEMO-SF-001"
+        },
+        {
+          "arrived": false,
+          "arrived_at": null,
+          "id": "e2ea4c8e-59c8-40ad-9545-e012d09bbfe0",
+          "tracking_number": "DEMO-SF-002"
+        }
+      ],
+      "photos": [],
+      "settled_at": null,
+      "settlement": null,
+      "status": "in_transit",
+      "updated_at": "2026-10-28T05:15:15.247630+00:00",
+      "version": 1
+    },
+    {
+      "arrived_count": 0,
+      "created_at": "2026-10-28T05:15:15.247623+00:00",
+      "id": "compact-fixture-7",
+      "job": {
+        "cost_amount": "10.00",
+        "id": "a23a74f8-1b00-46da-9d6a-0520804b4417",
+        "refund_amount": "12.50",
+        "status": "open",
+        "title": "手机多快递报单演示",
+        "version": 1
+      },
+      "note": "",
+      "order_number": "DEMO-ORDER-008",
+      "parcel_count": 2,
+      "parcels": [
+        {
+          "arrived": false,
+          "arrived_at": null,
+          "id": "c89d786e-571f-4905-841a-0673d3016cd5",
+          "tracking_number": "DEMO-SF-001"
+        },
+        {
+          "arrived": false,
+          "arrived_at": null,
+          "id": "e2ea4c8e-59c8-40ad-9545-e012d09bbfe0",
+          "tracking_number": "DEMO-SF-002"
+        }
+      ],
+      "photos": [],
+      "settled_at": null,
+      "settlement": null,
+      "status": "in_transit",
+      "updated_at": "2026-10-28T05:15:15.247630+00:00",
+      "version": 1
+    },
+    {
+      "arrived_count": 0,
+      "created_at": "2026-10-28T05:15:15.247623+00:00",
+      "id": "compact-fixture-8",
+      "job": {
+        "cost_amount": "10.00",
+        "id": "a23a74f8-1b00-46da-9d6a-0520804b4417",
+        "refund_amount": "12.50",
+        "status": "open",
+        "title": "手机多快递报单演示",
+        "version": 1
+      },
+      "note": "",
+      "order_number": "DEMO-ORDER-009",
+      "parcel_count": 2,
+      "parcels": [
+        {
+          "arrived": false,
+          "arrived_at": null,
+          "id": "c89d786e-571f-4905-841a-0673d3016cd5",
+          "tracking_number": "DEMO-SF-001"
+        },
+        {
+          "arrived": false,
+          "arrived_at": null,
+          "id": "e2ea4c8e-59c8-40ad-9545-e012d09bbfe0",
+          "tracking_number": "DEMO-SF-002"
+        }
+      ],
+      "photos": [],
+      "settled_at": null,
+      "settlement": null,
+      "status": "in_transit",
+      "updated_at": "2026-10-28T05:15:15.247630+00:00",
+      "version": 1
+    },
+    {
+      "arrived_count": 0,
+      "created_at": "2026-10-28T05:15:15.247623+00:00",
+      "id": "compact-fixture-9",
+      "job": {
+        "cost_amount": "10.00",
+        "id": "a23a74f8-1b00-46da-9d6a-0520804b4417",
+        "refund_amount": "12.50",
+        "status": "open",
+        "title": "手机多快递报单演示",
+        "version": 1
+      },
+      "note": "",
+      "order_number": "DEMO-ORDER-010",
+      "parcel_count": 2,
+      "parcels": [
+        {
+          "arrived": false,
+          "arrived_at": null,
+          "id": "c89d786e-571f-4905-841a-0673d3016cd5",
+          "tracking_number": "DEMO-SF-001"
+        },
+        {
+          "arrived": false,
+          "arrived_at": null,
+          "id": "e2ea4c8e-59c8-40ad-9545-e012d09bbfe0",
+          "tracking_number": "DEMO-SF-002"
+        }
+      ],
+      "photos": [],
+      "settled_at": null,
+      "settlement": null,
+      "status": "in_transit",
+      "updated_at": "2026-10-28T05:15:15.247630+00:00",
+      "version": 1
+    },
+    {
+      "arrived_count": 0,
+      "created_at": "2026-10-28T05:15:15.247623+00:00",
+      "id": "compact-fixture-10",
+      "job": {
+        "cost_amount": "10.00",
+        "id": "a23a74f8-1b00-46da-9d6a-0520804b4417",
+        "refund_amount": "12.50",
+        "status": "open",
+        "title": "手机多快递报单演示",
+        "version": 1
+      },
+      "note": "",
+      "order_number": "DEMO-ORDER-011",
+      "parcel_count": 2,
+      "parcels": [
+        {
+          "arrived": false,
+          "arrived_at": null,
+          "id": "c89d786e-571f-4905-841a-0673d3016cd5",
+          "tracking_number": "DEMO-SF-001"
+        },
+        {
+          "arrived": false,
+          "arrived_at": null,
+          "id": "e2ea4c8e-59c8-40ad-9545-e012d09bbfe0",
+          "tracking_number": "DEMO-SF-002"
+        }
+      ],
+      "photos": [],
+      "settled_at": null,
+      "settlement": null,
+      "status": "in_transit",
+      "updated_at": "2026-10-28T05:15:15.247630+00:00",
+      "version": 1
+    },
+    {
+      "arrived_count": 0,
+      "created_at": "2026-10-28T05:15:15.247623+00:00",
+      "id": "compact-fixture-11",
+      "job": {
+        "cost_amount": "10.00",
+        "id": "a23a74f8-1b00-46da-9d6a-0520804b4417",
+        "refund_amount": "12.50",
+        "status": "open",
+        "title": "手机多快递报单演示",
+        "version": 1
+      },
+      "note": "",
+      "order_number": "DEMO-ORDER-012",
+      "parcel_count": 2,
+      "parcels": [
+        {
+          "arrived": false,
+          "arrived_at": null,
+          "id": "c89d786e-571f-4905-841a-0673d3016cd5",
+          "tracking_number": "DEMO-SF-001"
+        },
+        {
+          "arrived": false,
+          "arrived_at": null,
+          "id": "e2ea4c8e-59c8-40ad-9545-e012d09bbfe0",
+          "tracking_number": "DEMO-SF-002"
+        }
+      ],
+      "photos": [],
+      "settled_at": null,
+      "settlement": null,
+      "status": "in_transit",
+      "updated_at": "2026-10-28T05:15:15.247630+00:00",
+      "version": 1
+    }
+  ],
+  "page": 1,
+  "page_size": 20,
+  "total": 12
+}

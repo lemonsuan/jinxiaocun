@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import WorkerIcon from '../components/WorkerIcon.vue';
 import { onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink, useRoute } from 'vue-router';
 import { loadJob, loadOrders } from '../api';
@@ -35,17 +36,17 @@ onBeforeUnmount(() => controller?.abort());
 </script>
 <template>
   <div class="worker-job-page">
-    <RouterLink class="worker-back" to="/worker/jobs">← 作业列表</RouterLink>
     <p v-if="error" class="worker-error" role="alert">{{ error }}<button class="worker-button ghost" @click="load()">重试</button></p>
     <div v-if="job" class="worker-card worker-job-content">
-      <h1 class="worker-job-title">{{ job.title }}</h1>
-      <button type="button" class="worker-detail-strip" @click="details = true"><span>查看作业详情</span><span aria-hidden="true">›</span></button>
-      <div class="worker-section-heading"><h2>已填报订单 <small>{{ total }}</small></h2><button class="worker-button ghost" :disabled="loading" @click="load()">刷新</button></div>
+      <div class="worker-job-heading"><RouterLink class="worker-icon-button" to="/worker/jobs" aria-label="返回作业列表" title="返回作业列表"><WorkerIcon name="back" /></RouterLink><h1 class="worker-job-title">{{ job.title }}</h1><button type="button" class="worker-icon-button" aria-label="刷新订单" title="刷新订单" :disabled="loading" @click="load()"><WorkerIcon name="refresh" /></button></div>
+      <button type="button" class="worker-detail-strip" @click="details = true"><span>查看作业详情</span><WorkerIcon name="next" /></button>
+      <div class="worker-section-heading"><h2>已填报订单 <small>{{ total }}</small></h2></div>
       <WorkerOrderList :orders="rows" @saved="load()" />
       <p v-if="!rows.length" class="worker-empty">{{ loading ? '正在加载…' : '还没有填报，点击下方按钮填写第一单。' }}</p>
       <button v-if="rows.length < total" class="worker-button secondary wide" :disabled="loading" @click="load(true)">{{ loading ? '加载中…' : '加载更多订单' }}</button>
     </div>
-    <p v-else-if="loading" class="worker-empty">正在加载作业…</p>
+    <RouterLink v-else class="worker-back" to="/worker/jobs"><WorkerIcon name="back" />返回作业列表</RouterLink>
+    <p v-if="!job && loading" class="worker-empty">正在加载作业…</p>
     <div v-if="job" class="worker-report-bar"><button class="worker-button wide" :disabled="!pendingReport && (job.status !== 'open' || job.can_report === false)" @click="reporting = true">{{ pendingReport ? '确认上次填报结果' : job.status === 'open' ? '填报作业' : '作业已关闭' }}</button></div>
     <WorkerModal v-if="job" v-model="details" :title="job.title" detail><div class="worker-money"><div><span>作业成本</span><strong>¥{{ moneyText(job.cost_amount) }}</strong></div><div><span>返款金额</span><strong>¥{{ moneyText(job.refund_amount) }}</strong></div></div><p class="worker-job-description">{{ job.description || '暂无补充说明。' }}</p></WorkerModal>
     <WorkerOrderModal v-if="job && reporting" :model-value="true" :job="job" @update:model-value="reporting = false" @saved="load()" />

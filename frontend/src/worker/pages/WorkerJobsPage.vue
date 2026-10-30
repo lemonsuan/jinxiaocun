@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import WorkerIcon from '../components/WorkerIcon.vue';
 import { onBeforeUnmount, ref } from 'vue';
 import { RouterLink } from 'vue-router';
 import { loadJobs } from '../api';
@@ -61,16 +62,14 @@ onBeforeUnmount(() => controller?.abort());
     <div class="worker-page-heading">
       <div>
         <h1>作业</h1>
-        <p class="worker-muted">选择作业，填写订单。</p>
       </div>
       <button
         type="button"
-        class="worker-button ghost"
+        class="worker-icon-button"
+        aria-label="刷新作业" title="刷新作业"
         :disabled="loading"
         @click="search"
-      >
-        刷新
-      </button>
+      ><WorkerIcon name="refresh" /></button>
     </div>
     <form class="worker-search" @submit.prevent="search">
       <input
@@ -122,7 +121,7 @@ onBeforeUnmount(() => controller?.abort());
           :to="`/worker/jobs/${job.id}`"
           class="worker-button secondary"
           >{{ job.status === 'open' ? '查看并报单' : '查看历史' }}
-          <span aria-hidden="true">→</span></RouterLink
+          <WorkerIcon name="next" /></RouterLink
         >
       </div>
     </article>
@@ -151,8 +150,8 @@ onBeforeUnmount(() => controller?.abort());
   color: #138257;
   background: #e7f6ed;
   border-radius: 999px;
-  padding: 5px 8px;
-  font-size: 10px;
+  padding: 3px 7px;
+  font-size: 12px;
   white-space: nowrap;
 }
 .job-state.closed {
@@ -166,8 +165,8 @@ onBeforeUnmount(() => controller?.abort());
   overflow: hidden;
   color: #708276;
   font-size: 13px;
-  line-height: 1.75;
-  margin: 10px 0 0;
+  line-height: 1.5;
+  margin: 6px 0 0;
   overflow-wrap: anywhere;
 }
 .job-footer {
@@ -176,10 +175,10 @@ onBeforeUnmount(() => controller?.abort());
   justify-content: space-between;
   gap: 12px;
   border-top: 1px solid #edf1ee;
-  padding-top: 14px;
+  padding-top: 8px;
 }
 .job-footer > span {
-  font-size: 11px;
+  font-size: 12px;
   color: #87978c;
   min-width: 0;
 }

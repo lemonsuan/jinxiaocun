@@ -3,6 +3,7 @@ import { onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { RouterLink, RouterView, useRouter } from 'vue-router';
 import { loadWorker } from './api';
 import { useWorkerStore } from './store';
+import WorkerIcon from './components/WorkerIcon.vue';
 const auth = useWorkerStore();
 const router = useRouter();
 const checking = ref(false);
@@ -55,8 +56,7 @@ onBeforeUnmount(() => {
   <div class="worker-app">
     <header class="worker-header">
       <div class="worker-brand">
-        <span class="worker-eyebrow">拍手作业台</span
-        ><strong>{{ auth.worker?.shop_name || '我的店铺' }}</strong
+        <strong>{{ auth.worker?.shop_name || '我的店铺' }}</strong
         ><span class="worker-subtitle"
           >店铺 ID {{ auth.worker?.shop_number }} ·
           {{ auth.worker?.display_name || auth.worker?.username }}</span
@@ -73,10 +73,10 @@ onBeforeUnmount(() => {
       aria-label="拍手工作区导航"
     >
       <RouterLink to="/worker/jobs" class="worker-nav-item"
-        ><span aria-hidden="true">▦</span>作业</RouterLink
+        ><WorkerIcon name="jobs" />作业</RouterLink
       ><RouterLink to="/worker/orders" class="worker-nav-item"
-        ><span aria-hidden="true">▤</span>已做作业</RouterLink
-      ><RouterLink to="/worker/profile" class="worker-nav-item"><span aria-hidden="true">○</span>我的</RouterLink>
+        ><WorkerIcon name="orders" />已做作业</RouterLink
+      ><RouterLink to="/worker/profile" class="worker-nav-item"><WorkerIcon name="profile" />我的</RouterLink>
     </nav>
   </div>
 </template>

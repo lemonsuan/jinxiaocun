@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import WorkerIcon from '../components/WorkerIcon.vue';
 import { onBeforeUnmount, ref, watch } from 'vue';
 import { RouterLink, useRoute, useRouter } from 'vue-router';
 import { loadJob, loadOrder } from '../api';
@@ -21,4 +22,4 @@ function close() { opened.value = false; void router.replace(job.value ? `/worke
 watch(() => route.fullPath, load, { immediate: true });
 onBeforeUnmount(() => controller?.abort());
 </script>
-<template><div><RouterLink class="worker-back" to="/worker/orders">← 已做作业</RouterLink><p v-if="error" class="worker-error">{{ error }}</p><p v-else class="worker-empty">正在打开填报窗口…</p><WorkerOrderModal v-if="job && opened" :key="route.fullPath" :model-value="true" :job="job" :order-id="orderId" @update:model-value="close" /></div></template>
+<template><div><RouterLink class="worker-back" to="/worker/orders"><WorkerIcon name="back" />已做作业</RouterLink><p v-if="error" class="worker-error">{{ error }}</p><p v-else class="worker-empty">正在打开填报窗口…</p><WorkerOrderModal v-if="job && opened" :key="route.fullPath" :model-value="true" :job="job" :order-id="orderId" @update:model-value="close" /></div></template>

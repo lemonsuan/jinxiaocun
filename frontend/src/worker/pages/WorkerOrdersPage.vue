@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import WorkerIcon from '../components/WorkerIcon.vue';
 import { onBeforeUnmount, ref, watch } from 'vue';
 import { useRoute } from 'vue-router';
 import { loadOrders, loadOrderSummary } from '../api';
@@ -28,7 +29,7 @@ onBeforeUnmount(() => controller?.abort());
 <template>
   <div>
     <div class="worker-summary" aria-label="全部已做作业统计"><div><strong>{{ summary?.in_transit ?? '—' }}</strong><span>运输中</span></div><div><strong>{{ summary?.arrived ?? '—' }}</strong><span>已签收等待返款</span></div><div><strong>{{ summary?.total ?? '—' }}</strong><span>总量</span></div></div>
-    <div class="worker-section-heading"><h1>已做作业</h1><button class="worker-button ghost" :disabled="loading" @click="load()">刷新</button></div>
+    <div class="worker-section-heading"><h1>已做作业</h1><button type="button" class="worker-icon-button" aria-label="刷新已做作业" title="刷新已做作业" :disabled="loading" @click="load()"><WorkerIcon name="refresh" /></button></div>
     <form class="worker-search" @submit.prevent="search"><input v-model="query" class="worker-input" type="search" aria-label="搜索订单或快递号" placeholder="订单号 / 快递单号" maxlength="100" /><button class="worker-button" :disabled="loading">查询</button></form>
     <p v-if="route.query.job" class="worker-muted">当前列表仅显示所选作业，顶部数量为本人全部订单。</p>
     <p v-if="error" class="worker-error" role="alert">{{ error }}<button class="worker-button ghost" @click="load()">重试</button></p>
